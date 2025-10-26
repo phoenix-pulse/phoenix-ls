@@ -38,7 +38,7 @@ Complete Neovim plugin using the same LSP server as VS Code.
 - 🔍 Search/filter functionality
 - 📋 Context-aware copy commands
 
-**Install:** See [Neovim README](./packages/nvim-plugin/README.md) or [NEOVIM.md](./NEOVIM.md)
+**Install:** See [NEOVIM.md](./NEOVIM.md) for complete installation guide
 
 ---
 
@@ -95,7 +95,7 @@ use {
 Plug 'phoenix-pulse/phoenix-ls', {'do': 'cd packages/nvim-plugin && ./install-lsp.sh'}
 ```
 
-See [NEOVIM.md](./NEOVIM.md) for complete Neovim installation and configuration details.
+See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details.
 
 ---
 
@@ -170,7 +170,7 @@ cd packages/nvim-plugin
 
 - [NEOVIM.md](./NEOVIM.md) - Complete Neovim plugin documentation
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
-- [CLAUDE.md](./CLAUDE.md) - Detailed technical documentation
+- **VS Code Extension:** Full documentation on [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse)
 
 ---
 
@@ -195,14 +195,13 @@ phoenix-ls/
 │       ├── lua/phoenix-pulse/     # Lua modules
 │       ├── plugin/                # Plugin entry point
 │       ├── doc/                   # Vim help docs
-│       ├── install-lsp.sh         # LSP installer script
-│       └── README.md
+│       └── install-lsp.sh         # LSP installer script
 │
 ├── package.json                   # Root workspace config
 ├── README.md                      # This file
 ├── NEOVIM.md                      # Neovim documentation
-├── CONTRIBUTING.md
-└── LICENSE
+├── CONTRIBUTING.md                # Contribution guidelines
+└── LICENSE                        # MIT License
 ```
 
 ---

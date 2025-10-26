@@ -57,3 +57,4 @@ trash/
 *.md
 !**/README.md
 !**/CONTRIBUTING.md
+!NEOVIM.md
