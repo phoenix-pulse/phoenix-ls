@@ -34,8 +34,8 @@ The codebase is TypeScript end-to-end (no Rust or native dependencies).
 ## Quick Start
 
 ```bash
-git clone https://github.com/onsever/vscode-phoenix-lsp.git
-cd vscode-phoenix-lsp
+git clone https://github.com/phoenix-pulse/phoenix-ls.git
+cd phoenix-ls
 npm install          # Installs extension + LSP deps (workspaces)
 npm run compile      # Builds extension and language server
 ```

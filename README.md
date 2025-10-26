@@ -42,19 +42,31 @@ Complete Neovim plugin using the same LSP server as VS Code.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation
 
-### For Users
+### VS Code
 
-**VS Code:**
+**From Marketplace (Recommended):**
+1. Open VS Code
+2. Press `Ctrl+Shift+X` (or `Cmd+Shift+X` on Mac)
+3. Search for **"Phoenix Pulse"**
+4. Click **Install**
+
+**Or via command line:**
+```bash
+code --install-extension onsever.phoenix-pulse
 ```
-Install from VS Code Marketplace
-Search: "Phoenix Pulse"
+
+**Manual Installation (.vsix):**
+```bash
+# Download .vsix from releases
+code --install-extension phoenix-pulse-1.3.0.vsix
 ```
 
-**Neovim:**
+### Neovim
+
+**Using lazy.nvim:**
 ```lua
--- Using lazy.nvim
 {
   "phoenix-pulse/phoenix-ls",
   dir = "packages/nvim-plugin",
@@ -66,6 +78,38 @@ Search: "Phoenix Pulse"
   end,
 }
 ```
+
+**Using packer.nvim:**
+```lua
+use {
+  "phoenix-pulse/phoenix-ls",
+  run = "cd packages/nvim-plugin && ./install-lsp.sh",
+  config = function()
+    require("phoenix-pulse").setup()
+  end,
+}
+```
+
+**Using vim-plug:**
+```vim
+Plug 'phoenix-pulse/phoenix-ls', {'do': 'cd packages/nvim-plugin && ./install-lsp.sh'}
+```
+
+See [NEOVIM.md](./NEOVIM.md) for complete Neovim installation and configuration details.
+
+---
+
+## 📋 Requirements
+
+- **VS Code**: 1.75.0 or higher
+- **Neovim**: 0.8.0 or higher (for Neovim users)
+- **Phoenix**: 1.6+ or 1.7+ project
+- **Node.js**: 16+ (for language server)
+- **Elixir**: 1.13+ (optional, for 100% accurate parsing)
+
+---
+
+## 🚀 Quick Start
 
 ### For Developers
 
@@ -228,8 +272,8 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 | Package | Version | Status |
 |---------|---------|--------|
-| Language Server | 1.0.0 | ✅ Stable |
-| VS Code Extension | 1.0.0 | ✅ Published |
+| Language Server | 1.0.0 | ✅ Published to npm |
+| VS Code Extension | 1.3.0 | ✅ Ready to publish |
 | Neovim Plugin | 1.0.0 | ✅ Stable |
 
 ---

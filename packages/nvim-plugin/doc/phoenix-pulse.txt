@@ -4,7 +4,7 @@
 
 Author:  Phoenix Pulse Contributors
 License: Same as Phoenix Pulse
-Repo:    https://github.com/onsever/phoenix-pulse
+Repo:    https://github.com/phoenix-pulse/phoenix-ls
 
 ==============================================================================
 CONTENTS                                              *phoenix-pulse-contents*
