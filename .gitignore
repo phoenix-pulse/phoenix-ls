@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+packages/*/node_modules/
+
+# Build outputs
+packages/language-server/dist/
+packages/vscode-extension/out/
+*.vsix
+*.tgz
+
+# DO NOT ignore: packages/nvim-plugin/lsp/ (bundled LSP for users)
+
+# OS files
+.DS_Store
+Thumbs.db
+erl_crash.dump
+
+# IDE
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+.cache/
+.npm-cache/
+
+# Serena MCP files (AI assistant state)
+.serena/
+
+# Debugging temporary directories
+trash/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Markdown Files
+*.md
+!**/README.md
+!**/CONTRIBUTING.md

@@ -1,0 +1,337 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Phoenix HEEx",
+  "scopeName": "text.html.heex",
+  "fileTypes": ["heex"],
+  "patterns": [
+    {
+      "include": "#eex-comment"
+    },
+    {
+      "include": "#eex-expression"
+    },
+    {
+      "include": "#phoenix-component"
+    },
+        {
+          "include": "#html-tag"
+        },
+        {
+          "include": "#slot-tags"
+        },
+        {
+          "include": "#elixir-interpolation"
+        }
+      ],
+  "repository": {
+    "eex-comment": {
+      "name": "comment.block.heex",
+      "begin": "<%!--",
+      "end": "--%>",
+      "patterns": [
+        {
+          "name": "comment.block.heex",
+          "match": ".*"
+        }
+      ]
+    },
+    "eex-expression": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.elixir",
+          "begin": "<%=",
+          "end": "%>",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.begin.elixir"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.end.elixir"
+            }
+          },
+          "contentName": "source.elixir.embedded",
+          "patterns": [
+            {
+              "include": "source.elixir"
+            }
+          ]
+        },
+        {
+          "name": "meta.embedded.block.elixir",
+          "begin": "<%",
+          "end": "%>",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.begin.elixir"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.end.elixir"
+            }
+          },
+          "contentName": "source.elixir.embedded",
+          "patterns": [
+            {
+              "include": "source.elixir"
+            }
+          ]
+        }
+      ]
+    },
+    "phoenix-component": {
+      "patterns": [
+        {
+          "name": "meta.tag.component.phoenix",
+          "begin": "(<)(\\.)([a-z_][a-z0-9_]*)",
+          "end": "(/?>)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "punctuation.accessor.phoenix"
+            },
+            "3": {
+              "name": "support.class.component.phoenix"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#special-attributes"
+            },
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        },
+        {
+          "name": "meta.tag.component.closing.phoenix",
+          "match": "(</)(\\.)([-a-zA-Z0-9_]+)(>)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "punctuation.accessor.phoenix"
+            },
+            "3": {
+              "name": "support.class.component.phoenix"
+            },
+            "4": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          }
+        }
+      ]
+    },
+    "slot-tags": {
+      "patterns": [
+        {
+          "name": "meta.tag.slot.phoenix",
+          "begin": "(<:)([a-z_][a-z0-9_-]*)",
+          "end": "(/?>)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "entity.name.tag.slot.phoenix"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#special-attributes"
+            },
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        },
+        {
+          "name": "meta.tag.slot.closing.phoenix",
+          "match": "(</:)([a-z_][a-z0-9_-]*)(>)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "entity.name.tag.slot.phoenix"
+            },
+            "3": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          }
+        }
+      ]
+    },
+    "html-tag": {
+      "patterns": [
+        {
+          "name": "meta.tag.block.any.html",
+          "begin": "(<)([a-zA-Z][a-zA-Z0-9]*)",
+          "end": "(/?>)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "entity.name.tag.html"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#special-attributes"
+            },
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        },
+        {
+          "name": "meta.tag.block.any.html",
+          "match": "(</)([a-zA-Z][a-zA-Z0-9]*)(>)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.tag.begin.html"
+            },
+            "2": {
+              "name": "entity.name.tag.html"
+            },
+            "3": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          }
+        }
+      ]
+    },
+    "special-attributes": {
+      "patterns": [
+        {
+          "name": "meta.attribute.special.phoenix",
+          "match": "(:)(for|if|let|key)\\s*(=)\\s*",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.keyword.phoenix"
+            },
+            "2": {
+              "name": "keyword.control.phoenix"
+            },
+            "3": {
+              "name": "punctuation.separator.key-value.html"
+            }
+          }
+        }
+      ]
+    },
+    "tag-attributes": {
+      "patterns": [
+        {
+          "include": "#elixir-interpolation"
+        },
+        {
+          "name": "meta.attribute.phx.phoenix",
+          "match": "(phx-[a-z-]+)\\s*(=)?",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.phoenix"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            }
+          }
+        },
+        {
+          "name": "meta.attribute.html",
+          "match": "([a-zA-Z-:]+)\\s*(=)?",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.html"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            }
+          }
+        },
+        {
+          "include": "#string-double-quoted"
+        },
+        {
+          "include": "#string-single-quoted"
+        }
+      ]
+    },
+    "elixir-interpolation": {
+      "patterns": [
+        {
+          "name": "meta.embedded.inline.elixir",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.begin.elixir"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.end.elixir"
+            }
+          },
+          "contentName": "source.elixir.embedded",
+          "patterns": [
+            {
+              "name": "variable.other.constant.elixir",
+              "match": "@[a-z_][a-zA-Z0-9_]*"
+            },
+            {
+              "include": "source.elixir"
+            }
+          ]
+        }
+      ]
+    },
+    "string-double-quoted": {
+      "name": "string.quoted.double.html",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "include": "#eex-expression"
+        },
+        {
+          "include": "#elixir-interpolation"
+        }
+      ]
+    },
+    "string-single-quoted": {
+      "name": "string.quoted.single.html",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "include": "#eex-expression"
+        },
+        {
+          "include": "#elixir-interpolation"
+        }
+      ]
+    }
+  }
+}

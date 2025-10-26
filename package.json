@@ -1,0 +1,34 @@
+{
+  "name": "phoenix-ls-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phoenix Pulse - Intelligent IDE tooling for Phoenix LiveView development",
+  "workspaces": [
+    "packages/language-server",
+    "packages/vscode-extension",
+    "packages/nvim-plugin"
+  ],
+  "scripts": {
+    "compile": "npm run compile --workspaces --if-present",
+    "compile:lsp": "npm run compile -w @phoenix-pulse/language-server",
+    "compile:vscode": "npm run compile -w @phoenix-pulse/vscode-extension",
+    "watch": "npm run watch --workspaces --if-present",
+    "watch:lsp": "npm run watch -w @phoenix-pulse/language-server",
+    "watch:vscode": "npm run watch -w @phoenix-pulse/vscode-extension",
+    "test": "npm test --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "package:vscode": "npm run package -w @phoenix-pulse/vscode-extension",
+    "publish:lsp": "npm publish -w @phoenix-pulse/language-server",
+    "publish:vscode": "npm run publish -w @phoenix-pulse/vscode-extension"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoenix-pulse/phoenix-ls.git"
+  },
+  "author": "Onurcan Sever",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}

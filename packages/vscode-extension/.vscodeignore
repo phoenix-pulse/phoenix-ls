@@ -1,0 +1,43 @@
+.vscode/**
+.vscode-test/**
+.git/**
+.github/**
+node_modules/**
+lsp/node_modules/**
+!lsp/node_modules/@vscode/**
+!lsp/node_modules/emmet/**
+!lsp/node_modules/jsonc-parser/**
+!lsp/node_modules/vscode-languageserver-textdocument/**
+!lsp/node_modules/vscode-languageserver-types/**
+!lsp/node_modules/vscode-uri/**
+lsp/__tests__/**
+phoenix-lsp-*.tgz
+.npm-cache/**
+.claude/**
+src/**
+lsp/src/**
+lsp/tsconfig.json
+lsp/package.json
+lsp/package-lock.json
+tsconfig.json
+.eslintrc.json
+.gitignore
+vsc-extension-quickstart.md
+**/*.map
+*.vsix
+!out/**
+!lsp/dist/**
+!vendor/**
+
+# AI assistant state
+.lexical/**
+.serena/**
+
+# Trash folder
+trash/**
+
+# Examples
+examples/**
+
+# AI assistant docs (not for end users)
+CLAUDE.md

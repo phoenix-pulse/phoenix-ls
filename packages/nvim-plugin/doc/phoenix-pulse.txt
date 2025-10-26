@@ -1,0 +1,257 @@
+*phoenix-pulse.txt*  Phoenix LiveView IDE tooling for Neovim
+
+                      PHOENIX PULSE NEOVIM PLUGIN
+
+Author:  Phoenix Pulse Contributors
+License: Same as Phoenix Pulse
+Repo:    https://github.com/onsever/phoenix-pulse
+
+==============================================================================
+CONTENTS                                              *phoenix-pulse-contents*
+
+    1. Introduction ................ |phoenix-pulse-intro|
+    2. Requirements ................ |phoenix-pulse-requirements|
+    3. Installation ................ |phoenix-pulse-installation|
+    4. Configuration ............... |phoenix-pulse-config|
+    5. Commands .................... |phoenix-pulse-commands|
+    6. Features .................... |phoenix-pulse-features|
+    7. Troubleshooting ............. |phoenix-pulse-troubleshooting|
+
+==============================================================================
+1. INTRODUCTION                                          *phoenix-pulse-intro*
+
+Phoenix Pulse provides intelligent IDE tooling for Phoenix LiveView development
+in Neovim. It uses the same Language Server Protocol (LSP) server as the VS
+Code extension, providing:
+
+  - Component completions with attributes and slots
+  - Schema completions with association drill-down
+  - Route completions for verified routes
+  - Event completions for LiveView events
+  - Diagnostics for invalid attributes and values
+  - Hover documentation
+  - Go-to-definition support
+  - Project Explorer with hierarchical details
+    - Expandable schemas (fields/associations)
+    - Expandable components (attributes/slots)
+    - LiveViews organized by folder
+    - Project statistics
+    - Search/filter functionality
+    - Context-aware copy commands
+  - ERD Diagram viewer
+
+==============================================================================
+2. REQUIREMENTS                                   *phoenix-pulse-requirements*
+
+  - Neovim 0.8+ (tested on 0.9 and 0.10)
+  - Node.js 16+
+  - nvim-lspconfig plugin
+  - nvim-web-devicons (optional, for icons)
+  - Compiled LSP server (run `npm run compile` in phoenix-pulse/)
+
+==============================================================================
+3. INSTALLATION                                   *phoenix-pulse-installation*
+
+Using lazy.nvim: >lua
+
+    return {
+      {
+        dir = "~/phoenix-pulse/packages/nvim-plugin",
+        dependencies = {
+          "neovim/nvim-lspconfig",
+          "nvim-tree/nvim-web-devicons",
+        },
+        ft = { "elixir", "heex", "eelixir" },
+        config = function()
+          require("phoenix-pulse").setup()
+        end,
+      }
+    }
+<
+
+See |NEOVIM.md| for more installation methods (NvChad, Packer, vanilla).
+
+==============================================================================
+4. CONFIGURATION                                        *phoenix-pulse-config*
+
+                                                     *phoenix-pulse.setup()*
+
+Configure Phoenix Pulse with setup(): >lua
+
+    require("phoenix-pulse").setup({
+      -- Explorer mode: "float" (popup) or "split" (sidebar)
+      explorer_mode = "float",
+
+      -- Auto-open ERD in browser
+      auto_open_erd = true,
+
+      -- Keybindings (set to false to disable)
+      keybindings = {
+        toggle_explorer = "<leader>pp",
+        show_erd = "<leader>pe",
+        refresh = "<leader>pr",
+      },
+
+      -- LSP server path (auto-detected)
+      lsp_server_path = nil,
+    })
+<
+
+==============================================================================
+5. COMMANDS                                           *phoenix-pulse-commands*
+
+PROJECT EXPLORER~
+
+:PhoenixPulseToggle                                      *:PhoenixPulseToggle*
+    Toggle project explorer (float or split based on config)
+
+:PhoenixPulseExplorerFloat                        *:PhoenixPulseExplorerFloat*
+    Open project explorer as floating window
+
+:PhoenixPulseExplorerSplit                        *:PhoenixPulseExplorerSplit*
+    Open project explorer as split sidebar
+
+:PhoenixPulseRefresh                                    *:PhoenixPulseRefresh*
+    Refresh explorer data from LSP server
+
+ERD DIAGRAM~
+
+:PhoenixPulseERD                                            *:PhoenixPulseERD*
+    Generate ERD diagram and open in browser
+
+:PhoenixPulseERDMermaid                              *:PhoenixPulseERDMermaid*
+    Generate Mermaid file (phoenix-erd.mmd) without opening browser
+
+DATA COMMANDS~
+
+:PhoenixPulseSchemas                                    *:PhoenixPulseSchemas*
+    List all Ecto schemas in the project
+
+:PhoenixPulseComponents                              *:PhoenixPulseComponents*
+    List all Phoenix components in the project
+
+:PhoenixPulseRoutes                                      *:PhoenixPulseRoutes*
+    List all Phoenix routes in the project
+
+:PhoenixPulseEvents                                      *:PhoenixPulseEvents*
+    List all LiveView events in the project
+
+==============================================================================
+6. FEATURES                                           *phoenix-pulse-features*
+
+LSP FEATURES~
+
+All standard LSP features work automatically:
+
+  - Completions: Type `<.`, `@`, or `~p"` for context-aware completions
+  - Diagnostics: Red squiggles for missing/invalid attributes
+  - Hover: Press `K` on components for documentation
+  - Go-to-definition: Press `gd` on `<.component>` to jump to definition
+
+PROJECT EXPLORER~
+
+The explorer shows a hierarchical tree view of your Phoenix project:
+
+  📦 Phoenix Pulse Explorer
+
+  📊 Project Statistics
+    📈 12 Schemas, 24 Components, 35 Routes, 18 Events, 8 LiveViews
+    🏆 Top Schemas:
+      User (15 fields)
+
+  ▼ 📊 Schemas (12)
+    ▼ 📄 User
+      ▼ 📋 Fields (10)
+        📄 id: integer
+      ▼ 🔗 Associations (5)
+        🔗 has_many :posts → Post
+
+  ▼ 🧩 Components (24)
+    ▼ 🧱 button
+      ⚙️ type: :string (required)
+      🎰 :inner_block
+
+  ▼ 🔴 LiveViews (8)
+    ▼ 📁 UserLive (3 modules)
+      ▼ 📄 IndexLive (4 functions)
+        🔵 mount
+        ⚡ handle_event "delete"
+
+Keybindings in explorer:
+  - `<CR>` or `<Space>` : Expand/collapse or jump to definition
+  - `/`                  : Search/filter items
+  - `x`                  : Clear search filter
+  - `y`                  : Copy menu (context-aware)
+  - `r`                  : Refresh data
+  - `za`                 : Toggle current item
+  - `zM`                 : Collapse all
+  - `zR`                 : Expand all
+  - `?`                  : Show help
+  - `q` or `<Esc>`       : Close explorer
+
+ERD DIAGRAM~
+
+The ERD viewer generates a visual database diagram showing:
+  - Table names (e.g., users, posts)
+  - Relationships with arrows (has_many, belongs_to, etc.)
+  - Fields with types (PK = Primary Key, FK = Foreign Key)
+  - Elixir module names in comments
+
+The diagram opens automatically in your default web browser.
+
+==============================================================================
+7. TROUBLESHOOTING                             *phoenix-pulse-troubleshooting*
+
+LSP SERVER NOT FOUND~
+
+Error: `[Phoenix Pulse] LSP server not found`
+
+Solution: Compile the LSP server:
+>bash
+    cd phoenix-pulse
+    npm run compile
+<
+
+Verify `lsp/dist/server.js` exists.
+
+NO COMPLETIONS~
+
+Check if LSP is running:
+>vim
+    :lua vim.print(vim.lsp.get_active_clients())
+<
+
+You should see `phoenix_pulse` in the list.
+
+EXPLORER SHOWS EMPTY DATA~
+
+Try manual refresh:
+>vim
+    :PhoenixPulseRefresh
+<
+
+Or check LSP connection:
+>vim
+    :PhoenixPulseSchemas
+<
+
+ERD NOT OPENING~
+
+The HTML file is saved to `/tmp/phoenix-pulse-erd-*.html`
+
+Manual open on Linux:
+>bash
+    xdg-open /tmp/phoenix-pulse-erd-*.html
+<
+
+ICONS NOT SHOWING~
+
+Install nvim-web-devicons:
+>lua
+    { "nvim-tree/nvim-web-devicons" }
+<
+
+Without devicons, text fallbacks are used: `[S]`, `[C]`, `[R]`.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "heex.sigil.embedded",
+  "name": "HEEx Sigil",
+  "injectionSelector": "L:source.elixir -comment",
+  "patterns": [
+    {
+      "name": "meta.sigil.heex.elixir",
+      "begin": "(~H)\"\"\"",
+      "end": "\"\"\"",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.sigil.begin.elixir"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.sigil.end.elixir"
+        }
+      },
+      "contentName": "text.html.heex",
+      "patterns": [
+        {
+          "include": "text.html.heex"
+        }
+      ]
+    },
+    {
+      "name": "meta.sigil.heex.elixir.single",
+      "begin": "(~H)'''",
+      "end": "'''",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.sigil.begin.elixir"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.sigil.end.elixir"
+        }
+      },
+      "contentName": "text.html.heex",
+      "patterns": [
+        {
+          "include": "text.html.heex"
+        }
+      ]
+    },
+    {
+      "name": "meta.sigil.heex.elixir.inline.double",
+      "begin": "(~H)\"",
+      "end": "\"",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.sigil.begin.elixir"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.sigil.end.elixir"
+        }
+      },
+      "contentName": "text.html.heex",
+      "patterns": [
+        {
+          "include": "text.html.heex"
+        }
+      ]
+    },
+    {
+      "name": "meta.sigil.heex.elixir.inline.single",
+      "begin": "(~H)'",
+      "end": "'",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.sigil.begin.elixir"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.sigil.end.elixir"
+        }
+      },
+      "contentName": "text.html.heex",
+      "patterns": [
+        {
+          "include": "text.html.heex"
+        }
+      ]
+    }
+  ]
+}

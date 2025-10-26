@@ -1,0 +1,53 @@
+{
+  "name": "@phoenix-pulse/language-server",
+  "version": "1.0.0",
+  "description": "Language server for Phoenix Framework with LiveView support",
+  "main": "dist/server.js",
+  "bin": {
+    "phoenix-pulse-lsp": "./dist/server.js"
+  },
+  "scripts": {
+    "compile": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "clean": "rm -rf dist/",
+    "test": "vitest",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": [
+    "phoenix",
+    "liveview",
+    "heex",
+    "lsp",
+    "language-server",
+    "elixir"
+  ],
+  "author": {
+    "name": "Onurcan Sever",
+    "url": "https://github.com/onsever"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoenix-pulse/phoenix-ls.git",
+    "directory": "packages/language-server"
+  },
+  "files": [
+    "dist/",
+    "elixir-parser/"
+  ],
+  "dependencies": {
+    "@vscode/emmet-helper": "^2.11.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "web-tree-sitter": "^0.25.10"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "esbuild": "^0.25.11",
+    "typescript": "^5.3.3",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

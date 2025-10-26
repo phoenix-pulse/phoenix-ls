@@ -1,0 +1,22 @@
+{
+  "name": "phoenix-pulse-nvim",
+  "version": "1.0.0",
+  "description": "Neovim plugin for Phoenix LiveView development",
+  "private": true,
+  "scripts": {
+    "install-lsp": "./install-lsp.sh"
+  },
+  "dependencies": {
+    "@phoenix-pulse/language-server": "^1.0.0"
+  },
+  "author": {
+    "name": "Onurcan Sever",
+    "url": "https://github.com/onsever"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoenix-pulse/phoenix-ls.git",
+    "directory": "packages/nvim-plugin"
+  }
+}

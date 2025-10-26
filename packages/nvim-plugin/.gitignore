@@ -1,0 +1,8 @@
+# Dependencies from npm
+node_modules/
+
+# npm lock file
+package-lock.json
+
+# Legacy bundled LSP (if exists)
+lsp/

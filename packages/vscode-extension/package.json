@@ -1,0 +1,280 @@
+{
+  "name": "phoenix-pulse",
+  "displayName": "Phoenix Pulse",
+  "description": "The complete IDE companion for Phoenix LiveView development.",
+  "version": "1.0.0",
+  "publisher": "onsever",
+  "license": "MIT",
+  "icon": "images/logo.png",
+  "author": {
+    "name": "Onurcan Sever",
+    "url": "https://github.com/onsever"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoenix-pulse/phoenix-ls"
+  },
+  "bugs": {
+    "url": "https://github.com/phoenix-pulse/phoenix-ls/issues"
+  },
+  "homepage": "https://github.com/phoenix-pulse/phoenix-ls#readme",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "phoenix",
+    "elixir",
+    "liveview",
+    "heex",
+    "language-server",
+    "lsp",
+    "autocomplete",
+    "intellisense",
+    "diagnostics",
+    "phoenix framework",
+    "components"
+  ],
+  "galleryBanner": {
+    "color": "#FD4F00",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:elixir",
+    "onLanguage:phoenix-heex",
+    "workspaceContains:mix.exs"
+  ],
+  "main": "out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "phoenix-pulse-explorer",
+          "title": "Phoenix Pulse",
+          "icon": "images/logo.png"
+        }
+      ]
+    },
+    "views": {
+      "phoenix-pulse-explorer": [
+        {
+          "id": "phoenixPulseExplorer",
+          "name": "Project Overview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "phoenixPulse.refreshExplorer",
+        "title": "Refresh Explorer",
+        "icon": "$(refresh)",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.goToItem",
+        "title": "Go to Item",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyName",
+        "title": "Copy Name",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyModuleName",
+        "title": "Copy Module Name",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyFilePath",
+        "title": "Copy File Path",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyRoutePath",
+        "title": "Copy Route Path",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyComponentTag",
+        "title": "Copy Component Tag",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.copyTableName",
+        "title": "Copy Table Name",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.searchExplorer",
+        "title": "Search Explorer",
+        "icon": "$(search)",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.clearSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.collapseAll",
+        "title": "Collapse All",
+        "icon": "$(collapse-all)",
+        "category": "Phoenix Pulse"
+      },
+      {
+        "command": "phoenixPulse.showERD",
+        "title": "Show Schema Diagram",
+        "icon": "$(graph)",
+        "category": "Phoenix Pulse"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "phoenixPulse.showERD",
+          "when": "view == phoenixPulseExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "phoenixPulse.collapseAll",
+          "when": "view == phoenixPulseExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "phoenixPulse.searchExplorer",
+          "when": "view == phoenixPulseExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "phoenixPulse.clearSearch",
+          "when": "view == phoenixPulseExplorer",
+          "group": "navigation@4"
+        },
+        {
+          "command": "phoenixPulse.refreshExplorer",
+          "when": "view == phoenixPulseExplorer",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "phoenixPulse.copyName",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component|route|template|event)$/",
+          "group": "copy@1"
+        },
+        {
+          "command": "phoenixPulse.copyModuleName",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component)$/",
+          "group": "copy@2"
+        },
+        {
+          "command": "phoenixPulse.copyTableName",
+          "when": "view == phoenixPulseExplorer && viewItem == schema",
+          "group": "copy@3"
+        },
+        {
+          "command": "phoenixPulse.copyComponentTag",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^component/",
+          "group": "copy@3"
+        },
+        {
+          "command": "phoenixPulse.copyRoutePath",
+          "when": "view == phoenixPulseExplorer && viewItem == route",
+          "group": "copy@3"
+        },
+        {
+          "command": "phoenixPulse.copyFilePath",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component|route|template|event|component-file|template-file|event-file)$/",
+          "group": "copy@4"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "phoenix-heex",
+        "aliases": [
+          "Phoenix HEEx",
+          "heex"
+        ],
+        "extensions": [
+          ".heex"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "phoenix-heex",
+        "scopeName": "text.html.heex",
+        "path": "./syntaxes/heex.tmLanguage.json"
+      },
+      {
+        "scopeName": "heex.sigil.embedded",
+        "path": "./syntaxes/heex-sigil.tmLanguage.json",
+        "injectTo": [
+          "source.elixir"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Phoenix Pulse",
+      "properties": {
+        "files.associations": {
+          "type": "object",
+          "default": {
+            "*.heex": "phoenix-heex"
+          },
+          "description": "Configure file associations for Phoenix HEEx files"
+        },
+        "phoenixPulse.useElixirParser": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use Elixir's AST parser for 100% accurate parsing. Requires Elixir to be installed. If disabled or Elixir not found, falls back to regex parsing."
+        },
+        "phoenixPulse.parserConcurrency": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of concurrent Elixir parser processes. Higher values = faster scanning, but may cause system resource issues. Recommended: 5-10."
+        },
+        "phoenixPulse.showProgressNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress notifications during workspace scanning."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "clean": "rm -rf out/"
+  },
+  "dependencies": {
+    "@phoenix-pulse/language-server": "^1.0.0",
+    "vscode-languageclient": "^8.1.0",
+    "vscode-uri": "^3.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.19.0",
+    "esbuild": "^0.25.11",
+    "typescript": "^5.0.0",
+    "vitest": "^1.2.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  }
+}
