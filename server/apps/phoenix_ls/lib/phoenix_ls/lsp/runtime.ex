@@ -8,6 +8,8 @@ defmodule PhoenixLS.LSP.Runtime do
   @default_assigns PhoenixLS.LSP.Assigns
   @default_task_supervisor PhoenixLS.LSP.TaskSupervisor
   @default_server PhoenixLS.LSP.ServerProcess
+  @default_communication {PhoenixLS.LSP.CustomRequestAdapter,
+                          inner: {GenLSP.Communication.Stdio, []}}
 
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
@@ -30,7 +32,10 @@ defmodule PhoenixLS.LSP.Runtime do
         Keyword.get(opts, :task_supervisor_name, PhoenixLS.LSP.Runtime.default_task_supervisor())
 
       server_name = Keyword.get(opts, :server_name, PhoenixLS.LSP.Runtime.default_server())
-      communication = Keyword.get(opts, :communication, {GenLSP.Communication.Stdio, []})
+
+      communication =
+        Keyword.get(opts, :communication, PhoenixLS.LSP.Runtime.default_communication())
+
       init_args = Keyword.get(opts, :init_args, [])
 
       children = [
@@ -53,4 +58,5 @@ defmodule PhoenixLS.LSP.Runtime do
   def default_assigns, do: @default_assigns
   def default_task_supervisor, do: @default_task_supervisor
   def default_server, do: @default_server
+  def default_communication, do: @default_communication
 end

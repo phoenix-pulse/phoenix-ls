@@ -2,6 +2,8 @@ defmodule PhoenixLS.LSP.CustomRequestTest do
   use ExUnit.Case, async: false
 
   alias GenLSP.LSP
+  alias GenLSP.Requests.WorkspaceExecuteCommand
+  alias GenLSP.Structures.ExecuteCommandParams
   alias PhoenixLS.Index.{ElixirSource, Store}
   alias PhoenixLS.LSP.{CustomRequest, Dispatcher, Server}
   alias PhoenixLS.Project.Manager
@@ -69,6 +71,27 @@ defmodule PhoenixLS.LSP.CustomRequestTest do
       )
 
     request = %CustomRequest{id: 9, method: "phoenix/listSchemas", params: %{}}
+
+    assert {:reply, [], ^lsp} = Dispatcher.handle_request(request, lsp)
+  end
+
+  test "dispatcher bridges phoenix executeCommand requests into explorer handlers", %{
+    lsp: lsp
+  } do
+    lsp =
+      LSP.assign(lsp,
+        project_manager: Manager,
+        project_root_uri: nil,
+        workspace_project_roots: MapSet.new()
+      )
+
+    request = %WorkspaceExecuteCommand{
+      id: 10,
+      params: %ExecuteCommandParams{
+        command: "phoenix/listSchemas",
+        arguments: [%{"scope" => "workspace"}]
+      }
+    }
 
     assert {:reply, [], ^lsp} = Dispatcher.handle_request(request, lsp)
   end

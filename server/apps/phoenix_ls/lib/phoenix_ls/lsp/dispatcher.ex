@@ -20,7 +20,8 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Shutdown,
     TextDocumentCompletion,
     TextDocumentDefinition,
-    TextDocumentHover
+    TextDocumentHover,
+    WorkspaceExecuteCommand
   }
 
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
@@ -75,6 +76,18 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_request(%TextDocumentDefinition{} = request, lsp) do
     Definition.handle(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(
+        %WorkspaceExecuteCommand{
+          id: id,
+          params: %{command: "phoenix/" <> _suffix = method, arguments: arguments}
+        },
+        lsp
+      ) do
+    request = %CustomRequest{id: id, method: method, params: first_argument_map(arguments)}
+
+    PhoenixRequests.handle(request, RequestContext.new(lsp))
   end
 
   def handle_request(%CustomRequest{} = request, lsp) do
@@ -133,4 +146,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
         lsp
     end
   end
+
+  defp first_argument_map([params | _rest]) when is_map(params), do: params
+  defp first_argument_map(_arguments), do: %{}
 end
