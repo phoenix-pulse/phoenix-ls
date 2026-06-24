@@ -4,6 +4,7 @@ defmodule PhoenixLS.LSP.RequestContext do
   """
 
   alias GenLSP.LSP
+  alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.Project.Manager
 
   @enforce_keys [:lsp, :assigns]
@@ -42,6 +43,14 @@ defmodule PhoenixLS.LSP.RequestContext do
       end
     else
       _missing -> :error
+    end
+  end
+
+  @spec project_snapshot_for_uri(t(), String.t()) :: {:ok, Snapshot.t()} | :error
+  def project_snapshot_for_uri(%__MODULE__{} = context, uri) when is_binary(uri) do
+    case project_engine_for_uri(context, uri) do
+      {:ok, engine} -> {:ok, Snapshot.from_store(engine.index_store)}
+      :error -> :error
     end
   end
 

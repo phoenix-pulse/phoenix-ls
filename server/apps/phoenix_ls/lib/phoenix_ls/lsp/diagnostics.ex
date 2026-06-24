@@ -18,7 +18,7 @@ defmodule PhoenixLS.LSP.Diagnostics do
 
   alias PhoenixLS.Features.Diagnostics, as: FeatureDiagnostics
   alias PhoenixLS.HEEx.Parser
-  alias PhoenixLS.Index.Store, as: IndexStore
+  alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.Project.Engine
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -88,7 +88,9 @@ defmodule PhoenixLS.LSP.Diagnostics do
   defp diagnostics(%Document{text: text}, {:ok, engine}) do
     case Parser.parse(text) do
       {:ok, heex_document} ->
-        FeatureDiagnostics.diagnostics(heex_document, IndexStore.all(engine.index_store))
+        snapshot = Snapshot.from_store(engine.index_store)
+
+        FeatureDiagnostics.diagnostics(heex_document, Snapshot.all(snapshot))
 
       {:error, reason} ->
         [parse_error_diagnostic(reason)]

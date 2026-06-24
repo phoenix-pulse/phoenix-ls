@@ -6,7 +6,7 @@ defmodule PhoenixLS.LSP.Completion do
   alias GenLSP.Requests.{CompletionItemResolve, TextDocumentCompletion}
   alias PhoenixLS.Features.Completion.{Components, Phoenix, Resolve}
   alias PhoenixLS.HEEx.CursorContext
-  alias PhoenixLS.Index.Store, as: IndexStore
+  alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -18,9 +18,10 @@ defmodule PhoenixLS.LSP.Completion do
     items =
       with uri when is_binary(uri) <- text_document.uri,
            {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
+           {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri),
            {:ok, context} <- CursorContext.at(document.text, position) do
-        facts = IndexStore.all(engine.index_store)
+        facts = Snapshot.all(snapshot)
 
         Components.complete(context, facts) ++ Phoenix.complete(context, facts)
       else

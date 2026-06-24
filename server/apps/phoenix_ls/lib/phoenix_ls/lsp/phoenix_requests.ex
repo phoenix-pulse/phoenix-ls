@@ -4,9 +4,8 @@ defmodule PhoenixLS.LSP.PhoenixRequests do
   """
 
   alias PhoenixLS.Features.PhoenixRequests, as: Payloads
-  alias PhoenixLS.Index.Store, as: IndexStore
+  alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.{CustomRequest, RequestContext}
-  alias PhoenixLS.Project.Manager
 
   @known_methods MapSet.new([
                    "phoenix/listSchemas",
@@ -30,12 +29,10 @@ defmodule PhoenixLS.LSP.PhoenixRequests do
   end
 
   defp project_facts(%RequestContext{} = context) do
-    with project_manager when not is_nil(project_manager) <-
-           Map.get(context.assigns, :project_manager),
-         root_uri when is_binary(root_uri) <-
+    with root_uri when is_binary(root_uri) <-
            List.first(RequestContext.known_project_roots(context)),
-         {:ok, engine} <- Manager.fetch_engine(project_manager, root_uri) do
-      {:ok, IndexStore.all(engine.index_store)}
+         {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, root_uri) do
+      {:ok, Snapshot.all(snapshot)}
     else
       _missing -> :error
     end
