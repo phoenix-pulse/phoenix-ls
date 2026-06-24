@@ -1,7 +1,10 @@
 defmodule PhoenixLS.LSP.ServerLifecycleTest do
   use ExUnit.Case, async: true
 
+  import GenLSP.Test, only: [assert_result: 2]
+
   alias GenLSP.LSP
+  alias GenLSP.Notifications.Exit
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{ClientCapabilities, InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.Server
@@ -31,6 +34,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert {:ok, initialized_lsp} = Server.init(lsp, [])
     assert LSP.assigns(initialized_lsp).exit_code == 1
     assert LSP.assigns(initialized_lsp).root_uri == nil
+    assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
   end
 
   test "initialize returns PhoenixLS server info and capabilities", %{lsp: lsp} do
@@ -60,7 +64,67 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(updated_lsp).exit_code == 0
   end
 
+  test "exit notification requests the default failure exit code", %{lsp: lsp} do
+    parent = self()
+    exit_handler = fn code -> send(parent, {:exit_requested, code}) end
+
+    {:ok, lsp} = Server.init(lsp, exit_handler: exit_handler)
+
+    assert {:noreply, ^lsp} = Server.handle_notification(%Exit{}, lsp)
+    assert_receive {:exit_requested, 1}
+  end
+
+  test "exit notification requests success after shutdown", %{lsp: lsp} do
+    parent = self()
+    exit_handler = fn code -> send(parent, {:exit_requested, code}) end
+
+    {:ok, lsp} = Server.init(lsp, exit_handler: exit_handler)
+    {:reply, nil, lsp} = Server.handle_request(%Shutdown{id: 2}, lsp)
+
+    assert {:noreply, ^lsp} = Server.handle_notification(%Exit{}, lsp)
+    assert_receive {:exit_requested, 0}
+  end
+
   test "unknown notifications are ignored", %{lsp: lsp} do
     assert {:noreply, ^lsp} = Server.handle_notification(:unknown_notification, lsp)
+  end
+
+  test "GenLSP lifecycle handles initialize, shutdown, and exit over transport" do
+    parent = self()
+    exit_handler = fn code -> send(parent, {:transport_exit_requested, code}) end
+
+    test_server = GenLSP.Test.server(Server, init_args: [exit_handler: exit_handler])
+    test_client = GenLSP.Test.client(test_server)
+
+    GenLSP.Test.request(test_client, %{
+      id: 1,
+      jsonrpc: "2.0",
+      method: "initialize",
+      params: %{
+        capabilities: %{},
+        processId: nil,
+        rootUri: "file:///tmp/example"
+      }
+    })
+
+    version = PhoenixLS.version()
+
+    assert_result(1, %{
+      "capabilities" => %{
+        "definitionProvider" => true,
+        "hoverProvider" => true
+      },
+      "serverInfo" => %{
+        "name" => "PhoenixLS",
+        "version" => ^version
+      }
+    })
+
+    GenLSP.Test.request(test_client, %{id: 2, jsonrpc: "2.0", method: "shutdown"})
+    assert_result(2, nil)
+
+    GenLSP.Test.notify(test_client, %{jsonrpc: "2.0", method: "exit", params: nil})
+
+    assert_receive {:transport_exit_requested, 0}
   end
 end

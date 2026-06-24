@@ -5,6 +5,7 @@ defmodule PhoenixLS.LSP.Server do
 
   use GenLSP
 
+  alias GenLSP.Notifications.Exit
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.Capabilities
@@ -24,8 +25,10 @@ defmodule PhoenixLS.LSP.Server do
   end
 
   @impl true
-  def init(lsp, _args) do
-    {:ok, assign(lsp, exit_code: 1, root_uri: nil)}
+  def init(lsp, args) do
+    exit_handler = Keyword.get(args, :exit_handler, &System.halt/1)
+
+    {:ok, assign(lsp, exit_code: 1, exit_handler: exit_handler, root_uri: nil)}
   end
 
   @impl true
@@ -43,6 +46,14 @@ defmodule PhoenixLS.LSP.Server do
   end
 
   @impl true
+  def handle_notification(%Exit{}, lsp) do
+    %{exit_code: exit_code, exit_handler: exit_handler} = GenLSP.LSP.assigns(lsp)
+
+    exit_handler.(exit_code)
+
+    {:noreply, lsp}
+  end
+
   def handle_notification(_notification, lsp) do
     {:noreply, lsp}
   end
