@@ -57,6 +57,28 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
            ]
   end
 
+  test "indexes function component facts from Elixir documents" do
+    document =
+      document("""
+      defmodule AppWeb.CoreComponents do
+        def button(assigns) do
+          ~H\"\"\"
+          <button><%= @label %></button>
+          \"\"\"
+        end
+      end
+      """)
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    assert [component_fact] = Store.by_kind(@store, :component)
+    assert component_fact.id == "AppWeb.CoreComponents.button/1"
+    assert component_fact.uri == @uri
+    assert component_fact.data.module == "AppWeb.CoreComponents"
+    assert component_fact.data.name == "button"
+    assert component_fact.data.type == :function
+  end
+
   test "parse failures clear stale facts for the document uri" do
     assert DocumentIndexer.index(@store, document("defmodule AppWeb.Valid do\nend\n")) == :ok
     assert [_fact] = Store.by_kind(@store, :module)

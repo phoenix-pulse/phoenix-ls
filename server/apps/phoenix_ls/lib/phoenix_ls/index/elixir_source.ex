@@ -5,6 +5,7 @@ defmodule PhoenixLS.Index.ElixirSource do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Introspection.Component
 
   @parse_options [columns: true, token_metadata: true]
 
@@ -29,11 +30,19 @@ defmodule PhoenixLS.Index.ElixirSource do
     end
   end
 
-  defp collect({visibility, meta, [head, _body]}, [module | _rest], uri, opts)
+  defp collect({visibility, meta, [head, body]}, [module | _rest], uri, opts)
        when visibility in [:def, :defp] do
     case function_signature(head) do
       {:ok, name, arity} ->
-        [function_fact(module, visibility, name, arity, meta, uri, opts)]
+        visibility = visibility(visibility)
+        range = source_range(meta)
+        provenance = provenance(opts)
+        function_fact = function_fact(module, visibility, name, arity, range, uri, provenance)
+
+        component_facts =
+          component_facts(module, name, arity, visibility, body, range, uri, provenance)
+
+        [function_fact | component_facts]
 
       :error ->
         []
@@ -67,22 +76,38 @@ defmodule PhoenixLS.Index.ElixirSource do
     )
   end
 
-  defp function_fact(module, visibility, name, arity, meta, uri, opts) do
+  defp function_fact(module, visibility, name, arity, range, uri, provenance) do
     id = "#{module}.#{name}/#{arity}"
 
     Fact.new!(
       kind: :function,
       id: id,
       uri: uri,
-      range: source_range(meta),
-      provenance: provenance(opts),
+      range: range,
+      provenance: provenance,
       data: %{
         module: module,
         name: name,
         arity: arity,
-        visibility: visibility(visibility)
+        visibility: visibility
       }
     )
+  end
+
+  defp component_facts(module, name, arity, visibility, body, range, uri, provenance) do
+    case Component.function_component_fact(
+           module,
+           name,
+           arity,
+           visibility,
+           body,
+           range,
+           uri,
+           provenance
+         ) do
+      {:ok, fact} -> [fact]
+      :none -> []
+    end
   end
 
   defp module_name({:__aliases__, _meta, parts}, []), do: alias_parts(parts)

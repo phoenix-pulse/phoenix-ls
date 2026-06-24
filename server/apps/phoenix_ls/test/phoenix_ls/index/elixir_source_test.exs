@@ -67,6 +67,43 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
            ]
   end
 
+  test "extracts public arity-one HEEx functions as component facts" do
+    source = """
+    defmodule AppWeb.CoreComponents do
+      def button(assigns) do
+        ~H\"\"\"
+        <button><%= @label %></button>
+        \"\"\"
+      end
+
+      defp helper(assigns) do
+        ~H"<span />"
+      end
+
+      def pair(assigns, opts) do
+        ~H"<div />"
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source, version: 13)
+
+    assert [component_fact] = Enum.filter(facts, &(&1.kind == :component))
+
+    assert component_fact.id == "AppWeb.CoreComponents.button/1"
+    assert component_fact.range == range(1, 2, 5, 5)
+    assert component_fact.provenance.source == :elixir_ast
+    assert component_fact.provenance.document_version == 13
+
+    assert component_fact.data == %{
+             module: "AppWeb.CoreComponents",
+             name: "button",
+             arity: 1,
+             visibility: :public,
+             type: :function
+           }
+  end
+
   test "returns parse errors without raising" do
     assert {:error, {:parse_error, _reason}} = ElixirSource.facts(@uri, "defmodule Broken do")
   end
