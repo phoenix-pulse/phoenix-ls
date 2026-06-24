@@ -64,11 +64,95 @@ defmodule PhoenixLS.Project.EngineStatusTest do
     assert Manager.status(manager, root_uri).pid == restarted.pid
   end
 
-  defp start_manager(supervisor_name, manager_name) do
-    start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: supervisor_name})
-    manager = start_supervised!({Manager, name: manager_name, engine_supervisor: supervisor_name})
+  test "failed engine starts enter degraded backoff and emit telemetry" do
+    root_uri = "file:///tmp/phoenix-ls-status-backoff"
 
-    %{manager: manager}
+    manager =
+      start_supervised!(
+        {Manager,
+         name: __MODULE__.BackoffManager,
+         engine_supervisor: __MODULE__.MissingEngineSupervisor,
+         restart_backoff_ms: 500}
+      )
+
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :project, :degraded],
+      &__MODULE__.handle_telemetry/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:error, _reason} = Manager.ensure_engine(manager, root_uri)
+
+    assert %EngineStatus{state: :degraded, reason: first_reason} =
+             Manager.status(manager, root_uri)
+
+    assert_receive {:project_degraded, %{count: 1}, %{root_uri: ^root_uri, reason: ^first_reason}}
+
+    assert {:error, {:backoff, ^first_reason}} = Manager.ensure_engine(manager, root_uri)
+    assert Manager.status(manager, root_uri).state == :degraded
+  end
+
+  test "restart_engine reports timeout when stale registry entries cannot unregister" do
+    %{manager: manager, supervisor: supervisor} =
+      start_manager(__MODULE__.TimeoutSupervisor, __MODULE__.TimeoutManager,
+        unregister_timeout_ms: 1
+      )
+
+    root_uri = "file:///tmp/phoenix-ls-status-timeout"
+    owner = register_stale_engine(root_uri)
+
+    on_exit(fn ->
+      send(owner, :stop)
+    end)
+
+    assert {:error, :unregister_timeout} = Manager.restart_engine(manager, root_uri)
+
+    assert Manager.status(manager, root_uri) == %EngineStatus{
+             root_uri: root_uri,
+             state: :degraded,
+             source_only?: true,
+             reason: :unregister_timeout
+           }
+
+    assert DynamicSupervisor.which_children(supervisor) == []
+  end
+
+  def handle_telemetry([:phoenix_ls, :project, :degraded], measurements, metadata, parent) do
+    send(parent, {:project_degraded, measurements, metadata})
+  end
+
+  defp start_manager(supervisor_name, manager_name) do
+    start_manager(supervisor_name, manager_name, [])
+  end
+
+  defp start_manager(supervisor_name, manager_name, manager_opts) do
+    start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: supervisor_name})
+
+    manager_opts =
+      Keyword.merge([name: manager_name, engine_supervisor: supervisor_name], manager_opts)
+
+    manager = start_supervised!({Manager, manager_opts})
+
+    %{manager: manager, supervisor: supervisor_name}
+  end
+
+  defp register_stale_engine(root_uri) do
+    parent = self()
+
+    spawn_link(fn ->
+      {:ok, _} = Registry.register(PhoenixLS.Project.Registry, {:engine, root_uri}, nil)
+      send(parent, :stale_engine_registered)
+
+      receive do
+        :stop -> :ok
+      end
+    end)
+    |> tap(fn _pid -> assert_receive :stale_engine_registered end)
   end
 
   defp ensure_project_registry_started do

@@ -6,10 +6,13 @@ defmodule PhoenixLS.Project.Manager do
   use GenServer
 
   alias PhoenixLS.Project.{Engine, EngineStatus, Locator}
+  alias PhoenixLS.Support.Telemetry
 
   @default_name __MODULE__
   @default_engine_supervisor PhoenixLS.Project.EngineSupervisor
   @registry PhoenixLS.Project.Registry
+  @default_restart_backoff_ms 1_000
+  @default_unregister_timeout_ms 100
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -52,7 +55,12 @@ defmodule PhoenixLS.Project.Manager do
   @impl true
   def init(opts) do
     state = %{
-      engine_supervisor: Keyword.get(opts, :engine_supervisor, @default_engine_supervisor)
+      engine_supervisor: Keyword.get(opts, :engine_supervisor, @default_engine_supervisor),
+      restart_backoff_ms: Keyword.get(opts, :restart_backoff_ms, @default_restart_backoff_ms),
+      unregister_timeout_ms:
+        Keyword.get(opts, :unregister_timeout_ms, @default_unregister_timeout_ms),
+      degraded: %{},
+      backoff_until: %{}
     }
 
     {:ok, state}
@@ -60,24 +68,34 @@ defmodule PhoenixLS.Project.Manager do
 
   @impl true
   def handle_call({:ensure_engine, root_uri}, _from, state) do
-    {:reply, ensure_engine_started(state.engine_supervisor, root_uri), state}
+    {reply, state} = ensure_engine_started(state, root_uri)
+
+    {:reply, reply, state}
   end
 
   def handle_call({:ensure_project_for_uri, uri}, _from, state) do
-    reply =
+    {reply, state} =
       case Locator.locate(uri) do
-        {:ok, located} -> ensure_engine_started(state.engine_supervisor, located.root_uri)
-        :error -> :error
-        {:error, _reason} = error -> error
+        {:ok, located} -> ensure_engine_started(state, located.root_uri)
+        :error -> {:error, state}
+        {:error, _reason} = error -> {error, state}
       end
 
     {:reply, reply, state}
   end
 
   def handle_call({:restart_engine, root_uri}, _from, state) do
-    terminate_engine(state.engine_supervisor, root_uri)
+    case terminate_engine(state, root_uri) do
+      :ok ->
+        {reply, state} = start_engine_with_state(state, root_uri)
 
-    {:reply, start_engine(state.engine_supervisor, root_uri), state}
+        {:reply, reply, state}
+
+      {:error, reason} = error ->
+        state = mark_degraded(state, root_uri, reason)
+
+        {:reply, error, state}
+    end
   end
 
   def handle_call({:fetch_engine, root_uri}, _from, state) do
@@ -86,9 +104,15 @@ defmodule PhoenixLS.Project.Manager do
 
   def handle_call({:status, root_uri}, _from, state) do
     status =
-      case fetch_engine_handle(root_uri) do
-        {:ok, engine} -> EngineStatus.running(engine)
-        :error -> EngineStatus.missing(root_uri)
+      case Map.fetch(state.degraded, root_uri) do
+        {:ok, reason} ->
+          EngineStatus.degraded(root_uri, reason)
+
+        :error ->
+          case fetch_engine_handle(root_uri) do
+            {:ok, engine} -> EngineStatus.running(engine)
+            :error -> EngineStatus.missing(root_uri)
+          end
       end
 
     {:reply, status, state}
@@ -104,48 +128,106 @@ defmodule PhoenixLS.Project.Manager do
     {:reply, reply, state}
   end
 
-  defp ensure_engine_started(engine_supervisor, root_uri) do
+  defp ensure_engine_started(state, root_uri) do
     case fetch_engine_handle(root_uri) do
       {:ok, engine} ->
-        {:ok, engine}
+        {{:ok, engine}, clear_degraded(state, root_uri)}
 
       :error ->
-        start_engine(engine_supervisor, root_uri)
+        case backoff_reason(state, root_uri) do
+          {:ok, reason} -> {{:error, {:backoff, reason}}, state}
+          :error -> start_engine_with_state(state, root_uri)
+        end
+    end
+  end
+
+  defp start_engine_with_state(state, root_uri) do
+    case start_engine(state.engine_supervisor, root_uri) do
+      {:ok, engine} ->
+        {{:ok, engine}, clear_degraded(state, root_uri)}
+
+      {:error, reason} ->
+        {{:error, reason}, mark_degraded(state, root_uri, reason)}
     end
   end
 
   defp start_engine(engine_supervisor, root_uri) do
-    case DynamicSupervisor.start_child(engine_supervisor, {Engine, root_uri: root_uri}) do
-      {:ok, pid} -> {:ok, Engine.handle(root_uri, pid)}
-      {:error, {:already_started, pid}} -> {:ok, Engine.handle(root_uri, pid)}
-      {:error, reason} -> {:error, reason}
+    try do
+      case DynamicSupervisor.start_child(engine_supervisor, {Engine, root_uri: root_uri}) do
+        {:ok, pid} -> {:ok, Engine.handle(root_uri, pid)}
+        {:error, {:already_started, pid}} -> {:ok, Engine.handle(root_uri, pid)}
+        {:error, reason} -> {:error, reason}
+      end
+    catch
+      :exit, reason -> {:error, {:exit, reason}}
     end
   end
 
-  defp terminate_engine(engine_supervisor, root_uri) do
+  defp terminate_engine(state, root_uri) do
     case fetch_engine_handle(root_uri) do
       {:ok, engine} ->
-        DynamicSupervisor.terminate_child(engine_supervisor, engine.pid)
-        wait_until_unregistered(root_uri)
+        DynamicSupervisor.terminate_child(state.engine_supervisor, engine.pid)
+        wait_until_unregistered(root_uri, state.unregister_timeout_ms)
 
       :error ->
         :ok
     end
   end
 
-  defp wait_until_unregistered(root_uri, attempts_left \\ 20)
+  defp wait_until_unregistered(root_uri, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
 
-  defp wait_until_unregistered(root_uri, attempts_left) do
+    wait_until_unregistered(root_uri, deadline, timeout_ms)
+  end
+
+  defp wait_until_unregistered(root_uri, deadline, timeout_ms) do
     case Registry.lookup(@registry, {:engine, root_uri}) do
       [] ->
         :ok
 
-      _still_registered when attempts_left > 0 ->
-        Process.sleep(5)
-        wait_until_unregistered(root_uri, attempts_left - 1)
-
       _still_registered ->
-        :ok
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error, :unregister_timeout}
+        else
+          Process.sleep(min(5, max(timeout_ms, 1)))
+          wait_until_unregistered(root_uri, deadline, timeout_ms)
+        end
+    end
+  end
+
+  defp mark_degraded(state, root_uri, reason) do
+    Telemetry.execute([:project, :degraded], %{count: 1}, %{
+      root_uri: root_uri,
+      reason: reason
+    })
+
+    %{
+      state
+      | degraded: Map.put(state.degraded, root_uri, reason),
+        backoff_until:
+          Map.put(
+            state.backoff_until,
+            root_uri,
+            System.monotonic_time(:millisecond) + state.restart_backoff_ms
+          )
+    }
+  end
+
+  defp clear_degraded(state, root_uri) do
+    %{
+      state
+      | degraded: Map.delete(state.degraded, root_uri),
+        backoff_until: Map.delete(state.backoff_until, root_uri)
+    }
+  end
+
+  defp backoff_reason(state, root_uri) do
+    with {:ok, deadline} <- Map.fetch(state.backoff_until, root_uri),
+         true <- System.monotonic_time(:millisecond) < deadline,
+         {:ok, reason} <- Map.fetch(state.degraded, root_uri) do
+      {:ok, reason}
+    else
+      _not_in_backoff -> :error
     end
   end
 
