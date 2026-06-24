@@ -3,7 +3,7 @@ defmodule PhoenixLS.Parsing.SourceMap do
   Maps offsets from embedded source back to the outer source document.
   """
 
-  alias GenLSP.Structures.Range
+  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Support.Positions
 
   @enforce_keys [:source, :base_offset]
@@ -44,7 +44,7 @@ defmodule PhoenixLS.Parsing.SourceMap do
   def to_lsp_range(%__MODULE__{} = map, start_offset, end_offset) do
     with {:ok, start_position} <- to_lsp_position(map, start_offset),
          {:ok, end_position} <- to_lsp_position(map, end_offset) do
-      {:ok, %Range{start: start_position, end: end_position}}
+      {:ok, %Range{start: position(start_position), end: position(end_position)}}
     end
   end
 
@@ -73,5 +73,9 @@ defmodule PhoenixLS.Parsing.SourceMap do
     else
       _invalid -> {:error, :missing_location}
     end
+  end
+
+  defp position(%{line: line, character: character}) do
+    %Position{line: line, character: character}
   end
 end

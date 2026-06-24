@@ -5,6 +5,7 @@ defmodule PhoenixLS.LSP.Server do
 
   use GenLSP
 
+  alias PhoenixLS.LSP.Diagnostics
   alias PhoenixLS.LSP.Dispatcher
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
@@ -52,6 +53,15 @@ defmodule PhoenixLS.LSP.Server do
   @impl true
   def handle_notification(notification, lsp) do
     dispatcher(lsp).handle_notification(notification, lsp)
+  end
+
+  @impl true
+  def handle_info(
+        {:phoenix_ls_publish_diagnostics, _uri, _token, _document_store, _project_engine} =
+          message,
+        lsp
+      ) do
+    Diagnostics.handle_info(message, lsp)
   end
 
   defp missing_gen_lsp_options(opts) do

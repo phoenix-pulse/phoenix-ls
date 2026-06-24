@@ -1,7 +1,7 @@
 defmodule PhoenixLS.Parsing.SourceMapTest do
   use ExUnit.Case, async: true
 
-  alias GenLSP.Structures.Range
+  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Parsing.SourceMap
 
   test "maps embedded HEEx offsets inside a sigil back to outer source positions" do
@@ -24,8 +24,8 @@ defmodule PhoenixLS.Parsing.SourceMapTest do
     assert {:ok, %Range{} = range} =
              SourceMap.to_lsp_range(map, 0, byte_size("<div>😀</div>"))
 
-    assert range.start == %{line: 2, character: 0}
-    assert range.end == %{line: 2, character: 13}
+    assert range.start == %Position{line: 2, character: 0}
+    assert range.end == %Position{line: 2, character: 13}
   end
 
   test "converts Elixir parser metadata to an LSP range" do
@@ -38,8 +38,8 @@ defmodule PhoenixLS.Parsing.SourceMapTest do
                end_of_expression: [line: 2, column: 9]
              )
 
-    assert range.start == %{line: 1, character: 2}
-    assert range.end == %{line: 1, character: 8}
+    assert range.start == %Position{line: 1, character: 2}
+    assert range.end == %Position{line: 1, character: 8}
   end
 
   test "rejects generated metadata explicitly" do

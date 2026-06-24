@@ -12,6 +12,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   }
 
   alias PhoenixLS.Index.Indexer
+  alias PhoenixLS.LSP.Diagnostics
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -29,6 +30,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
       )
 
     index_opened_document(project_engine, text_document)
+    publish_diagnostics(lsp, project_engine, text_document.uri)
 
     {:noreply, lsp}
   end
@@ -47,10 +49,12 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
       %{text: text} when is_binary(text) ->
         replace_document(document_store, text_document.uri, text_document.version, text)
         index_changed_document(project_engine, document_store, text_document.uri)
+        publish_diagnostics(lsp, project_engine, text_document.uri)
 
       %{"text" => text} when is_binary(text) ->
         replace_document(document_store, text_document.uri, text_document.version, text)
         index_changed_document(project_engine, document_store, text_document.uri)
+        publish_diagnostics(lsp, project_engine, text_document.uri)
 
       nil ->
         :ok
@@ -65,6 +69,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
 
     :ok = DocumentStore.close(document_store(lsp, project_engine), text_document.uri)
     delete_indexed_document(project_engine, text_document.uri)
+    Diagnostics.clear(lsp, text_document.uri)
 
     {:noreply, lsp}
   end
@@ -116,6 +121,12 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   end
 
   defp delete_indexed_document(:error, _uri), do: :ok
+
+  defp publish_diagnostics(lsp, project_engine, uri) do
+    document_store = document_store(lsp, project_engine)
+
+    Diagnostics.schedule_publish(lsp, document_store, uri, project_engine)
+  end
 
   defp document_store(_lsp, {:ok, engine}), do: engine.document_store
 
