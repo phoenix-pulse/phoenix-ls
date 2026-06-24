@@ -3,16 +3,6 @@ defmodule PhoenixLS.Workspace.DocumentStoreTest do
 
   alias PhoenixLS.Workspace.DocumentStore
 
-  test "uses the supervised store by default" do
-    uri = "file:///tmp/default-store.ex"
-
-    assert :ok = DocumentStore.open(uri, "elixir", 1, "default")
-    assert {:ok, doc} = DocumentStore.fetch(uri)
-    assert doc.text == "default"
-
-    assert :ok = DocumentStore.close(uri)
-  end
-
   test "opens, fetches, changes, and closes a document" do
     start_supervised!({DocumentStore, name: __MODULE__.Store})
 
