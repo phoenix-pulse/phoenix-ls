@@ -1,10 +1,12 @@
 # Dependencies
 node_modules/
 packages/*/node_modules/
+server/deps/
 
 # Build outputs
 packages/language-server/dist/
 packages/vscode-extension/out/
+server/_build/
 *.vsix
 *.tgz
 
@@ -55,6 +57,9 @@ trash/
 
 # Markdown Files
 *.md
+!AGENTS.md
 !**/README.md
 !**/CONTRIBUTING.md
 !NEOVIM.md
+!docs/elixir-v2-rewrite-plan.md
+!docs/superpowers/plans/*.md
