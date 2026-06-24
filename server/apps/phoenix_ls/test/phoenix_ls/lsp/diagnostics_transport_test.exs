@@ -115,6 +115,55 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     )
   end
 
+  test "GenLSP transport publishes and clears controller render template diagnostics",
+       context do
+    root = fixture_project(context, "template_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    controller_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/controllers/page_controller.ex"))
+
+    template_uri =
+      SupportURI.path_to_file_uri!(
+        Path.join(root, "lib/app_web/controllers/page_html/index.html.heex")
+      )
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, controller_uri, "elixir", controller_source())
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^controller_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.unknown_template",
+            "message" => "Unknown template \"index.html.heex\"",
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+
+    open_document(test_client, template_uri, "phoenix-heex", "<h1>Index</h1>")
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^controller_uri,
+        "version" => 1,
+        "diagnostics" => []
+      },
+      500
+    )
+  end
+
   test "GenLSP transport clears diagnostics when HEEx documents close", context do
     root = fixture_project(context, "clear_diagnostics_project")
     root_uri = SupportURI.path_to_file_uri!(root)
@@ -282,6 +331,16 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
         ~H\"\"\"
         <button>Save</button>
         \"\"\"
+      end
+    end
+    """
+  end
+
+  defp controller_source do
+    """
+    defmodule AppWeb.PageController do
+      def index(conn, _params) do
+        render(conn, :index)
       end
     end
     """

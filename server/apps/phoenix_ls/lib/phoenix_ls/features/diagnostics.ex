@@ -24,6 +24,20 @@ defmodule PhoenixLS.Features.Diagnostics do
     |> Enum.flat_map(&tag_diagnostics(&1, indexes))
   end
 
+  @spec diagnostics(String.t(), [Fact.t()]) :: [Diagnostic.t()]
+  def diagnostics(uri, facts) when is_binary(uri) and is_list(facts) do
+    template_uris =
+      facts
+      |> facts_by_kind(:template)
+      |> MapSet.new(& &1.uri)
+
+    facts
+    |> facts_by_kind(:template_reference)
+    |> Enum.filter(&(&1.uri == uri))
+    |> Enum.reject(&known_template_reference?(&1, template_uris))
+    |> Enum.map(&unknown_template_diagnostic/1)
+  end
+
   defp tag_diagnostics(%Tag{kind: :component, name: ".live_component"} = tag, indexes) do
     live_component_diagnostics(tag) ++
       route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
@@ -184,6 +198,18 @@ defmodule PhoenixLS.Features.Diagnostics do
         ~s(Unknown LiveView event "#{attr.value}")
       )
     end)
+  end
+
+  defp known_template_reference?(%Fact{data: %{candidate_uris: candidate_uris}}, template_uris) do
+    Enum.any?(candidate_uris, &MapSet.member?(template_uris, &1))
+  end
+
+  defp unknown_template_diagnostic(%Fact{range: range, data: data}) do
+    diagnostic(
+      range,
+      "phoenix.unknown_template",
+      ~s(Unknown template "#{data.template}.#{data.format}.heex")
+    )
   end
 
   defp verified_route_path(%Attribute{value: value}) when is_binary(value) do

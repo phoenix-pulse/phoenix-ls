@@ -31,7 +31,7 @@ defmodule PhoenixLS.LSP.Diagnostics do
           :ok
   def schedule_publish(%LSP{} = lsp, document_store, uri, project_engine) when is_binary(uri) do
     with {:ok, document} <- DocumentStore.fetch(document_store, uri),
-         true <- heex_document?(document) do
+         true <- diagnostic_document?(document) do
       cancel_timer(lsp, uri)
 
       token = make_ref()
@@ -53,7 +53,7 @@ defmodule PhoenixLS.LSP.Diagnostics do
 
   @spec clear(LSP.t(), String.t()) :: :ok
   def clear(%LSP{} = lsp, uri) when is_binary(uri) do
-    if heex_uri?(uri) do
+    if diagnostic_uri?(uri) do
       cancel_timer(lsp, uri)
       delete_timer(lsp, uri)
       publish(lsp, uri, nil, [])
@@ -97,15 +97,26 @@ defmodule PhoenixLS.LSP.Diagnostics do
     [project_unavailable_diagnostic()]
   end
 
-  defp diagnostics(%Document{text: text}, {:ok, engine}) do
+  defp diagnostics(%Document{} = document, {:ok, engine}) do
+    snapshot = Snapshot.from_store(engine.index_store)
+    facts = Snapshot.all(snapshot)
+
+    cond do
+      heex_document?(document) ->
+        heex_diagnostics(document, facts)
+
+      elixir_document?(document) ->
+        FeatureDiagnostics.diagnostics(document.uri, facts)
+
+      true ->
+        []
+    end
+  end
+
+  defp heex_diagnostics(%Document{text: text}, facts) do
     case Parser.parse(text) do
-      {:ok, heex_document} ->
-        snapshot = Snapshot.from_store(engine.index_store)
-
-        FeatureDiagnostics.diagnostics(heex_document, Snapshot.all(snapshot))
-
-      {:error, reason} ->
-        [parse_error_diagnostic(reason)]
+      {:ok, heex_document} -> FeatureDiagnostics.diagnostics(heex_document, facts)
+      {:error, reason} -> [parse_error_diagnostic(reason)]
     end
   end
 
@@ -164,9 +175,19 @@ defmodule PhoenixLS.LSP.Diagnostics do
     language_id in ["phoenix-heex", "heex"] or heex_uri?(uri)
   end
 
+  defp elixir_document?(%Document{language_id: "elixir"}), do: true
+  defp elixir_document?(%Document{uri: uri}), do: elixir_uri?(uri)
+
+  defp diagnostic_document?(%Document{} = document) do
+    heex_document?(document) or elixir_document?(document)
+  end
+
   defp heex_uri?(uri) when is_binary(uri) do
     String.ends_with?(uri, [".heex", ".html.heex"])
   end
+
+  defp elixir_uri?(uri) when is_binary(uri), do: String.ends_with?(uri, ".ex")
+  defp diagnostic_uri?(uri), do: heex_uri?(uri) or elixir_uri?(uri)
 
   defp cancel_timer(lsp, uri) do
     case Map.fetch(timers(lsp), uri) do

@@ -91,6 +91,19 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
     assert DependencyGraph.affected_diagnostic_uris(MapSet.new([:template]), documents) == []
   end
 
+  test "template changes affect open Elixir diagnostics" do
+    controller_uri = "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+
+    documents = [
+      Document.new(controller_uri, "elixir", 1, "defmodule PageController do\nend\n"),
+      Document.new(@template_uri, "phoenix-heex", 1, "<.button />")
+    ]
+
+    assert DependencyGraph.affected_diagnostic_uris(MapSet.new([:template]), documents) == [
+             controller_uri
+           ]
+  end
+
   defp fact(kind, id, uri, data, provenance \\ %{source: :test}) do
     Fact.new!(
       kind: kind,

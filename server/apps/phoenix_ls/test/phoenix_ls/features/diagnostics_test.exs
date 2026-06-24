@@ -6,8 +6,11 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   alias PhoenixLS.Features.Diagnostics
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
+  @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
 
   test "reports missing required component attrs" do
     [diagnostic] = diagnostics("<.button />")
@@ -87,11 +90,24 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown verified route "/missing")
   end
 
+  test "reports unknown controller render templates" do
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, controller_facts(:missing))
+
+    assert diagnostic.code == "phoenix.unknown_template"
+    assert diagnostic.message == ~s(Unknown template "missing.html.heex")
+  end
+
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
     assert diagnostics(~s(<:inner_block />)) == []
     assert diagnostics(~s(<button phx-click="save">)) == []
     assert diagnostics(~s(<.link navigate={~p"/products"} />)) == []
+  end
+
+  test "returns no diagnostics for known controller render templates" do
+    facts = controller_facts(:index) ++ Template.facts(@template_uri, "<h1>Index</h1>")
+
+    assert Diagnostics.diagnostics(@controller_uri, facts) == []
   end
 
   defp diagnostics(source) do
@@ -138,6 +154,19 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
       defmodule AppWeb.PageLive do
         alias AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp controller_facts(template) do
+    {:ok, facts} =
+      ElixirSource.facts(@controller_uri, """
+      defmodule AppWeb.PageController do
+        def index(conn, _params) do
+          render(conn, :#{template})
+        end
       end
       """)
 

@@ -22,20 +22,26 @@ defmodule PhoenixLS.Index.DependencyGraph do
     schema: :schemas,
     schema_association: :schemas,
     schema_field: :schemas,
-    template: :templates
+    template: :templates,
+    template_reference: :templates
   }
 
-  @diagnostic_dependency_kinds MapSet.new([
-                                 :component,
-                                 :component_attr,
-                                 :component_slot,
-                                 :component_slot_attr,
-                                 :live_event,
-                                 :route,
-                                 :schema,
-                                 :schema_association,
-                                 :schema_field
-                               ])
+  @heex_diagnostic_dependency_kinds MapSet.new([
+                                      :component,
+                                      :component_attr,
+                                      :component_slot,
+                                      :component_slot_attr,
+                                      :live_event,
+                                      :route,
+                                      :schema,
+                                      :schema_association,
+                                      :schema_field
+                                    ])
+
+  @elixir_diagnostic_dependency_kinds MapSet.new([
+                                        :template,
+                                        :template_reference
+                                      ])
 
   @spec changed_kinds([Fact.t()], [Fact.t()]) :: MapSet.t(atom())
   def changed_kinds(before_facts, after_facts)
@@ -70,15 +76,11 @@ defmodule PhoenixLS.Index.DependencyGraph do
   def affected_diagnostic_uris(changed_kinds, documents) when is_list(documents) do
     changed_kinds = normalize_kinds(changed_kinds)
 
-    if MapSet.disjoint?(changed_kinds, @diagnostic_dependency_kinds) do
-      []
-    else
-      documents
-      |> Enum.filter(&heex_document?/1)
-      |> Enum.map(& &1.uri)
-      |> Enum.uniq()
-      |> Enum.sort()
-    end
+    documents
+    |> Enum.filter(&affected_diagnostic_document?(changed_kinds, &1))
+    |> Enum.map(& &1.uri)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp comparable_set(facts) do
@@ -94,7 +96,18 @@ defmodule PhoenixLS.Index.DependencyGraph do
   defp normalize_kinds(%MapSet{} = changed_kinds), do: changed_kinds
   defp normalize_kinds(changed_kinds) when is_list(changed_kinds), do: MapSet.new(changed_kinds)
 
-  defp heex_document?(%Document{language_id: language_id, uri: uri}) do
-    language_id in ["phoenix-heex", "heex"] or String.ends_with?(uri, [".heex", ".html.heex"])
+  defp affected_diagnostic_document?(changed_kinds, %Document{} = document) do
+    (not MapSet.disjoint?(changed_kinds, @heex_diagnostic_dependency_kinds) and
+       heex_document?(document)) or
+      (not MapSet.disjoint?(changed_kinds, @elixir_diagnostic_dependency_kinds) and
+         elixir_document?(document))
   end
+
+  defp heex_document?(%Document{language_id: language_id, uri: uri}) do
+    language_id in ["phoenix-heex", "heex"] or
+      String.ends_with?(uri, [".heex", ".html.heex"])
+  end
+
+  defp elixir_document?(%Document{language_id: "elixir"}), do: true
+  defp elixir_document?(%Document{uri: uri}), do: String.ends_with?(uri, ".ex")
 end
