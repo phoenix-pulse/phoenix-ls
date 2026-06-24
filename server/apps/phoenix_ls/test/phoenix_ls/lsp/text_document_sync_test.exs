@@ -158,10 +158,12 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
                lsp
              )
 
-    assert index_ids(Names.index_store(root_uri)) == [
-             "AppWeb.PageLive",
-             "AppWeb.PageLive.mount/3"
-           ]
+    assert_eventually(fn ->
+      assert index_ids(Names.index_store(root_uri)) == [
+               "AppWeb.PageLive",
+               "AppWeb.PageLive.mount/3"
+             ]
+    end)
   end
 
   test "reindexes changed Elixir documents in the document URI project",
@@ -192,10 +194,12 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
                lsp
              )
 
-    assert index_ids(Names.index_store(root_uri)) == [
-             "AppWeb.SecondLive",
-             "AppWeb.SecondLive.render/1"
-           ]
+    assert_eventually(fn ->
+      assert index_ids(Names.index_store(root_uri)) == [
+               "AppWeb.SecondLive",
+               "AppWeb.SecondLive.render/1"
+             ]
+    end)
   end
 
   test "removes indexed facts when an Elixir document closes",
@@ -212,12 +216,17 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     """
 
     TextDocumentSync.handle(open_notification(document_uri, "elixir", source), lsp)
-    assert [_fact] = IndexStore.by_uri(Names.index_store(root_uri), document_uri)
+
+    assert_eventually(fn ->
+      assert [_fact] = IndexStore.by_uri(Names.index_store(root_uri), document_uri)
+    end)
 
     assert {:noreply, ^lsp} =
              TextDocumentSync.handle(close_notification(document_uri), lsp)
 
-    assert IndexStore.by_uri(Names.index_store(root_uri), document_uri) == []
+    assert_eventually(fn ->
+      assert IndexStore.by_uri(Names.index_store(root_uri), document_uri) == []
+    end)
   end
 
   defp open_notification do
@@ -274,6 +283,20 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     |> IndexStore.all()
     |> Enum.map(& &1.id)
     |> Enum.sort()
+  end
+
+  defp assert_eventually(fun, attempts_left \\ 20)
+
+  defp assert_eventually(fun, attempts_left) do
+    fun.()
+  rescue
+    exception in [ExUnit.AssertionError, MatchError] ->
+      if attempts_left > 0 do
+        Process.sleep(10)
+        assert_eventually(fun, attempts_left - 1)
+      else
+        reraise exception, __STACKTRACE__
+      end
   end
 
   defp fixture_project(context, name) do

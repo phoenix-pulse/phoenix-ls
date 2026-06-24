@@ -11,6 +11,7 @@ defmodule PhoenixLS.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
+      escript: [main_module: PhoenixLS.CLI],
       deps: deps()
     ]
   end

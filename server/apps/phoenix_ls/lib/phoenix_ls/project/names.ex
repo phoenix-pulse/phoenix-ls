@@ -14,5 +14,8 @@ defmodule PhoenixLS.Project.Names do
   @spec index_store(String.t()) :: GenServer.server()
   def index_store(root_uri), do: via({:index_store, root_uri})
 
+  @spec indexer(String.t()) :: GenServer.server()
+  def indexer(root_uri), do: via({:indexer, root_uri})
+
   defp via(key), do: {:via, Registry, {@registry, key}}
 end

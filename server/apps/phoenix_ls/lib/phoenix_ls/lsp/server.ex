@@ -5,17 +5,7 @@ defmodule PhoenixLS.LSP.Server do
 
   use GenLSP
 
-  alias GenLSP.Notifications.{
-    Exit,
-    TextDocumentDidChange,
-    TextDocumentDidClose,
-    TextDocumentDidOpen,
-    WorkspaceDidChangeWorkspaceFolders
-  }
-
-  alias GenLSP.Requests.{Initialize, Shutdown, TextDocumentCompletion}
-  alias GenLSP.Structures.{InitializeParams, InitializeResult}
-  alias PhoenixLS.LSP.{Capabilities, Completion, TextDocumentSync, WorkspaceFolders}
+  alias PhoenixLS.LSP.Dispatcher
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -37,10 +27,12 @@ defmodule PhoenixLS.LSP.Server do
   def init(lsp, args) do
     exit_handler = Keyword.get(args, :exit_handler, &System.halt/1)
     document_store = Keyword.get(args, :document_store, DocumentStore)
+    dispatcher = Keyword.get(args, :dispatcher, Dispatcher)
     project_manager = Keyword.get(args, :project_manager, Manager)
 
     {:ok,
      assign(lsp,
+       dispatcher: dispatcher,
        document_store: document_store,
        exit_code: 1,
        exit_handler: exit_handler,
@@ -53,77 +45,22 @@ defmodule PhoenixLS.LSP.Server do
   end
 
   @impl true
-  def handle_request(
-        %Initialize{params: %InitializeParams{root_uri: root_uri, workspace_folders: folders}},
-        lsp
-      ) do
-    lsp = WorkspaceFolders.assign_initial(lsp, folders)
-    project_uri = root_uri || WorkspaceFolders.first_uri(folders)
-    lsp = assign_project(lsp, project_uri)
-
-    result = %InitializeResult{
-      capabilities: Capabilities.build(),
-      server_info: %{name: "PhoenixLS", version: PhoenixLS.version()}
-    }
-
-    {:reply, result, assign(lsp, root_uri: root_uri)}
-  end
-
-  def handle_request(%Shutdown{}, lsp) do
-    {:reply, nil, assign(lsp, exit_code: 0)}
-  end
-
-  def handle_request(%TextDocumentCompletion{} = request, lsp) do
-    Completion.handle(request, lsp)
+  def handle_request(request, lsp) do
+    dispatcher(lsp).handle_request(request, lsp)
   end
 
   @impl true
-  def handle_notification(%Exit{}, lsp) do
-    %{exit_code: exit_code, exit_handler: exit_handler} = GenLSP.LSP.assigns(lsp)
-
-    exit_handler.(exit_code)
-
-    {:noreply, lsp}
-  end
-
-  def handle_notification(%TextDocumentDidOpen{} = notification, lsp) do
-    TextDocumentSync.handle(notification, lsp)
-  end
-
-  def handle_notification(%TextDocumentDidChange{} = notification, lsp) do
-    TextDocumentSync.handle(notification, lsp)
-  end
-
-  def handle_notification(%TextDocumentDidClose{} = notification, lsp) do
-    TextDocumentSync.handle(notification, lsp)
-  end
-
-  def handle_notification(%WorkspaceDidChangeWorkspaceFolders{} = notification, lsp) do
-    WorkspaceFolders.handle(notification, lsp)
-  end
-
-  def handle_notification(_notification, lsp) do
-    {:noreply, lsp}
+  def handle_notification(notification, lsp) do
+    dispatcher(lsp).handle_notification(notification, lsp)
   end
 
   defp missing_gen_lsp_options(opts) do
     Enum.reject(@required_gen_lsp_options, &Keyword.has_key?(opts, &1))
   end
 
-  defp assign_project(lsp, nil), do: lsp
-
-  defp assign_project(lsp, root_uri) when is_binary(root_uri) do
-    project_manager = GenLSP.LSP.assigns(lsp).project_manager
-
-    case Manager.ensure_project_for_uri(project_manager, root_uri) do
-      {:ok, engine} ->
-        assign(lsp, document_store: engine.document_store, project_root_uri: engine.root_uri)
-
-      :error ->
-        lsp
-
-      {:error, _reason} ->
-        lsp
-    end
+  defp dispatcher(lsp) do
+    lsp
+    |> GenLSP.LSP.assigns()
+    |> Map.get(:dispatcher, Dispatcher)
   end
 end

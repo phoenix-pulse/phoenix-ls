@@ -11,7 +11,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     TextDocumentDidOpen
   }
 
-  alias PhoenixLS.Index.DocumentIndexer
+  alias PhoenixLS.Index.Indexer
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -97,14 +97,14 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         text_document.text
       )
 
-    DocumentIndexer.index(engine.index_store, document)
+    Indexer.schedule_document(engine.indexer, document)
   end
 
   defp index_opened_document(:error, _text_document), do: :ok
 
   defp index_changed_document({:ok, engine}, document_store, uri) do
     case DocumentStore.fetch(document_store, uri) do
-      {:ok, document} -> DocumentIndexer.index(engine.index_store, document)
+      {:ok, document} -> Indexer.schedule_document(engine.indexer, document)
       :error -> :ok
     end
   end
@@ -112,7 +112,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   defp index_changed_document(:error, _document_store, _uri), do: :ok
 
   defp delete_indexed_document({:ok, engine}, uri) do
-    DocumentIndexer.delete_uri(engine.index_store, uri)
+    Indexer.delete_uri(engine.indexer, uri)
   end
 
   defp delete_indexed_document(:error, _uri), do: :ok
