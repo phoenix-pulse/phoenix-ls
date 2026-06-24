@@ -1,6 +1,8 @@
 defmodule PhoenixLS.Project.EngineTest do
   use ExUnit.Case, async: false
 
+  alias GenLSP.Structures.{Position, Range}
+  alias PhoenixLS.Index.{Fact, Store}
   alias PhoenixLS.Project.{Engine, Names}
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -28,6 +30,12 @@ defmodule PhoenixLS.Project.EngineTest do
 
     assert {:ok, document} = DocumentStore.fetch(document_store, @document_uri)
     assert document.text == "hello"
+
+    index_store = Names.index_store(@root_uri)
+    fact = fact(:module, "AppWeb.PageLive", @document_uri)
+
+    assert :ok = Store.put(index_store, fact)
+    assert Store.all(index_store) == [fact]
   end
 
   test "builds a handle with the engine pid and document store" do
@@ -36,10 +44,12 @@ defmodule PhoenixLS.Project.EngineTest do
     assert %Engine{
              root_uri: @root_uri,
              pid: ^pid,
-             document_store: document_store
+             document_store: document_store,
+             index_store: index_store
            } = Engine.handle(@root_uri, pid)
 
     assert document_store == Names.document_store(@root_uri)
+    assert index_store == Names.index_store(@root_uri)
   end
 
   defp ensure_project_registry_started do
@@ -54,5 +64,18 @@ defmodule PhoenixLS.Project.EngineTest do
       _pid ->
         :ok
     end
+  end
+
+  defp fact(kind, id, uri) do
+    Fact.new!(
+      kind: kind,
+      id: id,
+      uri: uri,
+      range: %Range{
+        start: %Position{line: 0, character: 0},
+        end: %Position{line: 0, character: 1}
+      },
+      provenance: %{source: :engine_test}
+    )
   end
 end
