@@ -13,7 +13,9 @@ defmodule PhoenixLS.Application do
 
   @impl true
   def start(_type, _args) do
-    children = []
+    children = [
+      PhoenixLS.Workspace.DocumentStore
+    ]
 
     Supervisor.start_link(children,
       strategy: :one_for_one,
