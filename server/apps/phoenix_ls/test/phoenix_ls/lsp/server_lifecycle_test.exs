@@ -53,7 +53,10 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
 
     assert result.server_info.name == "PhoenixLS"
     assert result.server_info.version == PhoenixLS.version()
-    assert result.capabilities.hover_provider == true
+    assert result.capabilities.text_document_sync == nil
+    assert result.capabilities.completion_provider == nil
+    assert result.capabilities.hover_provider == nil
+    assert result.capabilities.definition_provider == nil
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
   end
 
@@ -111,8 +114,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
 
     assert_result(1, %{
       "capabilities" => %{
-        "definitionProvider" => true,
-        "hoverProvider" => true
+        "experimental" => nil
       },
       "serverInfo" => %{
         "name" => "PhoenixLS",

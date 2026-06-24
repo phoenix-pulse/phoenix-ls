@@ -1,25 +1,21 @@
 defmodule PhoenixLS.LSP.CapabilitiesTest do
   use ExUnit.Case, async: true
 
-  alias GenLSP.Enumerations.TextDocumentSyncKind
+  alias GenLSP.Structures.ServerCapabilities
   alias PhoenixLS.LSP.Capabilities
 
-  test "advertises incremental text sync and core v2 features" do
+  test "returns a GenLSP server capabilities struct" do
     capabilities = Capabilities.build()
 
-    assert capabilities.text_document_sync.open_close == true
-    assert capabilities.text_document_sync.change == TextDocumentSyncKind.incremental()
-    assert capabilities.completion_provider.resolve_provider == true
-    assert capabilities.hover_provider == true
-    assert capabilities.definition_provider == true
+    assert %ServerCapabilities{} = capabilities
   end
 
-  test "completion trigger characters include Phoenix and HEEx contexts" do
+  test "does not advertise handlers that are not implemented yet" do
     capabilities = Capabilities.build()
 
-    assert "<" in capabilities.completion_provider.trigger_characters
-    assert "@" in capabilities.completion_provider.trigger_characters
-    assert "." in capabilities.completion_provider.trigger_characters
-    assert "{" in capabilities.completion_provider.trigger_characters
+    assert capabilities.text_document_sync == nil
+    assert capabilities.completion_provider == nil
+    assert capabilities.hover_provider == nil
+    assert capabilities.definition_provider == nil
   end
 end
