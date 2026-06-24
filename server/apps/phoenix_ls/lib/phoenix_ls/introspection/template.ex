@@ -1,11 +1,12 @@
 defmodule PhoenixLS.Introspection.Template do
   @moduledoc """
-  Source-only extraction helpers for HEEx template documents.
+  Source-only extraction helpers for HEEx template documents and references.
   """
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
+  alias PhoenixLS.Introspection.Template.RenderReferences
 
   defmodule Template do
     @moduledoc """
@@ -30,6 +31,11 @@ defmodule PhoenixLS.Introspection.Template do
         }
       )
     ]
+  end
+
+  @spec render_reference_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def render_reference_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
+    RenderReferences.facts(uri, source, opts)
   end
 
   defp document_range(source) do

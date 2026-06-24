@@ -5,7 +5,7 @@ defmodule PhoenixLS.Index.ElixirSource do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
-  alias PhoenixLS.Introspection.{Component, LiveView, Router, Schema}
+  alias PhoenixLS.Introspection.{Component, LiveView, Router, Schema, Template}
 
   @parse_options [columns: true, token_metadata: true]
 
@@ -13,8 +13,12 @@ defmodule PhoenixLS.Index.ElixirSource do
           {:ok, [Fact.t()]} | {:error, {:parse_error, term()}}
   def facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
     case Code.string_to_quoted(source, @parse_options) do
-      {:ok, quoted} -> {:ok, collect(quoted, [], uri, opts)}
-      {:error, reason} -> {:error, {:parse_error, reason}}
+      {:ok, quoted} ->
+        {:ok,
+         collect(quoted, [], uri, opts) ++ Template.render_reference_facts(uri, source, opts)}
+
+      {:error, reason} ->
+        {:error, {:parse_error, reason}}
     end
   end
 

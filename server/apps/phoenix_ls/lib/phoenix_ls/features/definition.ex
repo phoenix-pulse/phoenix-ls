@@ -15,6 +15,15 @@ defmodule PhoenixLS.Features.Definition do
     |> location()
   end
 
+  @spec definition(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [
+          Fact.t()
+        ]) :: Location.t() | nil
+  def definition(uri, position, facts) when is_binary(uri) and is_list(facts) do
+    facts
+    |> Enum.find(&template_reference_at?(&1, uri, position))
+    |> template_location(facts)
+  end
+
   defp location(nil), do: nil
 
   defp location(%Fact{} = fact) do
@@ -23,4 +32,49 @@ defmodule PhoenixLS.Features.Definition do
       range: fact.range
     }
   end
+
+  defp template_location(nil, _facts), do: nil
+
+  defp template_location(%Fact{kind: :template_reference, data: reference}, facts) do
+    facts
+    |> Enum.find(&template_match?(&1, reference))
+    |> location()
+  end
+
+  defp template_reference_at?(
+         %Fact{kind: :template_reference, uri: fact_uri, range: range},
+         uri,
+         position
+       )
+       when fact_uri == uri do
+    contains_position?(range, position)
+  end
+
+  defp template_reference_at?(_fact, _uri, _position), do: false
+
+  defp template_match?(%Fact{kind: :template, uri: uri}, %{candidate_uris: candidate_uris}) do
+    uri in candidate_uris
+  end
+
+  defp template_match?(_fact, _reference), do: false
+
+  defp contains_position?(%{start: start, end: finish}, position) do
+    compare_position(start, position) != :gt and compare_position(position, finish) == :lt
+  end
+
+  defp compare_position(%{line: left_line}, %{line: right_line}) when left_line < right_line,
+    do: :lt
+
+  defp compare_position(%{line: left_line}, %{line: right_line}) when left_line > right_line,
+    do: :gt
+
+  defp compare_position(%{character: left_character}, %{character: right_character})
+       when left_character < right_character,
+       do: :lt
+
+  defp compare_position(%{character: left_character}, %{character: right_character})
+       when left_character > right_character,
+       do: :gt
+
+  defp compare_position(_left, _right), do: :eq
 end

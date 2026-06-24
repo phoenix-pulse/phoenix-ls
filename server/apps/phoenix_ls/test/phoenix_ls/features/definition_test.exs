@@ -5,9 +5,13 @@ defmodule PhoenixLS.Features.DefinitionTest do
   alias PhoenixLS.Features.Definition
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
   alias PhoenixLS.Support.Positions
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
+  @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
+  @show_template_uri "file:///tmp/app/lib/app_web/controllers/page_html/show.html.heex"
 
   test "goes to local function component definitions" do
     assert_definition("<.button| />", :component, "AppWeb.CoreComponents.button/1")
@@ -43,6 +47,43 @@ defmodule PhoenixLS.Features.DefinitionTest do
       :live_event,
       "AppWeb.ProductLive:event:select-product"
     )
+  end
+
+  test "goes from controller render template atoms to HEEx templates" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def index(conn, _params) do
+          render(conn, :in|dex)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    template_facts = Template.facts(@template_uri, "<h1>Index</h1>")
+    template_fact = Enum.find(template_facts, &(&1.kind == :template))
+
+    assert %Location{uri: @template_uri, range: template_fact.range} ==
+             Definition.definition(@controller_uri, position, controller_facts ++ template_facts)
+  end
+
+  test "ignores nested commas before controller render template atoms" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def show(conn, %{"id" => id}) do
+          product = App.Catalog.get_product!(id)
+          render(assign(conn, :product, product), :sh|ow)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    template_facts = Template.facts(@show_template_uri, "<h1>Show</h1>")
+    template_fact = Enum.find(template_facts, &(&1.kind == :template))
+
+    assert %Location{uri: @show_template_uri, range: template_fact.range} ==
+             Definition.definition(@controller_uri, position, controller_facts ++ template_facts)
   end
 
   test "returns nil outside supported definition contexts" do

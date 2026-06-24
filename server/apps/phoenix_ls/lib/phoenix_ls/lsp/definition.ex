@@ -24,7 +24,8 @@ defmodule PhoenixLS.LSP.Definition do
            {:ok, cursor_context} <- CursorContext.at(document.text, position) do
         facts = Snapshot.all(snapshot)
 
-        DefinitionFeature.definition(cursor_context, facts)
+        DefinitionFeature.definition(cursor_context, facts) ||
+          DefinitionFeature.definition(uri, position, facts)
       else
         _missing_or_invalid -> nil
       end
