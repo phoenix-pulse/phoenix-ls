@@ -22,27 +22,24 @@ defmodule PhoenixLS.Index.ElixirSource do
     case module_name(module_ast, module_stack) do
       {:ok, module} ->
         module_fact = module_fact(module, meta, uri, opts)
+        component_facts = Component.facts_for_module_body(module, body, uri, provenance(opts))
 
-        [module_fact | collect(body, [module | module_stack], uri, opts)]
+        [module_fact | collect(body, [module | module_stack], uri, opts)] ++ component_facts
 
       :error ->
         collect(body, module_stack, uri, opts)
     end
   end
 
-  defp collect({visibility, meta, [head, body]}, [module | _rest], uri, opts)
+  defp collect({visibility, meta, [head, _body]}, [module | _rest], uri, opts)
        when visibility in [:def, :defp] do
     case function_signature(head) do
       {:ok, name, arity} ->
         visibility = visibility(visibility)
         range = source_range(meta)
         provenance = provenance(opts)
-        function_fact = function_fact(module, visibility, name, arity, range, uri, provenance)
 
-        component_facts =
-          component_facts(module, name, arity, visibility, body, range, uri, provenance)
-
-        [function_fact | component_facts]
+        [function_fact(module, visibility, name, arity, range, uri, provenance)]
 
       :error ->
         []
@@ -92,22 +89,6 @@ defmodule PhoenixLS.Index.ElixirSource do
         visibility: visibility
       }
     )
-  end
-
-  defp component_facts(module, name, arity, visibility, body, range, uri, provenance) do
-    case Component.function_component_fact(
-           module,
-           name,
-           arity,
-           visibility,
-           body,
-           range,
-           uri,
-           provenance
-         ) do
-      {:ok, fact} -> [fact]
-      :none -> []
-    end
   end
 
   defp module_name({:__aliases__, _meta, parts}, []), do: alias_parts(parts)

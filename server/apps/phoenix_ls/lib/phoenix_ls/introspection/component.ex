@@ -3,8 +3,17 @@ defmodule PhoenixLS.Introspection.Component do
   Source-only extraction helpers for Phoenix components.
   """
 
-  alias GenLSP.Structures.Range
+  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+
+  @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
+  def facts_for_module_body(module, body_ast, uri, provenance)
+      when is_binary(module) and is_binary(uri) and is_map(provenance) do
+    body_ast
+    |> top_level_expressions()
+    |> Enum.reduce({[], [], []}, &collect_expression(&1, &2, module, uri, provenance))
+    |> elem(2)
+  end
 
   @spec function_component_fact(
           String.t(),
@@ -37,6 +46,78 @@ defmodule PhoenixLS.Introspection.Component do
       ),
       do: :none
 
+  defp collect_expression({:attr, meta, args}, {attrs, slots, facts}, _module, _uri, _provenance) do
+    case attr_declaration(meta, args) do
+      {:ok, attr} -> {attrs ++ [attr], slots, facts}
+      :error -> {attrs, slots, facts}
+    end
+  end
+
+  defp collect_expression({:slot, meta, args}, {attrs, slots, facts}, _module, _uri, _provenance) do
+    case slot_declaration(meta, args) do
+      {:ok, slot} -> {attrs, slots ++ [slot], facts}
+      :error -> {attrs, slots, facts}
+    end
+  end
+
+  defp collect_expression(
+         {visibility, meta, [head, body]},
+         {attrs, slots, facts},
+         module,
+         uri,
+         provenance
+       )
+       when visibility in [:def, :defp] do
+    with {:ok, name, arity} <- function_signature(head),
+         visibility <- visibility(visibility),
+         range <- source_range(meta),
+         {:ok, component_fact} <-
+           function_component_fact(module, name, arity, visibility, body, range, uri, provenance) do
+      component_id = component_fact.id
+
+      component_facts =
+        declaration_facts(component_id, module, name, attrs, slots, uri, provenance)
+
+      {[], [], facts ++ [component_fact | component_facts]}
+    else
+      _not_component -> {attrs, slots, facts}
+    end
+  end
+
+  defp collect_expression(_expression, pending_and_facts, _module, _uri, _provenance) do
+    pending_and_facts
+  end
+
+  defp declaration_facts(component_id, module, component_name, attrs, slots, uri, provenance) do
+    attr_facts =
+      Enum.map(attrs, fn attr ->
+        component_attr_fact(component_id, module, component_name, attr, uri, provenance)
+      end)
+
+    slot_facts =
+      Enum.flat_map(slots, fn slot ->
+        slot_fact =
+          component_slot_fact(component_id, module, component_name, slot, uri, provenance)
+
+        slot_attr_facts =
+          Enum.map(slot.attrs, fn attr ->
+            component_slot_attr_fact(
+              component_id,
+              module,
+              component_name,
+              slot,
+              attr,
+              uri,
+              provenance
+            )
+          end)
+
+        [slot_fact | slot_attr_facts]
+      end)
+
+    attr_facts ++ slot_facts
+  end
+
   defp component_fact(module, name, range, uri, provenance) do
     Fact.new!(
       kind: :component,
@@ -54,6 +135,142 @@ defmodule PhoenixLS.Introspection.Component do
     )
   end
 
+  defp component_attr_fact(component_id, module, component_name, attr, uri, provenance) do
+    Fact.new!(
+      kind: :component_attr,
+      id: "#{component_id}:attr:#{attr.name}",
+      uri: uri,
+      range: attr.range,
+      provenance: provenance,
+      data: %{
+        component: component_id,
+        module: module,
+        component_name: component_name,
+        name: attr.name,
+        type: attr.type,
+        options: attr.options
+      }
+    )
+  end
+
+  defp component_slot_fact(component_id, module, component_name, slot, uri, provenance) do
+    Fact.new!(
+      kind: :component_slot,
+      id: "#{component_id}:slot:#{slot.name}",
+      uri: uri,
+      range: slot.range,
+      provenance: provenance,
+      data: %{
+        component: component_id,
+        module: module,
+        component_name: component_name,
+        name: slot.name,
+        options: slot.options
+      }
+    )
+  end
+
+  defp component_slot_attr_fact(component_id, module, component_name, slot, attr, uri, provenance) do
+    Fact.new!(
+      kind: :component_slot_attr,
+      id: "#{component_id}:slot:#{slot.name}:attr:#{attr.name}",
+      uri: uri,
+      range: attr.range,
+      provenance: provenance,
+      data: %{
+        component: component_id,
+        module: module,
+        component_name: component_name,
+        slot: slot.name,
+        name: attr.name,
+        type: attr.type,
+        options: attr.options
+      }
+    )
+  end
+
+  defp attr_declaration(meta, [name, type]) when is_atom(name) do
+    {:ok, %{name: Atom.to_string(name), type: type, options: [], range: source_range(meta)}}
+  end
+
+  defp attr_declaration(meta, [name, type, options]) when is_atom(name) and is_list(options) do
+    {:ok, %{name: Atom.to_string(name), type: type, options: options, range: source_range(meta)}}
+  end
+
+  defp attr_declaration(_meta, _args), do: :error
+
+  defp slot_declaration(meta, [name]) when is_atom(name) do
+    {:ok, %{name: Atom.to_string(name), options: [], attrs: [], range: source_range(meta)}}
+  end
+
+  defp slot_declaration(meta, [name, options_or_block])
+       when is_atom(name) and is_list(options_or_block) do
+    {options, block} = slot_options_and_block(options_or_block)
+
+    {:ok,
+     %{
+       name: Atom.to_string(name),
+       options: options,
+       attrs: slot_attr_declarations(block),
+       range: source_range(meta)
+     }}
+  end
+
+  defp slot_declaration(meta, [name, options, [do: block]])
+       when is_atom(name) and is_list(options) do
+    {:ok,
+     %{
+       name: Atom.to_string(name),
+       options: options,
+       attrs: slot_attr_declarations(block),
+       range: source_range(meta)
+     }}
+  end
+
+  defp slot_declaration(_meta, _args), do: :error
+
+  defp slot_options_and_block(options_or_block) do
+    case Keyword.fetch(options_or_block, :do) do
+      {:ok, block} -> {Keyword.delete(options_or_block, :do), block}
+      :error -> {options_or_block, nil}
+    end
+  end
+
+  defp slot_attr_declarations(nil), do: []
+
+  defp slot_attr_declarations(block) do
+    block
+    |> top_level_expressions()
+    |> Enum.flat_map(fn
+      {:attr, meta, args} ->
+        case attr_declaration(meta, args) do
+          {:ok, attr} -> [attr]
+          :error -> []
+        end
+
+      _expression ->
+        []
+    end)
+  end
+
+  defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
+  defp top_level_expressions(nil), do: []
+  defp top_level_expressions(expression), do: [expression]
+
+  defp function_signature({:when, _meta, [head | _guards]}) do
+    function_signature(head)
+  end
+
+  defp function_signature({name, _meta, args}) when is_atom(name) and is_list(args) do
+    {:ok, Atom.to_string(name), length(args)}
+  end
+
+  defp function_signature({name, _meta, nil}) when is_atom(name) do
+    {:ok, Atom.to_string(name), 0}
+  end
+
+  defp function_signature(_head), do: :error
+
   defp contains_heex_sigil?({:sigil_H, _meta, _args}), do: true
 
   defp contains_heex_sigil?(list) when is_list(list) do
@@ -67,4 +284,28 @@ defmodule PhoenixLS.Introspection.Component do
   end
 
   defp contains_heex_sigil?(_node), do: false
+
+  defp source_range(meta) do
+    %Range{
+      start: position(meta),
+      end: position(end_meta(meta))
+    }
+  end
+
+  defp end_meta(meta) do
+    Keyword.get(meta, :end_of_expression) || Keyword.get(meta, :end) || meta
+  end
+
+  defp position(meta) do
+    %Position{
+      line: meta |> Keyword.get(:line, 1) |> zero_based(),
+      character: meta |> Keyword.get(:column, 1) |> zero_based()
+    }
+  end
+
+  defp zero_based(value) when is_integer(value) and value > 0, do: value - 1
+  defp zero_based(_value), do: 0
+
+  defp visibility(:def), do: :public
+  defp visibility(:defp), do: :private
 end

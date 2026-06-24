@@ -79,6 +79,44 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert component_fact.data.type == :function
   end
 
+  test "indexes component attr and slot facts from Elixir documents" do
+    document =
+      document("""
+      defmodule AppWeb.CoreComponents do
+        attr :label, :string, required: true
+
+        slot :inner_block do
+          attr :class, :string
+        end
+
+        def button(assigns) do
+          ~H\"\"\"
+          <button><%= render_slot(@inner_block) %></button>
+          \"\"\"
+        end
+      end
+      """)
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    component_id = "AppWeb.CoreComponents.button/1"
+
+    assert [attr_fact] = Store.by_kind(@store, :component_attr)
+    assert attr_fact.id == "#{component_id}:attr:label"
+    assert attr_fact.data.name == "label"
+    assert attr_fact.data.type == :string
+    assert attr_fact.data.options == [required: true]
+
+    assert [slot_fact] = Store.by_kind(@store, :component_slot)
+    assert slot_fact.id == "#{component_id}:slot:inner_block"
+    assert slot_fact.data.name == "inner_block"
+
+    assert [slot_attr_fact] = Store.by_kind(@store, :component_slot_attr)
+    assert slot_attr_fact.id == "#{component_id}:slot:inner_block:attr:class"
+    assert slot_attr_fact.data.slot == "inner_block"
+    assert slot_attr_fact.data.name == "class"
+  end
+
   test "parse failures clear stale facts for the document uri" do
     assert DocumentIndexer.index(@store, document("defmodule AppWeb.Valid do\nend\n")) == :ok
     assert [_fact] = Store.by_kind(@store, :module)

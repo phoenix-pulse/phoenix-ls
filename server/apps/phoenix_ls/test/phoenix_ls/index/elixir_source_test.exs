@@ -104,6 +104,85 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
            }
   end
 
+  test "extracts component attrs slots and slot attrs with source facts" do
+    source = """
+    defmodule AppWeb.CoreComponents do
+      attr :label, :string, required: true
+      attr :kind, :atom, default: :primary, values: [:primary, :secondary]
+
+      slot :inner_block, required: true do
+        attr :class, :string
+      end
+
+      def button(assigns) do
+        ~H\"\"\"
+        <button><%= render_slot(@inner_block) %></button>
+        \"\"\"
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source, version: 21)
+
+    component_id = "AppWeb.CoreComponents.button/1"
+    assert [_component_fact] = Enum.filter(facts, &(&1.kind == :component))
+
+    assert [label_attr, kind_attr] = Enum.filter(facts, &(&1.kind == :component_attr))
+
+    assert label_attr.id == "#{component_id}:attr:label"
+    assert label_attr.range == range(1, 2, 1, 38)
+    assert label_attr.provenance.document_version == 21
+
+    assert label_attr.data == %{
+             component: component_id,
+             module: "AppWeb.CoreComponents",
+             component_name: "button",
+             name: "label",
+             type: :string,
+             options: [required: true]
+           }
+
+    assert kind_attr.id == "#{component_id}:attr:kind"
+    assert kind_attr.range == range(2, 2, 2, 70)
+
+    assert kind_attr.data == %{
+             component: component_id,
+             module: "AppWeb.CoreComponents",
+             component_name: "button",
+             name: "kind",
+             type: :atom,
+             options: [default: :primary, values: [:primary, :secondary]]
+           }
+
+    assert [slot_fact] = Enum.filter(facts, &(&1.kind == :component_slot))
+
+    assert slot_fact.id == "#{component_id}:slot:inner_block"
+    assert slot_fact.range == range(4, 2, 6, 5)
+
+    assert slot_fact.data == %{
+             component: component_id,
+             module: "AppWeb.CoreComponents",
+             component_name: "button",
+             name: "inner_block",
+             options: [required: true]
+           }
+
+    assert [slot_attr] = Enum.filter(facts, &(&1.kind == :component_slot_attr))
+
+    assert slot_attr.id == "#{component_id}:slot:inner_block:attr:class"
+    assert slot_attr.range == range(5, 4, 5, 24)
+
+    assert slot_attr.data == %{
+             component: component_id,
+             module: "AppWeb.CoreComponents",
+             component_name: "button",
+             slot: "inner_block",
+             name: "class",
+             type: :string,
+             options: []
+           }
+  end
+
   test "returns parse errors without raising" do
     assert {:error, {:parse_error, _reason}} = ElixirSource.facts(@uri, "defmodule Broken do")
   end
