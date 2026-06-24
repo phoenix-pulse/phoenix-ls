@@ -9,6 +9,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{ClientCapabilities, InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.Server
+  alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Workspace.DocumentStore
 
   setup do
@@ -37,6 +38,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(initialized_lsp).exit_code == 1
     assert LSP.assigns(initialized_lsp).root_uri == nil
     assert LSP.assigns(initialized_lsp).document_store == DocumentStore
+    assert LSP.assigns(initialized_lsp).project_manager == Manager
     assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
   end
 
@@ -62,6 +64,25 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert result.capabilities.hover_provider == nil
     assert result.capabilities.definition_provider == nil
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
+  end
+
+  test "initialize assigns the project engine document store for root uri sessions", %{lsp: lsp} do
+    root_uri = "file:///tmp/phoenix-ls-server-project-routing"
+
+    {:ok, lsp} = Server.init(lsp, project_manager: Manager)
+
+    params = %InitializeParams{
+      process_id: nil,
+      root_uri: root_uri,
+      capabilities: %ClientCapabilities{}
+    }
+
+    request = %Initialize{id: 1, params: params}
+
+    assert {:reply, %InitializeResult{}, updated_lsp} = Server.handle_request(request, lsp)
+
+    assert LSP.assigns(updated_lsp).root_uri == root_uri
+    assert LSP.assigns(updated_lsp).document_store == Names.document_store(root_uri)
   end
 
   test "shutdown marks the server ready to exit successfully", %{lsp: lsp} do

@@ -14,6 +14,9 @@ defmodule PhoenixLS.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Registry, keys: :unique, name: PhoenixLS.Project.Registry},
+      {DynamicSupervisor, strategy: :one_for_one, name: PhoenixLS.Project.EngineSupervisor},
+      PhoenixLS.Project.Manager,
       PhoenixLS.Workspace.DocumentStore
     ]
 

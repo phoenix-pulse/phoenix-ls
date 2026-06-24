@@ -15,6 +15,7 @@ defmodule PhoenixLS.LSP.Server do
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.{Capabilities, TextDocumentSync}
+  alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
 
   @required_gen_lsp_options [:buffer, :assigns, :task_supervisor]
@@ -35,18 +36,22 @@ defmodule PhoenixLS.LSP.Server do
   def init(lsp, args) do
     exit_handler = Keyword.get(args, :exit_handler, &System.halt/1)
     document_store = Keyword.get(args, :document_store, DocumentStore)
+    project_manager = Keyword.get(args, :project_manager, Manager)
 
     {:ok,
      assign(lsp,
        document_store: document_store,
        exit_code: 1,
        exit_handler: exit_handler,
+       project_manager: project_manager,
        root_uri: nil
      )}
   end
 
   @impl true
   def handle_request(%Initialize{params: %InitializeParams{root_uri: root_uri}}, lsp) do
+    lsp = assign_project(lsp, root_uri)
+
     result = %InitializeResult{
       capabilities: Capabilities.build(),
       server_info: %{name: "PhoenixLS", version: PhoenixLS.version()}
@@ -86,5 +91,16 @@ defmodule PhoenixLS.LSP.Server do
 
   defp missing_gen_lsp_options(opts) do
     Enum.reject(@required_gen_lsp_options, &Keyword.has_key?(opts, &1))
+  end
+
+  defp assign_project(lsp, nil), do: lsp
+
+  defp assign_project(lsp, root_uri) when is_binary(root_uri) do
+    project_manager = GenLSP.LSP.assigns(lsp).project_manager
+
+    case Manager.ensure_engine(project_manager, root_uri) do
+      {:ok, engine} -> assign(lsp, document_store: engine.document_store)
+      {:error, _reason} -> lsp
+    end
   end
 end

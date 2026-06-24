@@ -1,0 +1,15 @@
+defmodule PhoenixLS.Project.Names do
+  @moduledoc """
+  Process names for project-scoped runtime state.
+  """
+
+  @registry PhoenixLS.Project.Registry
+
+  @spec engine(String.t()) :: GenServer.server()
+  def engine(root_uri), do: via({:engine, root_uri})
+
+  @spec document_store(String.t()) :: GenServer.server()
+  def document_store(root_uri), do: via({:document_store, root_uri})
+
+  defp via(key), do: {:via, Registry, {@registry, key}}
+end
