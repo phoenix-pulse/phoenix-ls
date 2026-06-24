@@ -3,11 +3,13 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
 
   import GenLSP.Test, only: [assert_result: 2]
 
+  alias GenLSP.Enumerations.TextDocumentSyncKind
   alias GenLSP.LSP
   alias GenLSP.Notifications.Exit
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{ClientCapabilities, InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.Server
+  alias PhoenixLS.Workspace.DocumentStore
 
   setup do
     {:ok, assigns} = start_supervised(GenLSP.Assigns)
@@ -34,6 +36,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert {:ok, initialized_lsp} = Server.init(lsp, [])
     assert LSP.assigns(initialized_lsp).exit_code == 1
     assert LSP.assigns(initialized_lsp).root_uri == nil
+    assert LSP.assigns(initialized_lsp).document_store == DocumentStore
     assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
   end
 
@@ -53,7 +56,8 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
 
     assert result.server_info.name == "PhoenixLS"
     assert result.server_info.version == PhoenixLS.version()
-    assert result.capabilities.text_document_sync == nil
+    assert result.capabilities.text_document_sync.open_close == true
+    assert result.capabilities.text_document_sync.change == TextDocumentSyncKind.full()
     assert result.capabilities.completion_provider == nil
     assert result.capabilities.hover_provider == nil
     assert result.capabilities.definition_provider == nil
@@ -111,10 +115,15 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     })
 
     version = PhoenixLS.version()
+    full_sync = TextDocumentSyncKind.full()
 
     assert_result(1, %{
       "capabilities" => %{
-        "experimental" => nil
+        "experimental" => nil,
+        "textDocumentSync" => %{
+          "openClose" => true,
+          "change" => ^full_sync
+        }
       },
       "serverInfo" => %{
         "name" => "PhoenixLS",

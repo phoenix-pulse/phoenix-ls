@@ -5,10 +5,17 @@ defmodule PhoenixLS.LSP.Server do
 
   use GenLSP
 
-  alias GenLSP.Notifications.Exit
+  alias GenLSP.Notifications.{
+    Exit,
+    TextDocumentDidChange,
+    TextDocumentDidClose,
+    TextDocumentDidOpen
+  }
+
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
-  alias PhoenixLS.LSP.Capabilities
+  alias PhoenixLS.LSP.{Capabilities, TextDocumentSync}
+  alias PhoenixLS.Workspace.DocumentStore
 
   @required_gen_lsp_options [:buffer, :assigns, :task_supervisor]
 
@@ -27,8 +34,15 @@ defmodule PhoenixLS.LSP.Server do
   @impl true
   def init(lsp, args) do
     exit_handler = Keyword.get(args, :exit_handler, &System.halt/1)
+    document_store = Keyword.get(args, :document_store, DocumentStore)
 
-    {:ok, assign(lsp, exit_code: 1, exit_handler: exit_handler, root_uri: nil)}
+    {:ok,
+     assign(lsp,
+       document_store: document_store,
+       exit_code: 1,
+       exit_handler: exit_handler,
+       root_uri: nil
+     )}
   end
 
   @impl true
@@ -52,6 +66,18 @@ defmodule PhoenixLS.LSP.Server do
     exit_handler.(exit_code)
 
     {:noreply, lsp}
+  end
+
+  def handle_notification(%TextDocumentDidOpen{} = notification, lsp) do
+    TextDocumentSync.handle(notification, lsp)
+  end
+
+  def handle_notification(%TextDocumentDidChange{} = notification, lsp) do
+    TextDocumentSync.handle(notification, lsp)
+  end
+
+  def handle_notification(%TextDocumentDidClose{} = notification, lsp) do
+    TextDocumentSync.handle(notification, lsp)
   end
 
   def handle_notification(_notification, lsp) do

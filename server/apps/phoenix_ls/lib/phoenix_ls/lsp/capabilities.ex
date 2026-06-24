@@ -7,9 +7,15 @@ defmodule PhoenixLS.LSP.Capabilities do
   notification.
   """
 
-  alias GenLSP.Structures.ServerCapabilities
+  alias GenLSP.Enumerations.TextDocumentSyncKind
+  alias GenLSP.Structures.{ServerCapabilities, TextDocumentSyncOptions}
 
   def build do
-    %ServerCapabilities{}
+    %ServerCapabilities{
+      text_document_sync: %TextDocumentSyncOptions{
+        open_close: true,
+        change: TextDocumentSyncKind.full()
+      }
+    }
   end
 end
