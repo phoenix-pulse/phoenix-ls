@@ -9,12 +9,13 @@ defmodule PhoenixLS.LSP.Server do
     Exit,
     TextDocumentDidChange,
     TextDocumentDidClose,
-    TextDocumentDidOpen
+    TextDocumentDidOpen,
+    WorkspaceDidChangeWorkspaceFolders
   }
 
   alias GenLSP.Requests.{Initialize, Shutdown}
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
-  alias PhoenixLS.LSP.{Capabilities, TextDocumentSync}
+  alias PhoenixLS.LSP.{Capabilities, TextDocumentSync, WorkspaceFolders}
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -45,13 +46,20 @@ defmodule PhoenixLS.LSP.Server do
        exit_handler: exit_handler,
        project_manager: project_manager,
        project_root_uri: nil,
-       root_uri: nil
+       root_uri: nil,
+       workspace_folders: %{},
+       workspace_project_roots: MapSet.new()
      )}
   end
 
   @impl true
-  def handle_request(%Initialize{params: %InitializeParams{root_uri: root_uri}}, lsp) do
-    lsp = assign_project(lsp, root_uri)
+  def handle_request(
+        %Initialize{params: %InitializeParams{root_uri: root_uri, workspace_folders: folders}},
+        lsp
+      ) do
+    lsp = WorkspaceFolders.assign_initial(lsp, folders)
+    project_uri = root_uri || WorkspaceFolders.first_uri(folders)
+    lsp = assign_project(lsp, project_uri)
 
     result = %InitializeResult{
       capabilities: Capabilities.build(),
@@ -84,6 +92,10 @@ defmodule PhoenixLS.LSP.Server do
 
   def handle_notification(%TextDocumentDidClose{} = notification, lsp) do
     TextDocumentSync.handle(notification, lsp)
+  end
+
+  def handle_notification(%WorkspaceDidChangeWorkspaceFolders{} = notification, lsp) do
+    WorkspaceFolders.handle(notification, lsp)
   end
 
   def handle_notification(_notification, lsp) do

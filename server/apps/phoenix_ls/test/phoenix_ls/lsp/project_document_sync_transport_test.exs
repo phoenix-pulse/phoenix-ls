@@ -10,7 +10,7 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
 
   test "GenLSP transport routes opened documents into the initialized project engine",
        context do
-    root_path = fixture_project(context)
+    root_path = fixture_project(context, "transport_project")
     nested_dir = Path.join(root_path, "lib")
     document_path = Path.join(nested_dir, "page.html.heex")
 
@@ -40,6 +40,12 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
           "textDocumentSync" => %{
             "openClose" => true,
             "change" => 1
+          },
+          "workspace" => %{
+            "workspaceFolders" => %{
+              "supported" => true,
+              "changeNotifications" => true
+            }
           }
         },
         "serverInfo" => %{
@@ -72,6 +78,79 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
     end)
   end
 
+  test "GenLSP transport routes opened documents by their own project root",
+       context do
+    first_root_path = fixture_project(context, "first_project")
+    second_root_path = fixture_project(context, "second_project")
+    first_nested_uri = SupportURI.path_to_file_uri!(Path.join(first_root_path, "lib"))
+    first_root_uri = SupportURI.path_to_file_uri!(first_root_path)
+    second_root_uri = SupportURI.path_to_file_uri!(second_root_path)
+
+    second_document_path = Path.join([second_root_path, "lib", "page.html.heex"])
+    second_document_uri = SupportURI.path_to_file_uri!(second_document_path)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    GenLSP.Test.request(test_client, %{
+      id: 1,
+      jsonrpc: "2.0",
+      method: "initialize",
+      params: %{
+        capabilities: %{},
+        processId: nil,
+        rootUri: first_nested_uri
+      }
+    })
+
+    assert_result(
+      1,
+      %{
+        "capabilities" => %{
+          "experimental" => nil,
+          "textDocumentSync" => %{
+            "openClose" => true,
+            "change" => 1
+          },
+          "workspace" => %{
+            "workspaceFolders" => %{
+              "supported" => true,
+              "changeNotifications" => true
+            }
+          }
+        },
+        "serverInfo" => %{
+          "name" => "PhoenixLS",
+          "version" => "0.1.0"
+        }
+      },
+      500
+    )
+
+    GenLSP.Test.notify(test_client, %{
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: %{
+        textDocument: %{
+          uri: second_document_uri,
+          languageId: "phoenix-heex",
+          version: 1,
+          text: "<div>Second</div>"
+        }
+      }
+    })
+
+    first_document_store = Names.document_store(first_root_uri)
+    second_document_store = Names.document_store(second_root_uri)
+
+    assert_eventually(fn ->
+      assert {:ok, %{version: 1, text: "<div>Second</div>"}} =
+               fetch_document(second_document_store, second_document_uri)
+
+      assert DocumentStore.fetch(first_document_store, second_document_uri) == :error
+    end)
+  end
+
   defp assert_eventually(fun, attempts_left \\ 20)
 
   defp assert_eventually(fun, attempts_left) do
@@ -86,8 +165,8 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
       end
   end
 
-  defp fixture_project(context) do
-    root = Path.join(tmp_dir(context), "transport_project")
+  defp fixture_project(context, name) do
+    root = Path.join(tmp_dir(context), name)
     File.mkdir_p!(Path.join(root, "lib"))
 
     File.write!(Path.join(root, "mix.exs"), """
@@ -101,6 +180,12 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
     """)
 
     root
+  end
+
+  defp fetch_document(document_store, uri) do
+    DocumentStore.fetch(document_store, uri)
+  catch
+    :exit, _reason -> :missing_store
   end
 
   defp tmp_dir(context) do

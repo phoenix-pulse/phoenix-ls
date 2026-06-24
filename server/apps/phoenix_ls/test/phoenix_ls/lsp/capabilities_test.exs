@@ -22,6 +22,13 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     assert sync.save == nil
   end
 
+  test "advertises workspace folder support" do
+    capabilities = Capabilities.build()
+
+    assert capabilities.workspace.workspace_folders.supported == true
+    assert capabilities.workspace.workspace_folders.change_notifications == true
+  end
+
   test "does not advertise request handlers that are not implemented yet" do
     capabilities = Capabilities.build()
 

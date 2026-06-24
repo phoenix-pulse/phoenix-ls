@@ -8,13 +8,24 @@ defmodule PhoenixLS.LSP.Capabilities do
   """
 
   alias GenLSP.Enumerations.TextDocumentSyncKind
-  alias GenLSP.Structures.{ServerCapabilities, TextDocumentSyncOptions}
+
+  alias GenLSP.Structures.{
+    ServerCapabilities,
+    TextDocumentSyncOptions,
+    WorkspaceFoldersServerCapabilities
+  }
 
   def build do
     %ServerCapabilities{
       text_document_sync: %TextDocumentSyncOptions{
         open_close: true,
         change: TextDocumentSyncKind.full()
+      },
+      workspace: %{
+        workspace_folders: %WorkspaceFoldersServerCapabilities{
+          supported: true,
+          change_notifications: true
+        }
       }
     }
   end

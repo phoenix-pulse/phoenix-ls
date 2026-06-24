@@ -21,6 +21,8 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
   }
 
   alias PhoenixLS.LSP.{Server, TextDocumentSync}
+  alias PhoenixLS.Project.{Manager, Names}
+  alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
   @store __MODULE__.DocumentStore
@@ -40,7 +42,7 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
         tasks: %{},
         sync_notifications: MapSet.new()
       }
-      |> LSP.assign(document_store: @store)
+      |> LSP.assign(document_store: @store, project_manager: Manager)
 
     %{lsp: lsp}
   end
@@ -116,14 +118,37 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     assert DocumentStore.fetch(@store, @uri) == :error
   end
 
+  test "routes opened documents to the store for the document URI project",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "document_project")
+    document_uri = SupportURI.path_to_file_uri!(Path.join([root, "lib", "page.html.heex"]))
+    project_store = Names.document_store(SupportURI.path_to_file_uri!(root))
+
+    assert {:noreply, ^lsp} =
+             TextDocumentSync.handle(
+               open_notification(document_uri, "<div>Project</div>"),
+               lsp
+             )
+
+    assert DocumentStore.fetch(@store, document_uri) == :error
+    assert {:ok, document} = DocumentStore.fetch(project_store, document_uri)
+    assert document.text == "<div>Project</div>"
+  end
+
   defp open_notification do
+    open_notification(@uri, "<div>Hello</div>")
+  end
+
+  defp open_notification(uri, text) do
     %TextDocumentDidOpen{
       params: %DidOpenTextDocumentParams{
         text_document: %TextDocumentItem{
-          uri: @uri,
+          uri: uri,
           language_id: "phoenix-heex",
           version: 1,
-          text: "<div>Hello</div>"
+          text: text
         }
       }
     }
@@ -147,5 +172,39 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
         text_document: %TextDocumentIdentifier{uri: @uri}
       }
     }
+  end
+
+  defp fixture_project(context, name) do
+    root = Path.join(tmp_dir(context), name)
+    File.mkdir_p!(Path.join(root, "lib"))
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule TextDocumentSyncFixture.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :text_document_sync_fixture, version: "0.1.0", deps: []]
+      end
+    end
+    """)
+
+    root
+  end
+
+  defp tmp_dir(context) do
+    name = context.test |> Atom.to_string() |> :erlang.phash2() |> Integer.to_string(36)
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "phoenix_ls_text_document_sync_#{name}_#{System.unique_integer([:positive])}"
+      )
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+
+    on_exit(fn -> File.rm_rf!(path) end)
+
+    path
   end
 end

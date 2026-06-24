@@ -7,7 +7,14 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
   alias GenLSP.LSP
   alias GenLSP.Notifications.Exit
   alias GenLSP.Requests.{Initialize, Shutdown}
-  alias GenLSP.Structures.{ClientCapabilities, InitializeParams, InitializeResult}
+
+  alias GenLSP.Structures.{
+    ClientCapabilities,
+    InitializeParams,
+    InitializeResult,
+    WorkspaceFolder
+  }
+
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
@@ -41,6 +48,8 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(initialized_lsp).project_root_uri == nil
     assert LSP.assigns(initialized_lsp).document_store == DocumentStore
     assert LSP.assigns(initialized_lsp).project_manager == Manager
+    assert LSP.assigns(initialized_lsp).workspace_folders == %{}
+    assert LSP.assigns(initialized_lsp).workspace_project_roots == MapSet.new()
     assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
   end
 
@@ -68,6 +77,43 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
     assert LSP.assigns(updated_lsp).project_root_uri == nil
     assert LSP.assigns(updated_lsp).document_store == DocumentStore
+  end
+
+  test "initialize tracks workspace folders and uses the first folder when root uri is nil",
+       %{
+         lsp: lsp
+       } = context do
+    first_root = fixture_project(context, "workspace_one")
+    second_root = fixture_project(context, "workspace_two")
+    first_uri = SupportURI.path_to_file_uri!(first_root)
+    second_uri = SupportURI.path_to_file_uri!(second_root)
+
+    {:ok, lsp} = Server.init(lsp, project_manager: Manager)
+
+    params = %InitializeParams{
+      process_id: nil,
+      root_uri: nil,
+      capabilities: %ClientCapabilities{},
+      workspace_folders: [
+        %WorkspaceFolder{uri: first_uri, name: "one"},
+        %WorkspaceFolder{uri: second_uri, name: "two"}
+      ]
+    }
+
+    assert {:reply, %InitializeResult{}, updated_lsp} =
+             Server.handle_request(%Initialize{id: 1, params: params}, lsp)
+
+    assert LSP.assigns(updated_lsp).root_uri == nil
+    assert LSP.assigns(updated_lsp).project_root_uri == first_uri
+    assert LSP.assigns(updated_lsp).document_store == Names.document_store(first_uri)
+
+    assert LSP.assigns(updated_lsp).workspace_folders == %{
+             first_uri => "one",
+             second_uri => "two"
+           }
+
+    assert LSP.assigns(updated_lsp).workspace_project_roots ==
+             MapSet.new([first_uri, second_uri])
   end
 
   test "initialize assigns the project engine document store for located Mix roots",
@@ -181,6 +227,12 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
         "textDocumentSync" => %{
           "openClose" => true,
           "change" => ^full_sync
+        },
+        "workspace" => %{
+          "workspaceFolders" => %{
+            "supported" => true,
+            "changeNotifications" => true
+          }
         }
       },
       "serverInfo" => %{
