@@ -19,6 +19,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Initialize,
     Shutdown,
     TextDocumentCompletion,
+    TextDocumentDefinition,
     TextDocumentHover
   }
 
@@ -28,6 +29,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Capabilities,
     Completion,
     CustomRequest,
+    Definition,
     Hover,
     PhoenixRequests,
     RequestContext,
@@ -69,6 +71,10 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_request(%TextDocumentHover{} = request, lsp) do
     Hover.handle(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(%TextDocumentDefinition{} = request, lsp) do
+    Definition.handle(request, RequestContext.new(lsp))
   end
 
   def handle_request(%CustomRequest{} = request, lsp) do

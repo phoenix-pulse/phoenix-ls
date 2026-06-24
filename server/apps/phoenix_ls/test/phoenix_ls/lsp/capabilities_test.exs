@@ -43,9 +43,9 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     assert capabilities.hover_provider == true
   end
 
-  test "does not advertise request handlers that are not implemented yet" do
+  test "advertises definition support" do
     capabilities = Capabilities.build()
 
-    assert capabilities.definition_provider == nil
+    assert capabilities.definition_provider == true
   end
 end

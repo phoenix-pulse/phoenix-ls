@@ -27,6 +27,7 @@ defmodule PhoenixLS.LSP.Capabilities do
         resolve_provider: true
       },
       hover_provider: true,
+      definition_provider: true,
       workspace: %{
         workspace_folders: %WorkspaceFoldersServerCapabilities{
           supported: true,

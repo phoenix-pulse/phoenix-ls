@@ -5,90 +5,15 @@ defmodule PhoenixLS.Features.Hover do
 
   alias GenLSP.Enumerations.MarkupKind
   alias GenLSP.Structures.{Hover, MarkupContent}
+  alias PhoenixLS.Features.PhoenixFactLookup
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
   @spec hover(CursorContext.t(), [Fact.t()]) :: Hover.t() | nil
-  def hover(%CursorContext{kind: :tag_name, prefix: "." <> component_name}, facts) do
-    facts
-    |> find_component(component_name)
+  def hover(%CursorContext{} = context, facts) do
+    context
+    |> PhoenixFactLookup.cursor_fact(facts)
     |> hover_for_fact()
-  end
-
-  def hover(
-        %CursorContext{kind: :attribute_name, tag: "." <> component_name, prefix: prefix},
-        facts
-      ) do
-    facts
-    |> find_component_attr(component_name, prefix)
-    |> hover_for_fact()
-  end
-
-  def hover(%CursorContext{kind: :expression, prefix: prefix}, facts) do
-    cond do
-      String.starts_with?(prefix, "~p\"") or String.starts_with?(prefix, "~p'") ->
-        facts
-        |> find_route(route_path_prefix(prefix))
-        |> hover_for_fact()
-
-      String.starts_with?(prefix, "@form[:") ->
-        facts
-        |> find_schema_field(form_field_prefix(prefix))
-        |> hover_for_fact()
-
-      String.starts_with?(prefix, "@") ->
-        facts
-        |> find_assign(String.trim_leading(prefix, "@"))
-        |> hover_for_fact()
-
-      true ->
-        nil
-    end
-  end
-
-  def hover(
-        %CursorContext{kind: :attribute_value, attribute: "phx-" <> _event, prefix: prefix},
-        facts
-      ) do
-    facts
-    |> find_live_event(prefix)
-    |> hover_for_fact()
-  end
-
-  def hover(_context, _facts), do: nil
-
-  defp find_component(facts, name) do
-    Enum.find(facts, &(&1.kind == :component and &1.data.name == name))
-  end
-
-  defp find_component_attr(facts, component_name, prefix) do
-    Enum.find(
-      facts,
-      &(&1.kind == :component_attr and &1.data.component_name == component_name and
-          String.starts_with?(&1.data.name, prefix))
-    )
-  end
-
-  defp find_route(facts, path_prefix) do
-    Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))
-  end
-
-  defp find_schema_field(facts, field_prefix) do
-    Enum.find(
-      facts,
-      &(&1.kind == :schema_field and String.starts_with?(&1.data.name, field_prefix))
-    )
-  end
-
-  defp find_assign(facts, assign_prefix) do
-    Enum.find(facts, &(&1.kind == :assign and String.starts_with?(&1.data.name, assign_prefix)))
-  end
-
-  defp find_live_event(facts, event_prefix) do
-    Enum.find(
-      facts,
-      &(&1.kind == :live_event and String.starts_with?(&1.data.event, event_prefix))
-    )
   end
 
   defp hover_for_fact(nil), do: nil
@@ -158,11 +83,6 @@ defmodule PhoenixLS.Features.Hover do
   end
 
   defp markdown(_fact), do: ""
-
-  defp route_path_prefix("~p\"" <> path), do: path
-  defp route_path_prefix("~p'" <> path), do: path
-
-  defp form_field_prefix("@form[:" <> field), do: field
 
   defp option_lines(options) do
     options
