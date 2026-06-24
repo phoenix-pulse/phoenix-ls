@@ -48,6 +48,13 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown slot ":footer")
   end
 
+  test "reports unknown slot attrs" do
+    [diagnostic] = diagnostics(~s(<:inner_block unknown="x" />))
+
+    assert diagnostic.code == "phoenix.unknown_attr"
+    assert diagnostic.message == ~s(Unknown attr "unknown" for :inner_block)
+  end
+
   test "reports invalid attr values" do
     [diagnostic] = diagnostics(~s(<.button label="Save" kind="danger" />))
 
@@ -100,6 +107,7 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
     assert diagnostics(~s(<:inner_block />)) == []
+    assert diagnostics(~s(<:inner_block class="p-2" />)) == []
     assert diagnostics(~s(<button phx-click="save">)) == []
     assert diagnostics(~s(<.link navigate={~p"/products"} />)) == []
   end
@@ -127,7 +135,9 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
         attr :label, :string, required: true
         attr :kind, :string, values: ["primary", "secondary"]
 
-        slot :inner_block
+        slot :inner_block do
+          attr :class, :string
+        end
 
         def button(assigns) do
           ~H\"\"\"

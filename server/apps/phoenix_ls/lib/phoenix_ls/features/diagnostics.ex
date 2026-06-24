@@ -13,6 +13,7 @@ defmodule PhoenixLS.Features.Diagnostics do
   @source "PhoenixLS"
   @live_component_required_attrs ["id", "module"]
   @global_component_attrs ["id", "class", "style", "title"]
+  @global_slot_attrs [":let"]
   @non_event_phx_attrs ["phx-target", "phx-disable-with"]
   @global_prefix_attrs ["aria-", "data-"]
 
@@ -59,7 +60,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
     diagnostics =
       if MapSet.member?(indexes.slots, slot_name) do
-        []
+        known_slot_diagnostics(tag, slot_name, indexes)
       else
         [
           diagnostic(
@@ -87,6 +88,14 @@ defmodule PhoenixLS.Features.Diagnostics do
       invalid_value_diagnostics(tag, attrs)
   end
 
+  defp known_slot_diagnostics(%Tag{} = tag, slot_name, indexes) do
+    attrs = Map.get(indexes.attrs_by_slot, slot_name, [])
+    declared_attr_names = MapSet.new(attrs, & &1.data.name)
+
+    unknown_slot_attr_diagnostics(tag, declared_attr_names) ++
+      invalid_value_diagnostics(tag, attrs)
+  end
+
   defp missing_required_attr_diagnostics(%Tag{} = tag, attrs, present_attr_names) do
     attrs
     |> Enum.filter(&required_attr?/1)
@@ -103,6 +112,20 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp unknown_attr_diagnostics(%Tag{} = tag, declared_attr_names) do
     tag.attrs
     |> Enum.reject(&MapSet.member?(declared_attr_names, &1.name))
+    |> Enum.reject(&global_component_attr?/1)
+    |> Enum.map(fn attr ->
+      diagnostic(
+        attr.name_range,
+        "phoenix.unknown_attr",
+        ~s(Unknown attr "#{attr.name}" for #{tag.name})
+      )
+    end)
+  end
+
+  defp unknown_slot_attr_diagnostics(%Tag{} = tag, declared_attr_names) do
+    tag.attrs
+    |> Enum.reject(&MapSet.member?(declared_attr_names, &1.name))
+    |> Enum.reject(&global_slot_attr?/1)
     |> Enum.reject(&global_component_attr?/1)
     |> Enum.map(fn attr ->
       diagnostic(
@@ -239,6 +262,10 @@ defmodule PhoenixLS.Features.Diagnostics do
       String.starts_with?(name, "phx-")
   end
 
+  defp global_slot_attr?(%Attribute{name: name}) do
+    name in @global_slot_attrs
+  end
+
   defp required_attr?(%Fact{data: %{options: options}}) do
     Keyword.get(options || [], :required, false) == true
   end
@@ -254,6 +281,10 @@ defmodule PhoenixLS.Features.Diagnostics do
         facts
         |> facts_by_kind(:component_attr)
         |> Enum.group_by(& &1.data.component),
+      attrs_by_slot:
+        facts
+        |> facts_by_kind(:component_slot_attr)
+        |> Enum.group_by(& &1.data.slot),
       slots:
         facts
         |> facts_by_kind(:component_slot)
