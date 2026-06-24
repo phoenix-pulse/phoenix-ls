@@ -37,10 +37,15 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     assert completion.resolve_provider == true
   end
 
+  test "advertises hover support" do
+    capabilities = Capabilities.build()
+
+    assert capabilities.hover_provider == true
+  end
+
   test "does not advertise request handlers that are not implemented yet" do
     capabilities = Capabilities.build()
 
-    assert capabilities.hover_provider == nil
     assert capabilities.definition_provider == nil
   end
 end

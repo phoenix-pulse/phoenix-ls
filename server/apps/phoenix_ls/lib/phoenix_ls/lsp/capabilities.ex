@@ -26,6 +26,7 @@ defmodule PhoenixLS.LSP.Capabilities do
         trigger_characters: [".", ":"],
         resolve_provider: true
       },
+      hover_provider: true,
       workspace: %{
         workspace_folders: %WorkspaceFoldersServerCapabilities{
           supported: true,

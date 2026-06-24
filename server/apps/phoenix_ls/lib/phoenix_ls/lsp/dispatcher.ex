@@ -14,12 +14,22 @@ defmodule PhoenixLS.LSP.Dispatcher do
     WorkspaceDidChangeWorkspaceFolders
   }
 
-  alias GenLSP.Requests.{CompletionItemResolve, Initialize, Shutdown, TextDocumentCompletion}
+  alias GenLSP.Requests.{
+    CompletionItemResolve,
+    Initialize,
+    Shutdown,
+    TextDocumentCompletion,
+    TextDocumentHover
+  }
+
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
 
   alias PhoenixLS.LSP.{
     Capabilities,
     Completion,
+    CustomRequest,
+    Hover,
+    PhoenixRequests,
     RequestContext,
     TextDocumentSync,
     WorkspaceFolders
@@ -55,6 +65,14 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_request(%CompletionItemResolve{} = request, lsp) do
     Completion.resolve(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(%TextDocumentHover{} = request, lsp) do
+    Hover.handle(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(%CustomRequest{} = request, lsp) do
+    PhoenixRequests.handle(request, RequestContext.new(lsp))
   end
 
   @spec handle_notification(term(), LSP.t()) :: {:noreply, LSP.t()}

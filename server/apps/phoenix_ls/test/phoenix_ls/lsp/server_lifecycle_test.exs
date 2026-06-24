@@ -73,7 +73,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert result.capabilities.text_document_sync.change == TextDocumentSyncKind.full()
     assert result.capabilities.completion_provider.trigger_characters == [".", ":"]
     assert result.capabilities.completion_provider.resolve_provider == true
-    assert result.capabilities.hover_provider == nil
+    assert result.capabilities.hover_provider == true
     assert result.capabilities.definition_provider == nil
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
     assert LSP.assigns(updated_lsp).project_root_uri == nil
