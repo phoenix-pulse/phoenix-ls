@@ -2,6 +2,7 @@ defmodule PhoenixLS.Project.ManagerTest do
   use ExUnit.Case, async: false
 
   alias PhoenixLS.Project.{Engine, Manager}
+  alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
   @document_uri "file:///tmp/page.html.heex"
@@ -53,11 +54,78 @@ defmodule PhoenixLS.Project.ManagerTest do
     assert Manager.document_store(manager, "file:///tmp/missing") == :error
   end
 
+  test "ensure_project_for_uri canonicalizes nested file URI to the Mix root URI", context do
+    %{manager: manager} =
+      start_manager(__MODULE__.LocatedSupervisor, __MODULE__.LocatedManager)
+
+    root = fixture_project(context, "located")
+    file_path = Path.join([root, "lib", "located.ex"])
+    File.mkdir_p!(Path.dirname(file_path))
+    File.write!(file_path, "defmodule Located do\nend\n")
+
+    root_uri = SupportURI.path_to_file_uri!(root)
+    file_uri = SupportURI.path_to_file_uri!(file_path)
+
+    assert {:ok, first} = Manager.ensure_project_for_uri(manager, file_uri)
+    assert {:ok, second} = Manager.ensure_project_for_uri(manager, root_uri)
+
+    assert first.root_uri == root_uri
+    assert first.pid == second.pid
+    assert first.document_store == second.document_store
+  end
+
+  test "ensure_project_for_uri returns error for files outside Mix projects", context do
+    %{manager: manager} =
+      start_manager(__MODULE__.NoProjectSupervisor, __MODULE__.NoProjectManager)
+
+    dir = tmp_dir(context)
+    file_path = Path.join([dir, "lib", "orphan.ex"])
+    File.mkdir_p!(Path.dirname(file_path))
+    File.write!(file_path, "defmodule Orphan do\nend\n")
+
+    assert Manager.ensure_project_for_uri(manager, SupportURI.path_to_file_uri!(file_path)) ==
+             :error
+  end
+
   defp start_manager(supervisor_name, manager_name) do
     start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: supervisor_name})
     manager = start_supervised!({Manager, name: manager_name, engine_supervisor: supervisor_name})
 
     %{manager: manager}
+  end
+
+  defp fixture_project(context, name) do
+    root = Path.join(tmp_dir(context), name)
+    File.mkdir_p!(root)
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule Located.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :located, version: "0.1.0", deps: []]
+      end
+    end
+    """)
+
+    root
+  end
+
+  defp tmp_dir(context) do
+    name = context.test |> Atom.to_string() |> :erlang.phash2() |> Integer.to_string(36)
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "phoenix_ls_manager_#{name}_#{System.unique_integer([:positive])}"
+      )
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+
+    on_exit(fn -> File.rm_rf!(path) end)
+
+    path
   end
 
   defp ensure_project_registry_started do

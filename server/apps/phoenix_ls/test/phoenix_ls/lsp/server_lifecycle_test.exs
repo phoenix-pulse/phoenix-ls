@@ -10,6 +10,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
   alias GenLSP.Structures.{ClientCapabilities, InitializeParams, InitializeResult}
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Project.{Manager, Names}
+  alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
   setup do
@@ -37,6 +38,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert {:ok, initialized_lsp} = Server.init(lsp, [])
     assert LSP.assigns(initialized_lsp).exit_code == 1
     assert LSP.assigns(initialized_lsp).root_uri == nil
+    assert LSP.assigns(initialized_lsp).project_root_uri == nil
     assert LSP.assigns(initialized_lsp).document_store == DocumentStore
     assert LSP.assigns(initialized_lsp).project_manager == Manager
     assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
@@ -64,10 +66,44 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert result.capabilities.hover_provider == nil
     assert result.capabilities.definition_provider == nil
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
+    assert LSP.assigns(updated_lsp).project_root_uri == nil
+    assert LSP.assigns(updated_lsp).document_store == DocumentStore
   end
 
-  test "initialize assigns the project engine document store for root uri sessions", %{lsp: lsp} do
-    root_uri = "file:///tmp/phoenix-ls-server-project-routing"
+  test "initialize assigns the project engine document store for located Mix roots",
+       %{
+         lsp: lsp
+       } = context do
+    root_path = fixture_project(context, "server_project")
+    nested_dir = Path.join(root_path, "lib")
+    File.mkdir_p!(nested_dir)
+
+    root_uri = SupportURI.path_to_file_uri!(root_path)
+    nested_uri = SupportURI.path_to_file_uri!(nested_dir)
+
+    {:ok, lsp} = Server.init(lsp, project_manager: Manager)
+
+    params = %InitializeParams{
+      process_id: nil,
+      root_uri: nested_uri,
+      capabilities: %ClientCapabilities{}
+    }
+
+    request = %Initialize{id: 1, params: params}
+
+    assert {:reply, %InitializeResult{}, updated_lsp} = Server.handle_request(request, lsp)
+
+    assert LSP.assigns(updated_lsp).root_uri == nested_uri
+    assert LSP.assigns(updated_lsp).project_root_uri == root_uri
+    assert LSP.assigns(updated_lsp).document_store == Names.document_store(root_uri)
+  end
+
+  test "initialize keeps fallback document store when no Mix project is found",
+       %{
+         lsp: lsp
+       } = context do
+    root_path = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root_path)
 
     {:ok, lsp} = Server.init(lsp, project_manager: Manager)
 
@@ -82,7 +118,8 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert {:reply, %InitializeResult{}, updated_lsp} = Server.handle_request(request, lsp)
 
     assert LSP.assigns(updated_lsp).root_uri == root_uri
-    assert LSP.assigns(updated_lsp).document_store == Names.document_store(root_uri)
+    assert LSP.assigns(updated_lsp).project_root_uri == nil
+    assert LSP.assigns(updated_lsp).document_store == DocumentStore
   end
 
   test "shutdown marks the server ready to exit successfully", %{lsp: lsp} do
@@ -158,5 +195,39 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     GenLSP.Test.notify(test_client, %{jsonrpc: "2.0", method: "exit", params: nil})
 
     assert_receive {:transport_exit_requested, 0}
+  end
+
+  defp fixture_project(context, name) do
+    root = Path.join(tmp_dir(context), name)
+    File.mkdir_p!(root)
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule ServerFixture.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :server_fixture, version: "0.1.0", deps: []]
+      end
+    end
+    """)
+
+    root
+  end
+
+  defp tmp_dir(context) do
+    name = context.test |> Atom.to_string() |> :erlang.phash2() |> Integer.to_string(36)
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "phoenix_ls_server_#{name}_#{System.unique_integer([:positive])}"
+      )
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+
+    on_exit(fn -> File.rm_rf!(path) end)
+
+    path
   end
 end

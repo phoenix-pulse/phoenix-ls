@@ -5,7 +5,7 @@ defmodule PhoenixLS.Project.Manager do
 
   use GenServer
 
-  alias PhoenixLS.Project.Engine
+  alias PhoenixLS.Project.{Engine, Locator}
 
   @default_name __MODULE__
   @default_engine_supervisor PhoenixLS.Project.EngineSupervisor
@@ -21,6 +21,12 @@ defmodule PhoenixLS.Project.Manager do
   @spec ensure_engine(GenServer.server(), String.t()) :: {:ok, Engine.t()} | {:error, term()}
   def ensure_engine(server \\ @default_name, root_uri) when is_binary(root_uri) do
     GenServer.call(server, {:ensure_engine, root_uri})
+  end
+
+  @spec ensure_project_for_uri(GenServer.server(), String.t()) ::
+          {:ok, Engine.t()} | :error | {:error, term()}
+  def ensure_project_for_uri(server \\ @default_name, uri) when is_binary(uri) do
+    GenServer.call(server, {:ensure_project_for_uri, uri})
   end
 
   @spec fetch_engine(GenServer.server(), String.t()) :: {:ok, Engine.t()} | :error
@@ -45,6 +51,17 @@ defmodule PhoenixLS.Project.Manager do
   @impl true
   def handle_call({:ensure_engine, root_uri}, _from, state) do
     {:reply, ensure_engine_started(state.engine_supervisor, root_uri), state}
+  end
+
+  def handle_call({:ensure_project_for_uri, uri}, _from, state) do
+    reply =
+      case Locator.locate(uri) do
+        {:ok, located} -> ensure_engine_started(state.engine_supervisor, located.root_uri)
+        :error -> :error
+        {:error, _reason} = error -> error
+      end
+
+    {:reply, reply, state}
   end
 
   def handle_call({:fetch_engine, root_uri}, _from, state) do

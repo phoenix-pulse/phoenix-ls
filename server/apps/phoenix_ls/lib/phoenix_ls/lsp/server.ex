@@ -44,6 +44,7 @@ defmodule PhoenixLS.LSP.Server do
        exit_code: 1,
        exit_handler: exit_handler,
        project_manager: project_manager,
+       project_root_uri: nil,
        root_uri: nil
      )}
   end
@@ -98,9 +99,15 @@ defmodule PhoenixLS.LSP.Server do
   defp assign_project(lsp, root_uri) when is_binary(root_uri) do
     project_manager = GenLSP.LSP.assigns(lsp).project_manager
 
-    case Manager.ensure_engine(project_manager, root_uri) do
-      {:ok, engine} -> assign(lsp, document_store: engine.document_store)
-      {:error, _reason} -> lsp
+    case Manager.ensure_project_for_uri(project_manager, root_uri) do
+      {:ok, engine} ->
+        assign(lsp, document_store: engine.document_store, project_root_uri: engine.root_uri)
+
+      :error ->
+        lsp
+
+      {:error, _reason} ->
+        lsp
     end
   end
 end
