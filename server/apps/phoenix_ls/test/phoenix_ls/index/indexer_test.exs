@@ -76,6 +76,49 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
+  test "emits telemetry for document, URI, and delete jobs", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach_many(
+      handler_id,
+      [
+        [:phoenix_ls, :indexer, :document],
+        [:phoenix_ls, :indexer, :uri],
+        [:phoenix_ls, :indexer, :delete]
+      ],
+      &__MODULE__.handle_telemetry/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/telemetry_live.ex",
+        "elixir",
+        1,
+        "defmodule AppWeb.TelemetryLive do\nend\n"
+      )
+
+    root = tmp_dir(context)
+    path = Path.join([root, "lib", "telemetry_disk_live.ex"])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "defmodule AppWeb.TelemetryDiskLive do\nend\n")
+    uri = SupportURI.path_to_file_uri!(path)
+
+    Indexer.schedule_document(@indexer, document)
+    Indexer.schedule_uri(@indexer, uri)
+    Indexer.delete_uri(@indexer, document.uri)
+
+    assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :document], %{count: 1},
+                    %{uri: "file:///tmp/app/lib/app_web/live/telemetry_live.ex"}}
+
+    assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :uri], %{count: 1}, %{uri: ^uri}}
+
+    assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :delete], %{count: 1},
+                    %{uri: "file:///tmp/app/lib/app_web/live/telemetry_live.ex"}}
+  end
+
   test "project engines expose a named background indexer" do
     root_uri = "file:///tmp/phoenix-ls-indexer-engine"
 
@@ -89,6 +132,10 @@ defmodule PhoenixLS.Index.IndexerTest do
     |> Store.all()
     |> Enum.map(& &1.id)
     |> Enum.sort()
+  end
+
+  def handle_telemetry(event, measurements, metadata, parent) do
+    send(parent, {:indexer_telemetry, event, measurements, metadata})
   end
 
   defp assert_eventually(fun, attempts_left \\ 20)

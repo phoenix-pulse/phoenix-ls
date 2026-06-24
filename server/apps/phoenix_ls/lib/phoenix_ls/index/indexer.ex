@@ -7,6 +7,7 @@ defmodule PhoenixLS.Index.Indexer do
 
   alias PhoenixLS.Index.{DocumentIndexer, Invalidation}
   alias PhoenixLS.Support.URI, as: SupportURI
+  alias PhoenixLS.Support.Telemetry
   alias PhoenixLS.Workspace.Document
 
   @type server :: GenServer.server()
@@ -40,19 +41,35 @@ defmodule PhoenixLS.Index.Indexer do
 
   @impl true
   def handle_cast({:index_document, document}, state) do
-    _result = DocumentIndexer.index(state.index_store, document)
+    result = DocumentIndexer.index(state.index_store, document)
+
+    Telemetry.execute(
+      [:indexer, :document],
+      %{count: fact_count(state.index_store, document.uri)},
+      %{
+        uri: document.uri,
+        result: result
+      }
+    )
 
     {:noreply, state}
   end
 
   def handle_cast({:index_uri, uri}, state) do
-    index_uri(state.index_store, uri)
+    result = index_uri(state.index_store, uri)
+
+    Telemetry.execute([:indexer, :uri], %{count: fact_count(state.index_store, uri)}, %{
+      uri: uri,
+      result: result
+    })
 
     {:noreply, state}
   end
 
   def handle_cast({:delete_uri, uri}, state) do
     :ok = Invalidation.invalidate_uri(state.index_store, uri)
+
+    Telemetry.execute([:indexer, :delete], %{count: 1}, %{uri: uri, result: :ok})
 
     {:noreply, state}
   end
@@ -67,6 +84,12 @@ defmodule PhoenixLS.Index.Indexer do
     else
       _ignored -> :ok
     end
+  end
+
+  defp fact_count(index_store, uri) do
+    index_store
+    |> PhoenixLS.Index.Store.by_uri(uri)
+    |> length()
   end
 
   defp elixir_path?(path), do: Path.extname(path) == ".ex"

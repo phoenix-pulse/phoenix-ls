@@ -12,6 +12,7 @@ defmodule PhoenixLS.MixProject do
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       escript: [main_module: PhoenixLS.CLI],
+      test_ignore_filters: [&String.starts_with?(&1, "test/fixtures/")],
       deps: deps()
     ]
   end
