@@ -2,7 +2,7 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
   use ExUnit.Case, async: true
 
   alias GenLSP.Enumerations.TextDocumentSyncKind
-  alias GenLSP.Structures.{ServerCapabilities, TextDocumentSyncOptions}
+  alias GenLSP.Structures.{CompletionOptions, ServerCapabilities, TextDocumentSyncOptions}
   alias PhoenixLS.LSP.Capabilities
 
   test "returns a GenLSP server capabilities struct" do
@@ -29,10 +29,17 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     assert capabilities.workspace.workspace_folders.change_notifications == true
   end
 
+  test "advertises completion support" do
+    capabilities = Capabilities.build()
+
+    assert %CompletionOptions{} = completion = capabilities.completion_provider
+    assert completion.trigger_characters == [".", ":"]
+    assert completion.resolve_provider == false
+  end
+
   test "does not advertise request handlers that are not implemented yet" do
     capabilities = Capabilities.build()
 
-    assert capabilities.completion_provider == nil
     assert capabilities.hover_provider == nil
     assert capabilities.definition_provider == nil
   end

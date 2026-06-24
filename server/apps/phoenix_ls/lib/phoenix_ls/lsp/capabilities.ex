@@ -10,6 +10,7 @@ defmodule PhoenixLS.LSP.Capabilities do
   alias GenLSP.Enumerations.TextDocumentSyncKind
 
   alias GenLSP.Structures.{
+    CompletionOptions,
     ServerCapabilities,
     TextDocumentSyncOptions,
     WorkspaceFoldersServerCapabilities
@@ -20,6 +21,10 @@ defmodule PhoenixLS.LSP.Capabilities do
       text_document_sync: %TextDocumentSyncOptions{
         open_close: true,
         change: TextDocumentSyncKind.full()
+      },
+      completion_provider: %CompletionOptions{
+        trigger_characters: [".", ":"],
+        resolve_provider: false
       },
       workspace: %{
         workspace_folders: %WorkspaceFoldersServerCapabilities{

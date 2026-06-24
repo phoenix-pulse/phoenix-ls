@@ -1,7 +1,7 @@
 defmodule PhoenixLS.LSP.ServerLifecycleTest do
   use ExUnit.Case, async: true
 
-  import GenLSP.Test, only: [assert_result: 2]
+  import GenLSP.Test, only: [assert_result: 3]
 
   alias GenLSP.Enumerations.TextDocumentSyncKind
   alias GenLSP.LSP
@@ -71,7 +71,8 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert result.server_info.version == PhoenixLS.version()
     assert result.capabilities.text_document_sync.open_close == true
     assert result.capabilities.text_document_sync.change == TextDocumentSyncKind.full()
-    assert result.capabilities.completion_provider == nil
+    assert result.capabilities.completion_provider.trigger_characters == [".", ":"]
+    assert result.capabilities.completion_provider.resolve_provider == false
     assert result.capabilities.hover_provider == nil
     assert result.capabilities.definition_provider == nil
     assert LSP.assigns(updated_lsp).root_uri == "file:///tmp/example"
@@ -221,28 +222,36 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     version = PhoenixLS.version()
     full_sync = TextDocumentSyncKind.full()
 
-    assert_result(1, %{
-      "capabilities" => %{
-        "experimental" => nil,
-        "textDocumentSync" => %{
-          "openClose" => true,
-          "change" => ^full_sync
-        },
-        "workspace" => %{
-          "workspaceFolders" => %{
-            "supported" => true,
-            "changeNotifications" => true
+    assert_result(
+      1,
+      %{
+        "capabilities" => %{
+          "completionProvider" => %{
+            "resolveProvider" => false,
+            "triggerCharacters" => [".", ":"]
+          },
+          "experimental" => nil,
+          "textDocumentSync" => %{
+            "openClose" => true,
+            "change" => ^full_sync
+          },
+          "workspace" => %{
+            "workspaceFolders" => %{
+              "supported" => true,
+              "changeNotifications" => true
+            }
           }
+        },
+        "serverInfo" => %{
+          "name" => "PhoenixLS",
+          "version" => ^version
         }
       },
-      "serverInfo" => %{
-        "name" => "PhoenixLS",
-        "version" => ^version
-      }
-    })
+      500
+    )
 
     GenLSP.Test.request(test_client, %{id: 2, jsonrpc: "2.0", method: "shutdown"})
-    assert_result(2, nil)
+    assert_result(2, nil, 500)
 
     GenLSP.Test.notify(test_client, %{jsonrpc: "2.0", method: "exit", params: nil})
 

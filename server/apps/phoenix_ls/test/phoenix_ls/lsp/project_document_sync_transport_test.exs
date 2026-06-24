@@ -36,6 +36,10 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
       1,
       %{
         "capabilities" => %{
+          "completionProvider" => %{
+            "resolveProvider" => false,
+            "triggerCharacters" => [".", ":"]
+          },
           "experimental" => nil,
           "textDocumentSync" => %{
             "openClose" => true,
@@ -107,6 +111,10 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
       1,
       %{
         "capabilities" => %{
+          "completionProvider" => %{
+            "resolveProvider" => false,
+            "triggerCharacters" => [".", ":"]
+          },
           "experimental" => nil,
           "textDocumentSync" => %{
             "openClose" => true,

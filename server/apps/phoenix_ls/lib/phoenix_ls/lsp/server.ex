@@ -13,9 +13,9 @@ defmodule PhoenixLS.LSP.Server do
     WorkspaceDidChangeWorkspaceFolders
   }
 
-  alias GenLSP.Requests.{Initialize, Shutdown}
+  alias GenLSP.Requests.{Initialize, Shutdown, TextDocumentCompletion}
   alias GenLSP.Structures.{InitializeParams, InitializeResult}
-  alias PhoenixLS.LSP.{Capabilities, TextDocumentSync, WorkspaceFolders}
+  alias PhoenixLS.LSP.{Capabilities, Completion, TextDocumentSync, WorkspaceFolders}
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -71,6 +71,10 @@ defmodule PhoenixLS.LSP.Server do
 
   def handle_request(%Shutdown{}, lsp) do
     {:reply, nil, assign(lsp, exit_code: 0)}
+  end
+
+  def handle_request(%TextDocumentCompletion{} = request, lsp) do
+    Completion.handle(request, lsp)
   end
 
   @impl true
