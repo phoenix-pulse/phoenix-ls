@@ -64,6 +64,14 @@ defmodule PhoenixLS.LSP.Server do
     Diagnostics.handle_info(message, lsp)
   end
 
+  def handle_info(
+        {:phoenix_ls_index_changed, _uri, _changed_kinds, _document_store, _project_engine} =
+          message,
+        lsp
+      ) do
+    Diagnostics.handle_info(message, lsp)
+  end
+
   defp missing_gen_lsp_options(opts) do
     Enum.reject(@required_gen_lsp_options, &Keyword.has_key?(opts, &1))
   end

@@ -108,7 +108,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_notification(%WorkspaceDidChangeWatchedFiles{params: %{changes: changes}}, lsp) do
     project_manager = LSP.assigns(lsp).project_manager
-    :ok = FileEvents.handle_lsp_events(project_manager, changes)
+    :ok = FileEvents.handle_lsp_events(project_manager, changes, diagnostics_pid: lsp.pid)
 
     {:noreply, lsp}
   end

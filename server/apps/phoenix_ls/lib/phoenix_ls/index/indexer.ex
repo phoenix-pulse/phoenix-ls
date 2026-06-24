@@ -5,7 +5,7 @@ defmodule PhoenixLS.Index.Indexer do
 
   use GenServer
 
-  alias PhoenixLS.Index.{DocumentIndexer, Invalidation, ProjectScan}
+  alias PhoenixLS.Index.{DependencyGraph, DocumentIndexer, Invalidation, ProjectScan, Store}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Support.Telemetry
   alias PhoenixLS.Workspace.Document
@@ -17,14 +17,14 @@ defmodule PhoenixLS.Index.Indexer do
     GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
   end
 
-  @spec schedule_document(server(), Document.t()) :: :ok
-  def schedule_document(server, %Document{} = document) do
-    GenServer.cast(server, {:index_document, document})
+  @spec schedule_document(server(), Document.t(), keyword()) :: :ok
+  def schedule_document(server, %Document{} = document, opts \\ []) when is_list(opts) do
+    GenServer.cast(server, {:index_document, document, opts})
   end
 
-  @spec schedule_uri(server(), String.t()) :: :ok
-  def schedule_uri(server, uri) when is_binary(uri) do
-    GenServer.cast(server, {:index_uri, uri})
+  @spec schedule_uri(server(), String.t(), keyword()) :: :ok
+  def schedule_uri(server, uri, opts \\ []) when is_binary(uri) and is_list(opts) do
+    GenServer.cast(server, {:index_uri, uri, opts})
   end
 
   @spec schedule_project(server(), String.t()) :: :ok
@@ -32,9 +32,9 @@ defmodule PhoenixLS.Index.Indexer do
     GenServer.cast(server, {:index_project, root_uri})
   end
 
-  @spec delete_uri(server(), String.t()) :: :ok
-  def delete_uri(server, uri) when is_binary(uri) do
-    GenServer.cast(server, {:delete_uri, uri})
+  @spec delete_uri(server(), String.t(), keyword()) :: :ok
+  def delete_uri(server, uri, opts \\ []) when is_binary(uri) and is_list(opts) do
+    GenServer.cast(server, {:delete_uri, uri, opts})
   end
 
   @impl true
@@ -56,8 +56,13 @@ defmodule PhoenixLS.Index.Indexer do
   end
 
   @impl true
-  def handle_cast({:index_document, document}, state) do
+  def handle_cast({:index_document, document, opts}, state) do
+    before_facts = Store.by_uri(state.index_store, document.uri)
     result = DocumentIndexer.index(state.index_store, document)
+    after_facts = Store.by_uri(state.index_store, document.uri)
+    changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
+
+    maybe_notify_index_changed(opts, document.uri, changed_kinds)
 
     Telemetry.execute(
       [:indexer, :document],
@@ -71,8 +76,13 @@ defmodule PhoenixLS.Index.Indexer do
     {:noreply, state}
   end
 
-  def handle_cast({:index_uri, uri}, state) do
+  def handle_cast({:index_uri, uri, opts}, state) do
+    before_facts = Store.by_uri(state.index_store, uri)
     result = index_uri(state.index_store, uri)
+    after_facts = Store.by_uri(state.index_store, uri)
+    changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
+
+    maybe_notify_index_changed(opts, uri, changed_kinds)
 
     Telemetry.execute([:indexer, :uri], %{count: fact_count(state.index_store, uri)}, %{
       uri: uri,
@@ -88,8 +98,13 @@ defmodule PhoenixLS.Index.Indexer do
     {:noreply, state}
   end
 
-  def handle_cast({:delete_uri, uri}, state) do
+  def handle_cast({:delete_uri, uri, opts}, state) do
+    before_facts = Store.by_uri(state.index_store, uri)
     :ok = Invalidation.invalidate_uri(state.index_store, uri)
+    after_facts = Store.by_uri(state.index_store, uri)
+    changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
+
+    maybe_notify_index_changed(opts, uri, changed_kinds)
 
     Telemetry.execute([:indexer, :delete], %{count: 1}, %{uri: uri, result: :ok})
 
@@ -133,6 +148,16 @@ defmodule PhoenixLS.Index.Indexer do
     index_store
     |> PhoenixLS.Index.Store.by_uri(uri)
     |> length()
+  end
+
+  defp maybe_notify_index_changed(opts, uri, changed_kinds) do
+    with true <- MapSet.size(changed_kinds) > 0,
+         {pid, document_store, project_engine} <- Keyword.get(opts, :diagnostics),
+         true <- is_pid(pid) do
+      send(pid, {:phoenix_ls_index_changed, uri, changed_kinds, document_store, project_engine})
+    else
+      _ignored -> :ok
+    end
   end
 
   defp language_id(path) do

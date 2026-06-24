@@ -29,7 +29,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         text_document.text
       )
 
-    index_opened_document(project_engine, text_document)
+    index_opened_document(lsp, project_engine, text_document)
     publish_diagnostics(lsp, project_engine, text_document.uri)
 
     {:noreply, lsp}
@@ -48,12 +48,12 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     case full_text_change(content_changes) do
       %{text: text} when is_binary(text) ->
         replace_document(document_store, text_document.uri, text_document.version, text)
-        index_changed_document(project_engine, document_store, text_document.uri)
+        index_changed_document(lsp, project_engine, document_store, text_document.uri)
         publish_diagnostics(lsp, project_engine, text_document.uri)
 
       %{"text" => text} when is_binary(text) ->
         replace_document(document_store, text_document.uri, text_document.version, text)
-        index_changed_document(project_engine, document_store, text_document.uri)
+        index_changed_document(lsp, project_engine, document_store, text_document.uri)
         publish_diagnostics(lsp, project_engine, text_document.uri)
 
       nil ->
@@ -68,7 +68,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     project_engine = project_engine(lsp, text_document.uri)
 
     :ok = DocumentStore.close(document_store(lsp, project_engine), text_document.uri)
-    delete_indexed_document(project_engine, text_document.uri)
+    delete_indexed_document(lsp, project_engine, text_document.uri)
     Diagnostics.clear(lsp, text_document.uri)
 
     {:noreply, lsp}
@@ -93,7 +93,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     end)
   end
 
-  defp index_opened_document({:ok, engine}, text_document) do
+  defp index_opened_document(lsp, {:ok, engine}, text_document) do
     document =
       Document.new(
         text_document.uri,
@@ -102,25 +102,28 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         text_document.text
       )
 
-    Indexer.schedule_document(engine.indexer, document)
+    Indexer.schedule_document(engine.indexer, document, indexer_opts(lsp, engine))
   end
 
-  defp index_opened_document(:error, _text_document), do: :ok
+  defp index_opened_document(_lsp, :error, _text_document), do: :ok
 
-  defp index_changed_document({:ok, engine}, document_store, uri) do
+  defp index_changed_document(lsp, {:ok, engine}, document_store, uri) do
     case DocumentStore.fetch(document_store, uri) do
-      {:ok, document} -> Indexer.schedule_document(engine.indexer, document)
-      :error -> :ok
+      {:ok, document} ->
+        Indexer.schedule_document(engine.indexer, document, indexer_opts(lsp, engine))
+
+      :error ->
+        :ok
     end
   end
 
-  defp index_changed_document(:error, _document_store, _uri), do: :ok
+  defp index_changed_document(_lsp, :error, _document_store, _uri), do: :ok
 
-  defp delete_indexed_document({:ok, engine}, uri) do
-    Indexer.delete_uri(engine.indexer, uri)
+  defp delete_indexed_document(lsp, {:ok, engine}, uri) do
+    Indexer.delete_uri(engine.indexer, uri, indexer_opts(lsp, engine))
   end
 
-  defp delete_indexed_document(:error, _uri), do: :ok
+  defp delete_indexed_document(_lsp, :error, _uri), do: :ok
 
   defp publish_diagnostics(lsp, project_engine, uri) do
     document_store = document_store(lsp, project_engine)
@@ -146,5 +149,9 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
           {:error, _reason} -> :error
         end
     end
+  end
+
+  defp indexer_opts(lsp, engine) do
+    [diagnostics: {lsp.pid, engine.document_store, {:ok, engine}}]
   end
 end

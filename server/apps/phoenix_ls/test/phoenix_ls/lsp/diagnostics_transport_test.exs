@@ -63,6 +63,58 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     )
   end
 
+  test "GenLSP transport refreshes open HEEx diagnostics after component dependency changes",
+       context do
+    root = fixture_project(context, "dependent_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+
+    assert_eventually(fn ->
+      assert [_attr] = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
+    end)
+
+    open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.missing_required_attr",
+            "message" => "Missing required attr \"label\" for .button",
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+
+    change_document(test_client, component_uri, 2, component_source_without_required_attr())
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => []
+      },
+      500
+    )
+  end
+
   test "GenLSP transport clears diagnostics when HEEx documents close", context do
     root = fixture_project(context, "clear_diagnostics_project")
     root_uri = SupportURI.path_to_file_uri!(root)
@@ -217,6 +269,18 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
       def button(assigns) do
         ~H\"\"\"
         <button><%= @label %></button>
+        \"\"\"
+      end
+    end
+    """
+  end
+
+  defp component_source_without_required_attr do
+    """
+    defmodule AppWeb.CoreComponents do
+      def button(assigns) do
+        ~H\"\"\"
+        <button>Save</button>
         \"\"\"
       end
     end

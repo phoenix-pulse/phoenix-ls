@@ -9,11 +9,13 @@ defmodule PhoenixLS.Workspace.FileEvents do
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Support.URI, as: SupportURI
 
-  @spec handle_lsp_events(GenServer.server(), [FileEvent.t()]) :: :ok
-  def handle_lsp_events(nil, events) when is_list(events), do: :ok
+  @spec handle_lsp_events(GenServer.server(), [FileEvent.t()], keyword()) :: :ok
+  def handle_lsp_events(project_manager, events, opts \\ [])
 
-  def handle_lsp_events(project_manager, events) when is_list(events) do
-    Enum.each(events, &handle_lsp_event(project_manager, &1))
+  def handle_lsp_events(nil, events, _opts) when is_list(events), do: :ok
+
+  def handle_lsp_events(project_manager, events, opts) when is_list(events) and is_list(opts) do
+    Enum.each(events, &handle_lsp_event(project_manager, &1, opts))
 
     :ok
   end
@@ -27,25 +29,34 @@ defmodule PhoenixLS.Workspace.FileEvents do
     handle_lsp_events(project_manager, [%FileEvent{uri: uri, type: type}])
   end
 
-  defp handle_lsp_event(project_manager, %FileEvent{uri: uri, type: type}) do
+  defp handle_lsp_event(project_manager, %FileEvent{uri: uri, type: type}, opts) do
     case Manager.ensure_project_for_uri(project_manager, uri) do
-      {:ok, engine} -> schedule(engine, uri, type)
+      {:ok, engine} -> schedule(engine, uri, type, opts)
       _missing_or_unavailable -> :ok
     end
   end
 
-  defp handle_lsp_event(_project_manager, _event), do: :ok
+  defp handle_lsp_event(_project_manager, _event, _opts), do: :ok
 
-  defp schedule(engine, uri, type) do
+  defp schedule(engine, uri, type, opts) do
+    indexer_opts = indexer_opts(engine, opts)
+
     cond do
       type == FileChangeType.deleted() ->
-        Indexer.delete_uri(engine.indexer, uri)
+        Indexer.delete_uri(engine.indexer, uri, indexer_opts)
 
       type in [FileChangeType.created(), FileChangeType.changed()] ->
-        Indexer.schedule_uri(engine.indexer, uri)
+        Indexer.schedule_uri(engine.indexer, uri, indexer_opts)
 
       true ->
         :ok
+    end
+  end
+
+  defp indexer_opts(engine, opts) do
+    case Keyword.get(opts, :diagnostics_pid) do
+      pid when is_pid(pid) -> [diagnostics: {pid, engine.document_store, {:ok, engine}}]
+      _other -> []
     end
   end
 

@@ -111,6 +111,63 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
+  test "notifies diagnostics target with changed dependency kinds after document indexing" do
+    uri = "file:///tmp/app/lib/app_web/components/core_components.ex"
+
+    first_document =
+      Document.new(
+        uri,
+        "elixir",
+        1,
+        """
+        defmodule AppWeb.CoreComponents do
+          def button(assigns) do
+            ~H\"\"\"
+            <button>Save</button>
+            \"\"\"
+          end
+        end
+        """
+      )
+
+    second_document =
+      Document.new(
+        uri,
+        "elixir",
+        2,
+        """
+        defmodule AppWeb.CoreComponents do
+          attr :label, :string, required: true
+
+          def button(assigns) do
+            ~H\"\"\"
+            <button><%= @label %></button>
+            \"\"\"
+          end
+        end
+        """
+      )
+
+    assert Indexer.schedule_document(@indexer, first_document) == :ok
+
+    assert_eventually(fn ->
+      assert ["AppWeb.CoreComponents.button/1"] =
+               @store
+               |> Store.by_kind(:component)
+               |> Enum.map(& &1.id)
+    end)
+
+    diagnostics = {self(), __MODULE__.DocumentStore, {:ok, :engine}}
+
+    assert Indexer.schedule_document(@indexer, second_document, diagnostics: diagnostics) == :ok
+
+    assert_receive {:phoenix_ls_index_changed, ^uri, changed_kinds, __MODULE__.DocumentStore,
+                    {:ok, :engine}},
+                   500
+
+    assert MapSet.subset?(MapSet.new([:component, :component_attr]), changed_kinds)
+  end
+
   test "emits telemetry for document, URI, project, and delete jobs", context do
     handler_id = {__MODULE__, self(), make_ref()}
 

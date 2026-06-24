@@ -18,7 +18,7 @@ defmodule PhoenixLS.LSP.Diagnostics do
 
   alias PhoenixLS.Features.Diagnostics, as: FeatureDiagnostics
   alias PhoenixLS.HEEx.Parser
-  alias PhoenixLS.Index.Snapshot
+  alias PhoenixLS.Index.{DependencyGraph, Snapshot}
   alias PhoenixLS.Project.Engine
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -75,6 +75,18 @@ defmodule PhoenixLS.LSP.Diagnostics do
       _stale_or_missing ->
         :ok
     end
+
+    {:noreply, lsp}
+  end
+
+  def handle_info(
+        {:phoenix_ls_index_changed, _uri, changed_kinds, document_store, project_engine},
+        %LSP{} = lsp
+      ) do
+    document_store
+    |> DocumentStore.open_documents()
+    |> then(&DependencyGraph.affected_diagnostic_uris(changed_kinds, &1))
+    |> Enum.each(&schedule_publish(lsp, document_store, &1, project_engine))
 
     {:noreply, lsp}
   end

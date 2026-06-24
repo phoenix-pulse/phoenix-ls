@@ -37,4 +37,18 @@ defmodule PhoenixLS.Workspace.DocumentStoreTest do
                "missing"
              )
   end
+
+  test "lists open documents sorted by uri" do
+    start_supervised!({DocumentStore, name: __MODULE__.ListStore})
+
+    first_uri = "file:///tmp/app/lib/a.html.heex"
+    second_uri = "file:///tmp/app/lib/b.html.heex"
+
+    assert :ok = DocumentStore.open(__MODULE__.ListStore, second_uri, "phoenix-heex", 1, "two")
+    assert :ok = DocumentStore.open(__MODULE__.ListStore, first_uri, "phoenix-heex", 1, "one")
+
+    assert [first, second] = DocumentStore.open_documents(__MODULE__.ListStore)
+    assert first.uri == first_uri
+    assert second.uri == second_uri
+  end
 end

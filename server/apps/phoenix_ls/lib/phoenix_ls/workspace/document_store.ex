@@ -32,6 +32,11 @@ defmodule PhoenixLS.Workspace.DocumentStore do
     GenServer.call(server, {:fetch, uri})
   end
 
+  @spec open_documents(server()) :: [Document.t()]
+  def open_documents(server \\ __MODULE__) do
+    GenServer.call(server, :open_documents)
+  end
+
   @spec close(server(), uri()) :: :ok
   def close(server \\ __MODULE__, uri) do
     GenServer.call(server, {:close, uri})
@@ -63,6 +68,15 @@ defmodule PhoenixLS.Workspace.DocumentStore do
 
   def handle_call({:fetch, uri}, _from, documents) do
     {:reply, Map.fetch(documents, uri), documents}
+  end
+
+  def handle_call(:open_documents, _from, documents) do
+    sorted =
+      documents
+      |> Map.values()
+      |> Enum.sort_by(& &1.uri)
+
+    {:reply, sorted, documents}
   end
 
   def handle_call({:close, uri}, _from, documents) do
