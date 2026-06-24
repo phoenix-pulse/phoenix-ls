@@ -30,7 +30,7 @@ defmodule PhoenixLS.Workspace.FileEvents do
   end
 
   defp handle_lsp_event(project_manager, %FileEvent{uri: uri, type: type}, opts) do
-    case Manager.ensure_project_for_uri(project_manager, uri) do
+    case Manager.ensure_project_for_uri(project_manager, uri, manager_opts(opts)) do
       {:ok, engine} -> schedule(engine, uri, type, opts)
       _missing_or_unavailable -> :ok
     end
@@ -55,8 +55,18 @@ defmodule PhoenixLS.Workspace.FileEvents do
 
   defp indexer_opts(engine, opts) do
     case Keyword.get(opts, :diagnostics_pid) do
-      pid when is_pid(pid) -> [diagnostics: {pid, engine.document_store, {:ok, engine}}]
-      _other -> []
+      pid when is_pid(pid) ->
+        [diagnostics: {pid, engine.document_store, {:ok, engine}}, status_target: pid]
+
+      _other ->
+        []
+    end
+  end
+
+  defp manager_opts(opts) do
+    case Keyword.get(opts, :diagnostics_pid) do
+      pid when is_pid(pid) -> [status_target: pid]
+      _missing -> []
     end
   end
 

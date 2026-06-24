@@ -7,6 +7,7 @@ defmodule PhoenixLS.LSP.Server do
 
   alias PhoenixLS.LSP.Diagnostics
   alias PhoenixLS.LSP.Dispatcher
+  alias PhoenixLS.LSP.Status
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -70,6 +71,12 @@ defmodule PhoenixLS.LSP.Server do
         lsp
       ) do
     Diagnostics.handle_info(message, lsp)
+  end
+
+  def handle_info({:phoenix_ls_status, payload}, lsp) do
+    Status.publish(lsp, payload)
+
+    {:noreply, lsp}
   end
 
   defp missing_gen_lsp_options(opts) do

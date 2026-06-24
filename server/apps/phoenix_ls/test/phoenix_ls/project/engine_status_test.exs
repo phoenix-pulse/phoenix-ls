@@ -97,6 +97,32 @@ defmodule PhoenixLS.Project.EngineStatusTest do
     assert Manager.status(manager, root_uri).state == :degraded
   end
 
+  test "failed engine starts publish structured degraded status" do
+    root_uri = "file:///tmp/phoenix-ls-status-structured-degraded"
+
+    manager =
+      start_supervised!(
+        {Manager,
+         name: __MODULE__.StructuredStatusManager,
+         engine_supervisor: __MODULE__.MissingStructuredStatusSupervisor,
+         restart_backoff_ms: 500}
+      )
+
+    assert {:error, reason} = Manager.ensure_engine(manager, root_uri, status_target: self())
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "project",
+                      "state" => "degraded",
+                      "rootUri" => ^root_uri,
+                      "sourceOnly" => true,
+                      "reason" => reason_text
+                    }},
+                   500
+
+    assert reason_text == inspect(reason)
+  end
+
   test "restart_engine reports timeout when stale registry entries cannot unregister" do
     %{manager: manager, supervisor: supervisor} =
       start_manager(__MODULE__.TimeoutSupervisor, __MODULE__.TimeoutManager,

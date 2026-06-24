@@ -16,6 +16,48 @@ defmodule PhoenixLS.Index.IndexerTest do
     :ok
   end
 
+  test "publishes structured status for startup project indexing", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    project_store =
+      Module.concat(__MODULE__, :"ProjectStatusStore#{System.unique_integer([:positive])}")
+
+    project_indexer =
+      Module.concat(__MODULE__, :"ProjectStatusIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: project_store}, id: {Store, project_store})
+
+    start_supervised!(
+      {Indexer,
+       name: project_indexer,
+       index_store: project_store,
+       root_uri: root_uri,
+       status_target: self()},
+      id: {Indexer, project_indexer}
+    )
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "started",
+                      "job" => "project",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "project",
+                      "rootUri" => ^root_uri,
+                      "result" => "ok",
+                      "count" => 0
+                    }},
+                   500
+  end
+
   test "asynchronously indexes an open Elixir document" do
     document =
       Document.new(
@@ -34,6 +76,38 @@ defmodule PhoenixLS.Index.IndexerTest do
     assert_eventually(fn ->
       assert index_ids(@store) == ["AppWeb.PageLive", "AppWeb.PageLive.mount/3"]
     end)
+  end
+
+  test "publishes structured status for document indexing" do
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/status_live.ex",
+        "elixir",
+        1,
+        "defmodule AppWeb.StatusLive do\nend\n"
+      )
+
+    assert Indexer.schedule_document(@indexer, document, status_target: self()) == :ok
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "started",
+                      "job" => "document",
+                      "uri" => "file:///tmp/app/lib/app_web/live/status_live.ex"
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "document",
+                      "uri" => "file:///tmp/app/lib/app_web/live/status_live.ex",
+                      "result" => "ok",
+                      "count" => 1
+                    }},
+                   500
   end
 
   test "asynchronously indexes an Elixir file from disk by URI", context do

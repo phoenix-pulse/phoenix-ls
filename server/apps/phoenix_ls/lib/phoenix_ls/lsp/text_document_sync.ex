@@ -143,7 +143,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         :error
 
       project_manager ->
-        case Manager.ensure_project_for_uri(project_manager, uri) do
+        case Manager.ensure_project_for_uri(project_manager, uri, status_target: lsp.pid) do
           {:ok, engine} -> {:ok, engine}
           :error -> :error
           {:error, _reason} -> :error
@@ -152,6 +152,9 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   end
 
   defp indexer_opts(lsp, engine) do
-    [diagnostics: {lsp.pid, engine.document_store, {:ok, engine}}]
+    [
+      diagnostics: {lsp.pid, engine.document_store, {:ok, engine}},
+      status_target: lsp.pid
+    ]
   end
 end

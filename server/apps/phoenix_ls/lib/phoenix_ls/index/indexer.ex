@@ -6,6 +6,7 @@ defmodule PhoenixLS.Index.Indexer do
   use GenServer
 
   alias PhoenixLS.Index.{DependencyGraph, DocumentIndexer, Invalidation, ProjectScan, Store}
+  alias PhoenixLS.LSP.Status
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Support.Telemetry
   alias PhoenixLS.Workspace.Document
@@ -40,7 +41,12 @@ defmodule PhoenixLS.Index.Indexer do
   @impl true
   def init(opts) do
     index_store = Keyword.fetch!(opts, :index_store)
-    state = %{index_store: index_store}
+
+    state = %{
+      index_store: index_store,
+      root_uri: Keyword.get(opts, :root_uri),
+      status_target: Keyword.get(opts, :status_target)
+    }
 
     case Keyword.fetch(opts, :root_uri) do
       {:ok, root_uri} -> {:ok, state, {:continue, {:index_project, root_uri}}}
@@ -50,13 +56,30 @@ defmodule PhoenixLS.Index.Indexer do
 
   @impl true
   def handle_continue({:index_project, root_uri}, state) do
-    emit_project_indexed(state.index_store, root_uri)
+    notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
+    {result, count} = emit_project_indexed(state.index_store, root_uri)
+
+    notify_status(
+      state,
+      [],
+      Status.indexing_completed(root_uri: root_uri, job: :project, result: result, count: count)
+    )
 
     {:noreply, state}
   end
 
   @impl true
   def handle_cast({:index_document, document, opts}, state) do
+    notify_status(
+      state,
+      opts,
+      Status.indexing_started(
+        root_uri: state.root_uri,
+        uri: document.uri,
+        job: :document
+      )
+    )
+
     before_facts = Store.by_uri(state.index_store, document.uri)
     result = DocumentIndexer.index(state.index_store, document)
     after_facts = Store.by_uri(state.index_store, document.uri)
@@ -73,10 +96,28 @@ defmodule PhoenixLS.Index.Indexer do
       }
     )
 
+    notify_status(
+      state,
+      opts,
+      Status.indexing_completed(
+        root_uri: state.root_uri,
+        uri: document.uri,
+        job: :document,
+        result: result,
+        count: fact_count(state.index_store, document.uri)
+      )
+    )
+
     {:noreply, state}
   end
 
   def handle_cast({:index_uri, uri, opts}, state) do
+    notify_status(
+      state,
+      opts,
+      Status.indexing_started(root_uri: state.root_uri, uri: uri, job: :uri)
+    )
+
     before_facts = Store.by_uri(state.index_store, uri)
     result = index_uri(state.index_store, uri)
     after_facts = Store.by_uri(state.index_store, uri)
@@ -89,16 +130,41 @@ defmodule PhoenixLS.Index.Indexer do
       result: result
     })
 
+    notify_status(
+      state,
+      opts,
+      Status.indexing_completed(
+        root_uri: state.root_uri,
+        uri: uri,
+        job: :uri,
+        result: result,
+        count: fact_count(state.index_store, uri)
+      )
+    )
+
     {:noreply, state}
   end
 
   def handle_cast({:index_project, root_uri}, state) do
-    emit_project_indexed(state.index_store, root_uri)
+    notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
+    {result, count} = emit_project_indexed(state.index_store, root_uri)
+
+    notify_status(
+      state,
+      [],
+      Status.indexing_completed(root_uri: root_uri, job: :project, result: result, count: count)
+    )
 
     {:noreply, state}
   end
 
   def handle_cast({:delete_uri, uri, opts}, state) do
+    notify_status(
+      state,
+      opts,
+      Status.indexing_started(root_uri: state.root_uri, uri: uri, job: :delete)
+    )
+
     before_facts = Store.by_uri(state.index_store, uri)
     :ok = Invalidation.invalidate_uri(state.index_store, uri)
     after_facts = Store.by_uri(state.index_store, uri)
@@ -107,6 +173,18 @@ defmodule PhoenixLS.Index.Indexer do
     maybe_notify_index_changed(opts, uri, changed_kinds)
 
     Telemetry.execute([:indexer, :delete], %{count: 1}, %{uri: uri, result: :ok})
+
+    notify_status(
+      state,
+      opts,
+      Status.indexing_completed(
+        root_uri: state.root_uri,
+        uri: uri,
+        job: :delete,
+        result: :ok,
+        count: 0
+      )
+    )
 
     {:noreply, state}
   end
@@ -130,6 +208,8 @@ defmodule PhoenixLS.Index.Indexer do
       root_uri: root_uri,
       result: result
     })
+
+    {result, count}
   end
 
   defp index_project(index_store, root_uri) do
@@ -157,6 +237,13 @@ defmodule PhoenixLS.Index.Indexer do
       send(pid, {:phoenix_ls_index_changed, uri, changed_kinds, document_store, project_engine})
     else
       _ignored -> :ok
+    end
+  end
+
+  defp notify_status(state, opts, payload) do
+    case Keyword.get(opts, :status_target, state.status_target) do
+      pid when is_pid(pid) -> send(pid, {:phoenix_ls_status, payload})
+      _missing -> :ok
     end
   end
 

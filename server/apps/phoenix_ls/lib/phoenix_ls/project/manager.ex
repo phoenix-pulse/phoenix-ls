@@ -5,6 +5,7 @@ defmodule PhoenixLS.Project.Manager do
 
   use GenServer
 
+  alias PhoenixLS.LSP.Status
   alias PhoenixLS.Project.{Engine, EngineStatus, Locator}
   alias PhoenixLS.Support.Telemetry
 
@@ -21,20 +22,25 @@ defmodule PhoenixLS.Project.Manager do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  @spec ensure_engine(GenServer.server(), String.t()) :: {:ok, Engine.t()} | {:error, term()}
-  def ensure_engine(server \\ @default_name, root_uri) when is_binary(root_uri) do
-    GenServer.call(server, {:ensure_engine, root_uri})
+  @spec ensure_engine(GenServer.server(), String.t(), keyword()) ::
+          {:ok, Engine.t()} | {:error, term()}
+  def ensure_engine(server \\ @default_name, root_uri, opts \\ [])
+      when is_binary(root_uri) and is_list(opts) do
+    GenServer.call(server, {:ensure_engine, root_uri, opts})
   end
 
-  @spec ensure_project_for_uri(GenServer.server(), String.t()) ::
+  @spec ensure_project_for_uri(GenServer.server(), String.t(), keyword()) ::
           {:ok, Engine.t()} | :error | {:error, term()}
-  def ensure_project_for_uri(server \\ @default_name, uri) when is_binary(uri) do
-    GenServer.call(server, {:ensure_project_for_uri, uri})
+  def ensure_project_for_uri(server \\ @default_name, uri, opts \\ [])
+      when is_binary(uri) and is_list(opts) do
+    GenServer.call(server, {:ensure_project_for_uri, uri, opts})
   end
 
-  @spec restart_engine(GenServer.server(), String.t()) :: {:ok, Engine.t()} | {:error, term()}
-  def restart_engine(server \\ @default_name, root_uri) when is_binary(root_uri) do
-    GenServer.call(server, {:restart_engine, root_uri})
+  @spec restart_engine(GenServer.server(), String.t(), keyword()) ::
+          {:ok, Engine.t()} | {:error, term()}
+  def restart_engine(server \\ @default_name, root_uri, opts \\ [])
+      when is_binary(root_uri) and is_list(opts) do
+    GenServer.call(server, {:restart_engine, root_uri, opts})
   end
 
   @spec fetch_engine(GenServer.server(), String.t()) :: {:ok, Engine.t()} | :error
@@ -67,16 +73,16 @@ defmodule PhoenixLS.Project.Manager do
   end
 
   @impl true
-  def handle_call({:ensure_engine, root_uri}, _from, state) do
-    {reply, state} = ensure_engine_started(state, root_uri)
+  def handle_call({:ensure_engine, root_uri, opts}, _from, state) do
+    {reply, state} = ensure_engine_started(state, root_uri, opts)
 
     {:reply, reply, state}
   end
 
-  def handle_call({:ensure_project_for_uri, uri}, _from, state) do
+  def handle_call({:ensure_project_for_uri, uri, opts}, _from, state) do
     {reply, state} =
       case Locator.locate(uri) do
-        {:ok, located} -> ensure_engine_started(state, located.root_uri)
+        {:ok, located} -> ensure_engine_started(state, located.root_uri, opts)
         :error -> {:error, state}
         {:error, _reason} = error -> {error, state}
       end
@@ -84,15 +90,15 @@ defmodule PhoenixLS.Project.Manager do
     {:reply, reply, state}
   end
 
-  def handle_call({:restart_engine, root_uri}, _from, state) do
+  def handle_call({:restart_engine, root_uri, opts}, _from, state) do
     case terminate_engine(state, root_uri) do
       :ok ->
-        {reply, state} = start_engine_with_state(state, root_uri)
+        {reply, state} = start_engine_with_state(state, root_uri, opts)
 
         {:reply, reply, state}
 
       {:error, reason} = error ->
-        state = mark_degraded(state, root_uri, reason)
+        state = mark_degraded(state, root_uri, reason, opts)
 
         {:reply, error, state}
     end
@@ -128,32 +134,40 @@ defmodule PhoenixLS.Project.Manager do
     {:reply, reply, state}
   end
 
-  defp ensure_engine_started(state, root_uri) do
+  defp ensure_engine_started(state, root_uri, opts) do
     case fetch_engine_handle(root_uri) do
       {:ok, engine} ->
         {{:ok, engine}, clear_degraded(state, root_uri)}
 
       :error ->
         case backoff_reason(state, root_uri) do
-          {:ok, reason} -> {{:error, {:backoff, reason}}, state}
-          :error -> start_engine_with_state(state, root_uri)
+          {:ok, reason} ->
+            notify_status(opts, Status.project_degraded(root_uri, reason))
+            {{:error, {:backoff, reason}}, state}
+
+          :error ->
+            start_engine_with_state(state, root_uri, opts)
         end
     end
   end
 
-  defp start_engine_with_state(state, root_uri) do
-    case start_engine(state.engine_supervisor, root_uri) do
+  defp start_engine_with_state(state, root_uri, opts) do
+    case start_engine(state.engine_supervisor, root_uri, opts) do
       {:ok, engine} ->
         {{:ok, engine}, clear_degraded(state, root_uri)}
 
       {:error, reason} ->
-        {{:error, reason}, mark_degraded(state, root_uri, reason)}
+        {{:error, reason}, mark_degraded(state, root_uri, reason, opts)}
     end
   end
 
-  defp start_engine(engine_supervisor, root_uri) do
+  defp start_engine(engine_supervisor, root_uri, opts) do
+    engine_opts =
+      [root_uri: root_uri]
+      |> Keyword.merge(engine_status_opts(opts))
+
     try do
-      case DynamicSupervisor.start_child(engine_supervisor, {Engine, root_uri: root_uri}) do
+      case DynamicSupervisor.start_child(engine_supervisor, {Engine, engine_opts}) do
         {:ok, pid} -> {:ok, Engine.handle(root_uri, pid)}
         {:error, {:already_started, pid}} -> {:ok, Engine.handle(root_uri, pid)}
         {:error, reason} -> {:error, reason}
@@ -195,11 +209,13 @@ defmodule PhoenixLS.Project.Manager do
     end
   end
 
-  defp mark_degraded(state, root_uri, reason) do
+  defp mark_degraded(state, root_uri, reason, opts) do
     Telemetry.execute([:project, :degraded], %{count: 1}, %{
       root_uri: root_uri,
       reason: reason
     })
+
+    notify_status(opts, Status.project_degraded(root_uri, reason))
 
     %{
       state
@@ -235,6 +251,20 @@ defmodule PhoenixLS.Project.Manager do
     case Registry.lookup(@registry, {:engine, root_uri}) do
       [{pid, _value}] -> {:ok, Engine.handle(root_uri, pid)}
       [] -> :error
+    end
+  end
+
+  defp engine_status_opts(opts) do
+    case Keyword.get(opts, :status_target) do
+      pid when is_pid(pid) -> [status_target: pid]
+      _missing -> []
+    end
+  end
+
+  defp notify_status(opts, payload) do
+    case Keyword.get(opts, :status_target) do
+      pid when is_pid(pid) -> send(pid, {:phoenix_ls_status, payload})
+      _missing -> :ok
     end
   end
 end

@@ -135,7 +135,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
   defp assign_project(lsp, root_uri) when is_binary(root_uri) do
     project_manager = LSP.assigns(lsp).project_manager
 
-    case Manager.ensure_project_for_uri(project_manager, root_uri) do
+    case Manager.ensure_project_for_uri(project_manager, root_uri, status_target: lsp.pid) do
       {:ok, engine} ->
         LSP.assign(lsp, document_store: engine.document_store, project_root_uri: engine.root_uri)
 

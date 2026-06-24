@@ -67,7 +67,7 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   defp add_project_roots(project_roots, lsp, entries) do
     Enum.reduce(entries, project_roots, fn entry, roots ->
-      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri) do
+      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri, status_target: lsp.pid) do
         {:ok, engine} -> MapSet.put(roots, engine.root_uri)
         _not_located -> roots
       end
@@ -76,7 +76,7 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   defp remove_project_roots(project_roots, lsp, entries) do
     Enum.reduce(entries, project_roots, fn entry, roots ->
-      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri) do
+      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri, status_target: lsp.pid) do
         {:ok, engine} -> MapSet.delete(roots, engine.root_uri)
         _not_located -> roots
       end
