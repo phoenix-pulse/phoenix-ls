@@ -20,6 +20,7 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     VersionedTextDocumentIdentifier
   }
 
+  alias PhoenixLS.Index.Store, as: IndexStore
   alias PhoenixLS.LSP.{Server, TextDocumentSync}
   alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
@@ -137,16 +138,102 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     assert document.text == "<div>Project</div>"
   end
 
+  test "indexes opened Elixir documents in the document URI project",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "indexed_open_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    document_uri = SupportURI.path_to_file_uri!(Path.join([root, "lib", "page_live.ex"]))
+
+    source = """
+    defmodule AppWeb.PageLive do
+      def mount(params, session, socket), do: {:ok, socket}
+    end
+    """
+
+    assert {:noreply, ^lsp} =
+             TextDocumentSync.handle(
+               open_notification(document_uri, "elixir", source),
+               lsp
+             )
+
+    assert index_ids(Names.index_store(root_uri)) == [
+             "AppWeb.PageLive",
+             "AppWeb.PageLive.mount/3"
+           ]
+  end
+
+  test "reindexes changed Elixir documents in the document URI project",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "indexed_change_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    document_uri = SupportURI.path_to_file_uri!(Path.join([root, "lib", "page_live.ex"]))
+
+    first_source = """
+    defmodule AppWeb.FirstLive do
+      def mount(socket), do: socket
+    end
+    """
+
+    second_source = """
+    defmodule AppWeb.SecondLive do
+      def render(assigns), do: assigns
+    end
+    """
+
+    TextDocumentSync.handle(open_notification(document_uri, "elixir", first_source), lsp)
+
+    assert {:noreply, ^lsp} =
+             TextDocumentSync.handle(
+               change_notification(document_uri, 2, [%{text: second_source}]),
+               lsp
+             )
+
+    assert index_ids(Names.index_store(root_uri)) == [
+             "AppWeb.SecondLive",
+             "AppWeb.SecondLive.render/1"
+           ]
+  end
+
+  test "removes indexed facts when an Elixir document closes",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "indexed_close_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    document_uri = SupportURI.path_to_file_uri!(Path.join([root, "lib", "page_live.ex"]))
+
+    source = """
+    defmodule AppWeb.PageLive do
+    end
+    """
+
+    TextDocumentSync.handle(open_notification(document_uri, "elixir", source), lsp)
+    assert [_fact] = IndexStore.by_uri(Names.index_store(root_uri), document_uri)
+
+    assert {:noreply, ^lsp} =
+             TextDocumentSync.handle(close_notification(document_uri), lsp)
+
+    assert IndexStore.by_uri(Names.index_store(root_uri), document_uri) == []
+  end
+
   defp open_notification do
     open_notification(@uri, "<div>Hello</div>")
   end
 
   defp open_notification(uri, text) do
+    open_notification(uri, "phoenix-heex", text)
+  end
+
+  defp open_notification(uri, language_id, text) do
     %TextDocumentDidOpen{
       params: %DidOpenTextDocumentParams{
         text_document: %TextDocumentItem{
           uri: uri,
-          language_id: "phoenix-heex",
+          language_id: language_id,
           version: 1,
           text: text
         }
@@ -155,10 +242,14 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
   end
 
   defp change_notification(version, content_changes) do
+    change_notification(@uri, version, content_changes)
+  end
+
+  defp change_notification(uri, version, content_changes) do
     %TextDocumentDidChange{
       params: %DidChangeTextDocumentParams{
         text_document: %VersionedTextDocumentIdentifier{
-          uri: @uri,
+          uri: uri,
           version: version
         },
         content_changes: content_changes
@@ -167,11 +258,22 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
   end
 
   defp close_notification do
+    close_notification(@uri)
+  end
+
+  defp close_notification(uri) do
     %TextDocumentDidClose{
       params: %DidCloseTextDocumentParams{
-        text_document: %TextDocumentIdentifier{uri: @uri}
+        text_document: %TextDocumentIdentifier{uri: uri}
       }
     }
+  end
+
+  defp index_ids(index_store) do
+    index_store
+    |> IndexStore.all()
+    |> Enum.map(& &1.id)
+    |> Enum.sort()
   end
 
   defp fixture_project(context, name) do

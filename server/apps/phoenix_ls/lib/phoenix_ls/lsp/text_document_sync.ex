@@ -11,19 +11,24 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     TextDocumentDidOpen
   }
 
+  alias PhoenixLS.Index.DocumentIndexer
   alias PhoenixLS.Project.Manager
-  alias PhoenixLS.Workspace.DocumentStore
+  alias PhoenixLS.Workspace.{Document, DocumentStore}
 
   @spec handle(TextDocumentDidOpen.t(), LSP.t()) :: {:noreply, LSP.t()}
   def handle(%TextDocumentDidOpen{params: %{text_document: text_document}}, lsp) do
+    project_engine = project_engine(lsp, text_document.uri)
+
     :ok =
       DocumentStore.open(
-        document_store(lsp, text_document.uri),
+        document_store(lsp, project_engine),
         text_document.uri,
         text_document.language_id,
         text_document.version,
         text_document.text
       )
+
+    index_opened_document(project_engine, text_document)
 
     {:noreply, lsp}
   end
@@ -35,12 +40,17 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         },
         lsp
       ) do
+    project_engine = project_engine(lsp, text_document.uri)
+    document_store = document_store(lsp, project_engine)
+
     case full_text_change(content_changes) do
       %{text: text} when is_binary(text) ->
-        replace_document(lsp, text_document.uri, text_document.version, text)
+        replace_document(document_store, text_document.uri, text_document.version, text)
+        index_changed_document(project_engine, document_store, text_document.uri)
 
       %{"text" => text} when is_binary(text) ->
-        replace_document(lsp, text_document.uri, text_document.version, text)
+        replace_document(document_store, text_document.uri, text_document.version, text)
+        index_changed_document(project_engine, document_store, text_document.uri)
 
       nil ->
         :ok
@@ -51,13 +61,16 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
 
   @spec handle(TextDocumentDidClose.t(), LSP.t()) :: {:noreply, LSP.t()}
   def handle(%TextDocumentDidClose{params: %{text_document: text_document}}, lsp) do
-    :ok = DocumentStore.close(document_store(lsp, text_document.uri), text_document.uri)
+    project_engine = project_engine(lsp, text_document.uri)
+
+    :ok = DocumentStore.close(document_store(lsp, project_engine), text_document.uri)
+    delete_indexed_document(project_engine, text_document.uri)
 
     {:noreply, lsp}
   end
 
-  defp replace_document(lsp, uri, version, text) do
-    case DocumentStore.replace(document_store(lsp, uri), uri, version, text) do
+  defp replace_document(document_store, uri, version, text) do
+    case DocumentStore.replace(document_store, uri, version, text) do
       :ok -> :ok
       {:error, :not_found} -> :ok
     end
@@ -75,23 +88,49 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
     end)
   end
 
-  defp document_store(lsp, uri) do
-    assigns = LSP.assigns(lsp)
+  defp index_opened_document({:ok, engine}, text_document) do
+    document =
+      Document.new(
+        text_document.uri,
+        text_document.language_id,
+        text_document.version,
+        text_document.text
+      )
 
-    case project_document_store(assigns, uri) do
-      {:ok, document_store} -> document_store
-      :error -> assigns.document_store
+    DocumentIndexer.index(engine.index_store, document)
+  end
+
+  defp index_opened_document(:error, _text_document), do: :ok
+
+  defp index_changed_document({:ok, engine}, document_store, uri) do
+    case DocumentStore.fetch(document_store, uri) do
+      {:ok, document} -> DocumentIndexer.index(engine.index_store, document)
+      :error -> :ok
     end
   end
 
-  defp project_document_store(assigns, uri) do
-    case Map.get(assigns, :project_manager) do
+  defp index_changed_document(:error, _document_store, _uri), do: :ok
+
+  defp delete_indexed_document({:ok, engine}, uri) do
+    DocumentIndexer.delete_uri(engine.index_store, uri)
+  end
+
+  defp delete_indexed_document(:error, _uri), do: :ok
+
+  defp document_store(_lsp, {:ok, engine}), do: engine.document_store
+
+  defp document_store(lsp, :error) do
+    LSP.assigns(lsp).document_store
+  end
+
+  defp project_engine(lsp, uri) do
+    case Map.get(LSP.assigns(lsp), :project_manager) do
       nil ->
         :error
 
       project_manager ->
         case Manager.ensure_project_for_uri(project_manager, uri) do
-          {:ok, engine} -> {:ok, engine.document_store}
+          {:ok, engine} -> {:ok, engine}
           :error -> :error
           {:error, _reason} -> :error
         end
