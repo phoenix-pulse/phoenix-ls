@@ -34,7 +34,7 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
 
     assert %CompletionOptions{} = completion = capabilities.completion_provider
     assert completion.trigger_characters == [".", ":"]
-    assert completion.resolve_provider == false
+    assert completion.resolve_provider == true
   end
 
   test "does not advertise request handlers that are not implemented yet" do

@@ -82,6 +82,86 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     assert_result(2, [], 500)
   end
 
+  test "GenLSP transport returns route completions from indexed router facts", context do
+    root = fixture_project(context, "route_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.link navigate={~p\"/prod|\"} />")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", router_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 2,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      2,
+      [
+        %{
+          "data" => %{
+            "id" => "AppWeb.Router:live:/products/:id:AppWeb.ProductLive.Show:show",
+            "kind" => "route"
+          },
+          "detail" => "live AppWeb.ProductLive.Show :show",
+          "insertText" => "/products/:id",
+          "insertTextFormat" => 1,
+          "kind" => 18,
+          "label" => "/products/:id"
+        }
+      ],
+      500
+    )
+  end
+
+  test "GenLSP transport resolves completion item documentation" do
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    GenLSP.Test.request(test_client, %{
+      id: 9,
+      jsonrpc: "2.0",
+      method: "completionItem/resolve",
+      params: %{
+        label: "label",
+        detail: "attr :label, :string",
+        data: %{
+          "kind" => "component_attr",
+          "id" => "AppWeb.CoreComponents.button/1:attr:label",
+          "documentation" => "Visible label"
+        }
+      }
+    })
+
+    assert_result(
+      9,
+      %{
+        "data" => %{
+          "documentation" => "Visible label",
+          "id" => "AppWeb.CoreComponents.button/1:attr:label",
+          "kind" => "component_attr"
+        },
+        "detail" => "attr :label, :string",
+        "documentation" => "Visible label",
+        "label" => "label"
+      },
+      500
+    )
+  end
+
   defp initialize(test_client, root_uri) do
     version = PhoenixLS.version()
 
@@ -101,7 +181,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
       %{
         "capabilities" => %{
           "completionProvider" => %{
-            "resolveProvider" => false,
+            "resolveProvider" => true,
             "triggerCharacters" => [".", ":"]
           },
           "experimental" => nil,
@@ -149,6 +229,18 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
         ~H\"\"\"
         <button><%= @label %></button>
         \"\"\"
+      end
+    end
+    """
+  end
+
+  defp router_source do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products/:id", ProductLive.Show, :show
       end
     end
     """

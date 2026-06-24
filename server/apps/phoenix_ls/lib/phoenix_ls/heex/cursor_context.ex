@@ -56,6 +56,7 @@ defmodule PhoenixLS.HEEx.CursorContext do
       attribute: nil,
       attribute_prefix: "",
       value_prefix: "",
+      expression_prefix: "",
       closing?: false
     }
   end
@@ -65,7 +66,7 @@ defmodule PhoenixLS.HEEx.CursorContext do
   end
 
   defp step("{", %{state: :text} = state) do
-    %{state | state: :expression, return_state: :text, brace_depth: 1}
+    %{state | state: :expression, return_state: :text, brace_depth: 1, expression_prefix: ""}
   end
 
   defp step(_grapheme, %{state: :text} = state), do: state
@@ -103,7 +104,13 @@ defmodule PhoenixLS.HEEx.CursorContext do
         state
 
       grapheme == "{" ->
-        %{state | state: :expression, return_state: :before_attribute, brace_depth: 1}
+        %{
+          state
+          | state: :expression,
+            return_state: :before_attribute,
+            brace_depth: 1,
+            expression_prefix: ""
+        }
 
       true ->
         %{state | state: :attribute_name, attribute: nil, attribute_prefix: grapheme}
@@ -138,7 +145,13 @@ defmodule PhoenixLS.HEEx.CursorContext do
         %{state | state: :attribute_value_quoted, quote: grapheme, value_prefix: ""}
 
       grapheme == "{" ->
-        %{state | state: :expression, return_state: :before_attribute, brace_depth: 1}
+        %{
+          state
+          | state: :expression,
+            return_state: :before_attribute,
+            brace_depth: 1,
+            expression_prefix: ""
+        }
 
       grapheme == ">" ->
         text_state(state)
@@ -170,7 +183,11 @@ defmodule PhoenixLS.HEEx.CursorContext do
   end
 
   defp step("{", %{state: :expression} = state) do
-    %{state | brace_depth: state.brace_depth + 1}
+    %{
+      state
+      | brace_depth: state.brace_depth + 1,
+        expression_prefix: state.expression_prefix <> "{"
+    }
   end
 
   defp step("}", %{state: :expression, brace_depth: 1} = state) do
@@ -181,10 +198,16 @@ defmodule PhoenixLS.HEEx.CursorContext do
   end
 
   defp step("}", %{state: :expression} = state) do
-    %{state | brace_depth: max(state.brace_depth - 1, 0)}
+    %{
+      state
+      | brace_depth: max(state.brace_depth - 1, 0),
+        expression_prefix: state.expression_prefix <> "}"
+    }
   end
 
-  defp step(_grapheme, %{state: :expression} = state), do: state
+  defp step(grapheme, %{state: :expression} = state) do
+    %{state | expression_prefix: state.expression_prefix <> grapheme}
+  end
 
   defp context(%{state: :tag_name} = state) do
     %__MODULE__{
@@ -239,7 +262,7 @@ defmodule PhoenixLS.HEEx.CursorContext do
       kind: :expression,
       tag: expression_tag(state),
       attribute: expression_attribute(state),
-      prefix: "",
+      prefix: state.expression_prefix,
       closing?: state.closing?
     }
   end

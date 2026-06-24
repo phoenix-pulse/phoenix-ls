@@ -37,7 +37,7 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
       %{
         "capabilities" => %{
           "completionProvider" => %{
-            "resolveProvider" => false,
+            "resolveProvider" => true,
             "triggerCharacters" => [".", ":"]
           },
           "experimental" => nil,
@@ -112,7 +112,7 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
       %{
         "capabilities" => %{
           "completionProvider" => %{
-            "resolveProvider" => false,
+            "resolveProvider" => true,
             "triggerCharacters" => [".", ":"]
           },
           "experimental" => nil,

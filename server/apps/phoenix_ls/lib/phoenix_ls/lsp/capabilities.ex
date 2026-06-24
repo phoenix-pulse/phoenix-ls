@@ -24,7 +24,7 @@ defmodule PhoenixLS.LSP.Capabilities do
       },
       completion_provider: %CompletionOptions{
         trigger_characters: [".", ":"],
-        resolve_provider: false
+        resolve_provider: true
       },
       workspace: %{
         workspace_folders: %WorkspaceFoldersServerCapabilities{

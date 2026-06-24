@@ -26,10 +26,11 @@ defmodule PhoenixLS.Introspection.LiveViewTest do
 
     assert Enum.map(facts, & &1.id) == [
              "AppWeb.ProductLive",
-             "AppWeb.ProductLive:event:select-product"
+             "AppWeb.ProductLive:event:select-product",
+             "AppWeb.ProductLive:assign:selected_id"
            ]
 
-    assert [live_view, event] = facts
+    assert [live_view, event, assign] = facts
 
     assert live_view.kind == :live_view
     assert live_view.data == %{module: "AppWeb.ProductLive"}
@@ -40,6 +41,13 @@ defmodule PhoenixLS.Introspection.LiveViewTest do
     assert event.data == %{
              module: "AppWeb.ProductLive",
              event: "select-product"
+           }
+
+    assert assign.kind == :assign
+
+    assert assign.data == %{
+             module: "AppWeb.ProductLive",
+             name: "selected_id"
            }
   end
 

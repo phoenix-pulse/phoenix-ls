@@ -3,8 +3,8 @@ defmodule PhoenixLS.LSP.Completion do
   Handles LSP completion requests.
   """
 
-  alias GenLSP.Requests.TextDocumentCompletion
-  alias PhoenixLS.Features.Completion.Components
+  alias GenLSP.Requests.{CompletionItemResolve, TextDocumentCompletion}
+  alias PhoenixLS.Features.Completion.{Components, Phoenix, Resolve}
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Store, as: IndexStore
   alias PhoenixLS.LSP.RequestContext
@@ -22,11 +22,17 @@ defmodule PhoenixLS.LSP.Completion do
            {:ok, context} <- CursorContext.at(document.text, position) do
         facts = IndexStore.all(engine.index_store)
 
-        Components.complete(context, facts)
+        Components.complete(context, facts) ++ Phoenix.complete(context, facts)
       else
         _missing_or_invalid -> []
       end
 
     {:reply, items, context.lsp}
+  end
+
+  @spec resolve(CompletionItemResolve.t(), RequestContext.t()) ::
+          {:reply, GenLSP.Structures.CompletionItem.t(), GenLSP.LSP.t()}
+  def resolve(%CompletionItemResolve{params: item}, %RequestContext{} = context) do
+    {:reply, Resolve.resolve(item), context.lsp}
   end
 end

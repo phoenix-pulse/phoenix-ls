@@ -15,7 +15,7 @@ defmodule PhoenixLS.Introspection.LiveView do
       {:ok, range} ->
         [
           live_view_fact(module, range, uri, provenance)
-          | event_facts(module, expressions, uri, provenance)
+          | detail_facts(module, expressions, uri, provenance)
         ]
 
       :error ->
@@ -75,6 +75,46 @@ defmodule PhoenixLS.Introspection.LiveView do
         []
     end)
   end
+
+  defp detail_facts(module, expressions, uri, provenance) do
+    event_facts(module, expressions, uri, provenance) ++
+      assign_facts(module, expressions, uri, provenance)
+  end
+
+  defp assign_facts(module, expressions, uri, provenance) do
+    expressions
+    |> Enum.flat_map(&assign_calls/1)
+    |> Enum.uniq_by(fn {_meta, name} -> name end)
+    |> Enum.map(fn {meta, name} ->
+      Fact.new!(
+        kind: :assign,
+        id: "#{module}:assign:#{name}",
+        uri: uri,
+        range: source_range(meta),
+        provenance: provenance,
+        data: %{
+          module: module,
+          name: name
+        }
+      )
+    end)
+  end
+
+  defp assign_calls({:assign, meta, [_socket, name, _value]}) when is_atom(name) do
+    [{meta, Atom.to_string(name)}]
+  end
+
+  defp assign_calls(list) when is_list(list) do
+    Enum.flat_map(list, &assign_calls/1)
+  end
+
+  defp assign_calls(tuple) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> Enum.flat_map(&assign_calls/1)
+  end
+
+  defp assign_calls(_node), do: []
 
   defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
   defp top_level_expressions(nil), do: []

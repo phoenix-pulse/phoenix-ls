@@ -88,6 +88,25 @@ defmodule PhoenixLS.HEEx.CursorContextTest do
     assert context.kind == :expression
     assert context.tag == nil
     assert context.attribute == nil
+    assert context.prefix == "@na"
+  end
+
+  test "preserves verified route sigil prefixes inside attribute expressions" do
+    assert {:ok, context} = context("<.link navigate={~p\"/prod|ucts\"} />")
+
+    assert context.kind == :expression
+    assert context.tag == ".link"
+    assert context.attribute == "navigate"
+    assert context.prefix == "~p\"/prod"
+  end
+
+  test "preserves form field prefixes inside attribute expressions" do
+    assert {:ok, context} = context("<.input field={@form[:na|me]} />")
+
+    assert context.kind == :expression
+    assert context.tag == ".input"
+    assert context.attribute == "field"
+    assert context.prefix == "@form[:na"
   end
 
   test "uses UTF-16 LSP positions for cursor offsets" do

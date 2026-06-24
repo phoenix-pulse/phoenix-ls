@@ -19,7 +19,12 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     assert item.detail == "AppWeb.CoreComponents.button/1"
     assert item.insert_text == ".button"
     assert item.insert_text_format == InsertTextFormat.plain_text()
-    assert item.data == %{"kind" => "component", "id" => "AppWeb.CoreComponents.button/1"}
+
+    assert item.data == %{
+             "kind" => "component",
+             "id" => "AppWeb.CoreComponents.button/1",
+             "documentation" => "Renders a button."
+           }
   end
 
   test "completes component attrs for a local function component tag" do
@@ -38,6 +43,29 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
            }
 
     assert kind_item.detail == "attr :kind, :atom"
+  end
+
+  test "completes remote component tags through aliases" do
+    items = complete("<CoreComponents.bu| />")
+
+    assert Enum.map(items, & &1.label) == ["CoreComponents.button"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.function()
+    assert item.detail == "AppWeb.CoreComponents.button/1"
+    assert item.insert_text == "CoreComponents.button"
+
+    assert item.data == %{
+             "kind" => "component",
+             "id" => "AppWeb.CoreComponents.button/1",
+             "documentation" => "Renders a button."
+           }
+  end
+
+  test "completes remote component attrs through aliases" do
+    items = complete("<CoreComponents.button |> ")
+
+    assert Enum.map(items, & &1.label) == ["label", "kind"]
   end
 
   test "completes slot tags by prefix" do
@@ -96,6 +124,7 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
           attr :class, :string
         end
 
+        @doc "Renders a button."
         def button(assigns) do
           ~H\"\"\"
           <button><%= render_slot(@inner_block) %></button>
@@ -105,6 +134,10 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
         def card(assigns) do
           ~H"<section />"
         end
+      end
+
+      defmodule AppWeb.PageLive do
+        alias AppWeb.CoreComponents
       end
       """)
 

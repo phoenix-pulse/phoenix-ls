@@ -30,7 +30,7 @@ defmodule PhoenixLS.LSP.WatchedFilesTransportTest do
       1,
       %{
         "capabilities" => %{
-          "completionProvider" => %{"resolveProvider" => false, "triggerCharacters" => [".", ":"]},
+          "completionProvider" => %{"resolveProvider" => true, "triggerCharacters" => [".", ":"]},
           "experimental" => nil,
           "textDocumentSync" => %{"openClose" => true, "change" => 1},
           "workspace" => %{
