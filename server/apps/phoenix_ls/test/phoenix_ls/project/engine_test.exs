@@ -4,6 +4,7 @@ defmodule PhoenixLS.Project.EngineTest do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.{Fact, Store}
   alias PhoenixLS.Project.{Engine, Names}
+  alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
   @root_uri "file:///tmp/phoenix-ls-engine-test"
@@ -36,6 +37,47 @@ defmodule PhoenixLS.Project.EngineTest do
 
     assert :ok = Store.put(index_store, fact)
     assert Store.all(index_store) == [fact]
+  end
+
+  test "warm-indexes project source files on startup", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    component_path = Path.join([root, "lib", "app_web", "components", "core_components.ex"])
+
+    template_path =
+      Path.join([root, "lib", "app_web", "controllers", "page_html", "index.html.heex"])
+
+    File.mkdir_p!(Path.dirname(component_path))
+    File.mkdir_p!(Path.dirname(template_path))
+
+    File.write!(component_path, """
+    defmodule AppWeb.CoreComponents do
+      def button(assigns) do
+        ~H\"\"\"
+        <button>Save</button>
+        \"\"\"
+      end
+    end
+    """)
+
+    File.write!(template_path, "<section><.button /></section>\n")
+
+    assert {:ok, _pid} = Engine.start_link(root_uri: root_uri)
+
+    assert_eventually(fn ->
+      assert ["AppWeb.CoreComponents.button/1"] =
+               root_uri
+               |> Names.index_store()
+               |> Store.by_kind(:component)
+               |> Enum.map(& &1.id)
+
+      assert [template] =
+               root_uri
+               |> Names.index_store()
+               |> Store.by_kind(:template)
+
+      assert template.uri == SupportURI.path_to_file_uri!(template_path)
+    end)
   end
 
   test "builds a handle with the engine pid and document store" do
@@ -77,5 +119,34 @@ defmodule PhoenixLS.Project.EngineTest do
       },
       provenance: %{source: :engine_test}
     )
+  end
+
+  defp assert_eventually(fun, attempts_left \\ 20)
+
+  defp assert_eventually(fun, attempts_left) do
+    fun.()
+  rescue
+    exception in [ExUnit.AssertionError, MatchError] ->
+      if attempts_left > 0 do
+        Process.sleep(10)
+        assert_eventually(fun, attempts_left - 1)
+      else
+        reraise exception, __STACKTRACE__
+      end
+  end
+
+  defp tmp_dir(context) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "phoenix_ls_engine_#{context.test |> Atom.to_string() |> :erlang.phash2()}_#{System.unique_integer([:positive])}"
+      )
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+
+    on_exit(fn -> File.rm_rf!(path) end)
+
+    path
   end
 end

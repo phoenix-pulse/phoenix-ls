@@ -1,6 +1,7 @@
 defmodule PhoenixLS.Index.DocumentIndexerTest do
   use ExUnit.Case, async: false
 
+  alias GenLSP.Structures.Position
   alias PhoenixLS.Index.{DocumentIndexer, Fact, Store}
   alias PhoenixLS.Workspace.Document
 
@@ -154,6 +155,8 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert [template_fact] = Store.by_kind(@store, :template)
     assert template_fact.id == document.uri
     assert template_fact.uri == document.uri
+    assert %Position{} = template_fact.range.start
+    assert %Position{} = template_fact.range.end
     assert template_fact.range.start.line == 0
     assert template_fact.range.end.line == 3
     assert template_fact.data == %{format: :heex}

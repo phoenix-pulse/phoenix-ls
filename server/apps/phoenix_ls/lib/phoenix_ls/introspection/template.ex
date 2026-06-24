@@ -3,7 +3,7 @@ defmodule PhoenixLS.Introspection.Template do
   Source-only extraction helpers for HEEx template documents.
   """
 
-  alias GenLSP.Structures.Range
+  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
 
@@ -27,9 +27,13 @@ defmodule PhoenixLS.Introspection.Template do
     {:ok, end_position} = Positions.offset_to_lsp_position(source, byte_size(source))
 
     %Range{
-      start: %{line: 0, character: 0},
-      end: end_position
+      start: %Position{line: 0, character: 0},
+      end: position(end_position)
     }
+  end
+
+  defp position(%{line: line, character: character}) do
+    %Position{line: line, character: character}
   end
 
   defp provenance(opts) do

@@ -50,7 +50,7 @@ defmodule PhoenixLS.Project.Engine do
     children = [
       {DocumentStore, name: document_store},
       {IndexStore, name: index_store},
-      {Indexer, name: indexer, index_store: index_store}
+      {Indexer, name: indexer, index_store: index_store, root_uri: root_uri}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

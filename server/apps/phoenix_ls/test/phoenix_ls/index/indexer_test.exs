@@ -54,6 +54,41 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
+  test "asynchronously indexes project source files from disk", context do
+    root = tmp_dir(context)
+    component_path = Path.join([root, "lib", "app_web", "components", "core_components.ex"])
+
+    template_path =
+      Path.join([root, "lib", "app_web", "controllers", "page_html", "index.html.heex"])
+
+    File.mkdir_p!(Path.dirname(component_path))
+    File.mkdir_p!(Path.dirname(template_path))
+
+    File.write!(component_path, """
+    defmodule AppWeb.CoreComponents do
+      def button(assigns) do
+        ~H\"\"\"
+        <button>Save</button>
+        \"\"\"
+      end
+    end
+    """)
+
+    File.write!(template_path, "<section><.button /></section>\n")
+
+    assert Indexer.schedule_project(@indexer, SupportURI.path_to_file_uri!(root)) == :ok
+
+    assert_eventually(fn ->
+      assert ["AppWeb.CoreComponents.button/1"] =
+               @store
+               |> Store.by_kind(:component)
+               |> Enum.map(& &1.id)
+
+      assert [template] = Store.by_kind(@store, :template)
+      assert template.uri == SupportURI.path_to_file_uri!(template_path)
+    end)
+  end
+
   test "invalidates facts for deleted uris" do
     document =
       Document.new(
@@ -76,7 +111,7 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
-  test "emits telemetry for document, URI, and delete jobs", context do
+  test "emits telemetry for document, URI, project, and delete jobs", context do
     handler_id = {__MODULE__, self(), make_ref()}
 
     :telemetry.attach_many(
@@ -84,6 +119,7 @@ defmodule PhoenixLS.Index.IndexerTest do
       [
         [:phoenix_ls, :indexer, :document],
         [:phoenix_ls, :indexer, :uri],
+        [:phoenix_ls, :indexer, :project],
         [:phoenix_ls, :indexer, :delete]
       ],
       &__MODULE__.handle_telemetry/4,
@@ -105,15 +141,20 @@ defmodule PhoenixLS.Index.IndexerTest do
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, "defmodule AppWeb.TelemetryDiskLive do\nend\n")
     uri = SupportURI.path_to_file_uri!(path)
+    root_uri = SupportURI.path_to_file_uri!(root)
 
     Indexer.schedule_document(@indexer, document)
     Indexer.schedule_uri(@indexer, uri)
+    Indexer.schedule_project(@indexer, root_uri)
     Indexer.delete_uri(@indexer, document.uri)
 
     assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :document], %{count: 1},
                     %{uri: "file:///tmp/app/lib/app_web/live/telemetry_live.ex"}}
 
     assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :uri], %{count: 1}, %{uri: ^uri}}
+
+    assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :project], %{count: 1},
+                    %{root_uri: ^root_uri, result: :ok}}
 
     assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :delete], %{count: 1},
                     %{uri: "file:///tmp/app/lib/app_web/live/telemetry_live.ex"}}
