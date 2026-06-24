@@ -3,6 +3,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Component
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
 
@@ -95,7 +96,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert component_fact.provenance.source == :elixir_ast
     assert component_fact.provenance.document_version == 13
 
-    assert component_fact.data == %{
+    assert component_fact.data == %Component.Component{
              module: "AppWeb.CoreComponents",
              name: "button",
              arity: 1,
@@ -133,7 +134,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert label_attr.range == range(1, 2, 1, 38)
     assert label_attr.provenance.document_version == 21
 
-    assert label_attr.data == %{
+    assert label_attr.data == %Component.Attribute{
              component: component_id,
              module: "AppWeb.CoreComponents",
              component_name: "button",
@@ -145,7 +146,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert kind_attr.id == "#{component_id}:attr:kind"
     assert kind_attr.range == range(2, 2, 2, 70)
 
-    assert kind_attr.data == %{
+    assert kind_attr.data == %Component.Attribute{
              component: component_id,
              module: "AppWeb.CoreComponents",
              component_name: "button",
@@ -159,7 +160,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert slot_fact.id == "#{component_id}:slot:inner_block"
     assert slot_fact.range == range(4, 2, 6, 5)
 
-    assert slot_fact.data == %{
+    assert slot_fact.data == %Component.Slot{
              component: component_id,
              module: "AppWeb.CoreComponents",
              component_name: "button",
@@ -172,7 +173,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert slot_attr.id == "#{component_id}:slot:inner_block:attr:class"
     assert slot_attr.range == range(5, 4, 5, 24)
 
-    assert slot_attr.data == %{
+    assert slot_attr.data == %Component.SlotAttribute{
              component: component_id,
              module: "AppWeb.CoreComponents",
              component_name: "button",
@@ -264,7 +265,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert [alias_fact] = Enum.filter(facts, &(&1.kind == :component_alias))
     assert alias_fact.id == "AppWeb.PageLive:alias:AppWeb.CoreComponents"
 
-    assert alias_fact.data == %{
+    assert alias_fact.data == %Component.Alias{
              module: "AppWeb.PageLive",
              target: "AppWeb.CoreComponents",
              as: "CoreComponents"
@@ -272,6 +273,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
 
     assert [import_fact] = Enum.filter(facts, &(&1.kind == :component_import))
     assert import_fact.id == "AppWeb.PageLive:import:AppWeb.MoreComponents"
+    assert %Component.Import{} = import_fact.data
     assert import_fact.data.only == [card: 1]
 
     assert [component_fact] = Enum.filter(facts, &(&1.kind == :component))

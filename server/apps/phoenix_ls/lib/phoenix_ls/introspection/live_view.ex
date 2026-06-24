@@ -6,6 +6,33 @@ defmodule PhoenixLS.Introspection.LiveView do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
 
+  defmodule LiveView do
+    @moduledoc """
+    Typed LiveView module fact payload.
+    """
+
+    @enforce_keys [:module]
+    defstruct [:module]
+  end
+
+  defmodule Event do
+    @moduledoc """
+    Typed LiveView event fact payload.
+    """
+
+    @enforce_keys [:module, :event]
+    defstruct [:module, :event]
+  end
+
+  defmodule Assign do
+    @moduledoc """
+    Typed LiveView assign fact payload.
+    """
+
+    @enforce_keys [:module, :name]
+    defstruct [:module, :name]
+  end
+
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
@@ -48,7 +75,7 @@ defmodule PhoenixLS.Introspection.LiveView do
       uri: uri,
       range: range,
       provenance: provenance,
-      data: %{module: module}
+      data: %LiveView{module: module}
     )
   end
 
@@ -64,7 +91,7 @@ defmodule PhoenixLS.Introspection.LiveView do
             uri: uri,
             range: source_range(meta),
             provenance: provenance,
-            data: %{
+            data: %Event{
               module: module,
               event: event
             }
@@ -92,7 +119,7 @@ defmodule PhoenixLS.Introspection.LiveView do
         uri: uri,
         range: source_range(meta),
         provenance: provenance,
-        data: %{
+        data: %Assign{
           module: module,
           name: name
         }

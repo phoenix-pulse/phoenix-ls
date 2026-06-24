@@ -6,6 +6,60 @@ defmodule PhoenixLS.Introspection.Component do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
 
+  defmodule Component do
+    @moduledoc """
+    Typed function component fact payload.
+    """
+
+    @enforce_keys [:module, :name, :arity, :visibility, :type]
+    defstruct [:module, :name, :arity, :visibility, :type, :doc]
+  end
+
+  defmodule Attribute do
+    @moduledoc """
+    Typed component attr fact payload.
+    """
+
+    @enforce_keys [:component, :module, :component_name, :name, :type, :options]
+    defstruct [:component, :module, :component_name, :name, :type, :options]
+  end
+
+  defmodule Slot do
+    @moduledoc """
+    Typed component slot fact payload.
+    """
+
+    @enforce_keys [:component, :module, :component_name, :name, :options]
+    defstruct [:component, :module, :component_name, :name, :options]
+  end
+
+  defmodule SlotAttribute do
+    @moduledoc """
+    Typed component slot attr fact payload.
+    """
+
+    @enforce_keys [:component, :module, :component_name, :slot, :name, :type, :options]
+    defstruct [:component, :module, :component_name, :slot, :name, :type, :options]
+  end
+
+  defmodule Alias do
+    @moduledoc """
+    Typed component alias fact payload.
+    """
+
+    @enforce_keys [:module, :target, :as]
+    defstruct [:module, :target, :as]
+  end
+
+  defmodule Import do
+    @moduledoc """
+    Typed component import fact payload.
+    """
+
+    @enforce_keys [:module, :target]
+    defstruct [:module, :target, :only, :except]
+  end
+
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
@@ -156,30 +210,27 @@ defmodule PhoenixLS.Introspection.Component do
   end
 
   defp component_fact(module, name, range, uri, provenance, doc) do
-    data =
-      %{
-        module: module,
-        name: name,
-        arity: 1,
-        visibility: :public,
-        type: :function
-      }
-      |> maybe_put(:doc, doc)
-
     Fact.new!(
       kind: :component,
       id: "#{module}.#{name}/1",
       uri: uri,
       range: range,
       provenance: provenance,
-      data: data
+      data: %Component{
+        module: module,
+        name: name,
+        arity: 1,
+        visibility: :public,
+        type: :function,
+        doc: doc
+      }
     )
   end
 
   defp put_component_doc(fact, nil), do: fact
 
   defp put_component_doc(fact, doc) do
-    %{fact | data: Map.put(fact.data, :doc, doc)}
+    %{fact | data: %{fact.data | doc: doc}}
   end
 
   defp component_attr_fact(component_id, module, component_name, attr, uri, provenance) do
@@ -189,7 +240,7 @@ defmodule PhoenixLS.Introspection.Component do
       uri: uri,
       range: attr.range,
       provenance: provenance,
-      data: %{
+      data: %Attribute{
         component: component_id,
         module: module,
         component_name: component_name,
@@ -207,7 +258,7 @@ defmodule PhoenixLS.Introspection.Component do
       uri: uri,
       range: slot.range,
       provenance: provenance,
-      data: %{
+      data: %Slot{
         component: component_id,
         module: module,
         component_name: component_name,
@@ -224,7 +275,7 @@ defmodule PhoenixLS.Introspection.Component do
       uri: uri,
       range: attr.range,
       provenance: provenance,
-      data: %{
+      data: %SlotAttribute{
         component: component_id,
         module: module,
         component_name: component_name,
@@ -252,7 +303,7 @@ defmodule PhoenixLS.Introspection.Component do
          uri: uri,
          range: source_range(meta),
          provenance: provenance,
-         data: %{
+         data: %Alias{
            module: module,
            target: target,
            as: as
@@ -270,14 +321,6 @@ defmodule PhoenixLS.Introspection.Component do
   defp component_import_fact(module, meta, [target_ast, options], uri, provenance)
        when is_list(options) do
     with {:ok, target} <- alias_to_string(target_ast) do
-      data =
-        %{
-          module: module,
-          target: target
-        }
-        |> maybe_put(:only, Keyword.get(options, :only))
-        |> maybe_put(:except, Keyword.get(options, :except))
-
       {:ok,
        Fact.new!(
          kind: :component_import,
@@ -285,7 +328,12 @@ defmodule PhoenixLS.Introspection.Component do
          uri: uri,
          range: source_range(meta),
          provenance: provenance,
-         data: data
+         data: %Import{
+           module: module,
+           target: target,
+           only: Keyword.get(options, :only),
+           except: Keyword.get(options, :except)
+         }
        )}
     end
   end
@@ -431,7 +479,4 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp visibility(:def), do: :public
   defp visibility(:defp), do: :private
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

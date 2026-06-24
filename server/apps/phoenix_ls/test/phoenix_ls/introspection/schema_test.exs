@@ -36,7 +36,7 @@ defmodule PhoenixLS.Introspection.SchemaTest do
     assert schema_fact.kind == :schema
     assert schema_fact.range.start.line == 3
 
-    assert schema_fact.data == %{
+    assert schema_fact.data == %Schema.Schema{
              module: "App.Catalog.Product",
              source: "products"
            }
@@ -45,7 +45,7 @@ defmodule PhoenixLS.Introspection.SchemaTest do
 
     assert name_field.kind == :schema_field
 
-    assert name_field.data == %{
+    assert name_field.data == %Schema.Field{
              schema: schema_fact.id,
              module: "App.Catalog.Product",
              name: "name",
@@ -58,7 +58,7 @@ defmodule PhoenixLS.Introspection.SchemaTest do
 
     assert account_assoc.kind == :schema_association
 
-    assert account_assoc.data == %{
+    assert account_assoc.data == %Schema.Association{
              schema: schema_fact.id,
              module: "App.Catalog.Product",
              name: "account",

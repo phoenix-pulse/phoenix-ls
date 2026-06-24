@@ -36,7 +36,7 @@ defmodule PhoenixLS.Introspection.RouterTest do
     assert live_route.range.start.line == 5
     assert live_route.range.start.character == 4
 
-    assert live_route.data == %{
+    assert live_route.data == %Router.Route{
              router: "AppWeb.Router",
              verb: :live,
              path: "/products/:id",

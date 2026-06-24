@@ -6,6 +6,15 @@ defmodule PhoenixLS.Introspection.Router do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
 
+  defmodule Route do
+    @moduledoc """
+    Typed route fact payload.
+    """
+
+    @enforce_keys [:router, :verb, :path, :plug, :scope_path]
+    defstruct [:router, :verb, :path, :plug, :action, :scope_path, :scope_module]
+  end
+
   @route_macros [:connect, :delete, :get, :head, :live, :options, :patch, :post, :put, :trace]
 
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
@@ -82,7 +91,7 @@ defmodule PhoenixLS.Introspection.Router do
          uri: uri,
          range: source_range(meta),
          provenance: provenance,
-         data: %{
+         data: %Route{
            router: router,
            verb: verb,
            path: full_path,

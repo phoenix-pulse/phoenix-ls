@@ -18,7 +18,7 @@ defmodule PhoenixLS.Introspection.TemplateTest do
     assert fact.range.end.line == 3
     assert fact.range.end.character == 0
 
-    assert fact.data == %{
+    assert fact.data == %Template.Template{
              format: :heex
            }
 

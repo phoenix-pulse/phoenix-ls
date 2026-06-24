@@ -33,19 +33,19 @@ defmodule PhoenixLS.Introspection.LiveViewTest do
     assert [live_view, event, assign] = facts
 
     assert live_view.kind == :live_view
-    assert live_view.data == %{module: "AppWeb.ProductLive"}
+    assert live_view.data == %LiveView.LiveView{module: "AppWeb.ProductLive"}
 
     assert event.kind == :live_event
     assert event.range.start.line == 3
 
-    assert event.data == %{
+    assert event.data == %LiveView.Event{
              module: "AppWeb.ProductLive",
              event: "select-product"
            }
 
     assert assign.kind == :assign
 
-    assert assign.data == %{
+    assert assign.data == %LiveView.Assign{
              module: "AppWeb.ProductLive",
              name: "selected_id"
            }

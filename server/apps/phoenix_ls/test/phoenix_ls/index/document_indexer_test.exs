@@ -3,6 +3,8 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
 
   alias GenLSP.Structures.Position
   alias PhoenixLS.Index.{DocumentIndexer, Fact, Store}
+  alias PhoenixLS.Introspection.Component
+  alias PhoenixLS.Introspection.Template
   alias PhoenixLS.Workspace.Document
 
   @store __MODULE__.Store
@@ -75,6 +77,7 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert [component_fact] = Store.by_kind(@store, :component)
     assert component_fact.id == "AppWeb.CoreComponents.button/1"
     assert component_fact.uri == @uri
+    assert %Component.Component{} = component_fact.data
     assert component_fact.data.module == "AppWeb.CoreComponents"
     assert component_fact.data.name == "button"
     assert component_fact.data.type == :function
@@ -104,16 +107,19 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
 
     assert [attr_fact] = Store.by_kind(@store, :component_attr)
     assert attr_fact.id == "#{component_id}:attr:label"
+    assert %Component.Attribute{} = attr_fact.data
     assert attr_fact.data.name == "label"
     assert attr_fact.data.type == :string
     assert attr_fact.data.options == [required: true]
 
     assert [slot_fact] = Store.by_kind(@store, :component_slot)
     assert slot_fact.id == "#{component_id}:slot:inner_block"
+    assert %Component.Slot{} = slot_fact.data
     assert slot_fact.data.name == "inner_block"
 
     assert [slot_attr_fact] = Store.by_kind(@store, :component_slot_attr)
     assert slot_attr_fact.id == "#{component_id}:slot:inner_block:attr:class"
+    assert %Component.SlotAttribute{} = slot_attr_fact.data
     assert slot_attr_fact.data.slot == "inner_block"
     assert slot_attr_fact.data.name == "class"
   end
@@ -159,7 +165,7 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert %Position{} = template_fact.range.end
     assert template_fact.range.start.line == 0
     assert template_fact.range.end.line == 3
-    assert template_fact.data == %{format: :heex}
+    assert template_fact.data == %Template.Template{format: :heex}
     assert template_fact.provenance.document_version == 4
   end
 

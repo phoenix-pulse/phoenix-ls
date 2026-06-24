@@ -6,6 +6,33 @@ defmodule PhoenixLS.Introspection.Schema do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
 
+  defmodule Schema do
+    @moduledoc """
+    Typed Ecto schema fact payload.
+    """
+
+    @enforce_keys [:module, :source]
+    defstruct [:module, :source]
+  end
+
+  defmodule Field do
+    @moduledoc """
+    Typed Ecto schema field fact payload.
+    """
+
+    @enforce_keys [:schema, :module, :name, :type, :options]
+    defstruct [:schema, :module, :name, :type, :options]
+  end
+
+  defmodule Association do
+    @moduledoc """
+    Typed Ecto schema association fact payload.
+    """
+
+    @enforce_keys [:schema, :module, :name, :association, :related, :options]
+    defstruct [:schema, :module, :name, :association, :related, :options]
+  end
+
   @association_macros [:belongs_to, :has_many, :has_one, :many_to_many]
 
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
@@ -27,7 +54,7 @@ defmodule PhoenixLS.Introspection.Schema do
         uri: uri,
         range: source_range(meta),
         provenance: provenance,
-        data: %{
+        data: %Schema{
           module: module,
           source: source
         }
@@ -74,7 +101,7 @@ defmodule PhoenixLS.Introspection.Schema do
        uri: uri,
        range: source_range(meta),
        provenance: provenance,
-       data: %{
+       data: %Field{
          schema: schema_id,
          module: module,
          name: name,
@@ -111,7 +138,7 @@ defmodule PhoenixLS.Introspection.Schema do
          uri: uri,
          range: source_range(meta),
          provenance: provenance,
-         data: %{
+         data: %Association{
            schema: schema_id,
            module: module,
            name: name,

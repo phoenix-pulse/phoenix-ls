@@ -7,6 +7,15 @@ defmodule PhoenixLS.Introspection.Template do
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
 
+  defmodule Template do
+    @moduledoc """
+    Typed HEEx template fact payload.
+    """
+
+    @enforce_keys [:format]
+    defstruct [:format]
+  end
+
   @spec facts(String.t(), String.t(), keyword()) :: [Fact.t()]
   def facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
     [
@@ -16,7 +25,7 @@ defmodule PhoenixLS.Introspection.Template do
         uri: uri,
         range: document_range(source),
         provenance: provenance(opts),
-        data: %{
+        data: %Template{
           format: :heex
         }
       )
