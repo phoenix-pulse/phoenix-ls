@@ -17,11 +17,25 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Missing required attr "label" for .button)
   end
 
+  test "reports missing required attrs on remote component tags" do
+    [diagnostic] = diagnostics("<CoreComponents.button />")
+
+    assert diagnostic.code == "phoenix.missing_required_attr"
+    assert diagnostic.message == ~s(Missing required attr "label" for CoreComponents.button)
+  end
+
   test "reports unknown component attrs" do
     [diagnostic] = diagnostics(~s(<.button label="Save" unknown="x" />))
 
     assert diagnostic.code == "phoenix.unknown_attr"
     assert diagnostic.message == ~s(Unknown attr "unknown" for .button)
+  end
+
+  test "reports unknown attrs on remote component tags" do
+    [diagnostic] = diagnostics(~s(<CoreComponents.button label="Save" unknown="x" />))
+
+    assert diagnostic.code == "phoenix.unknown_attr"
+    assert diagnostic.message == ~s(Unknown attr "unknown" for CoreComponents.button)
   end
 
   test "reports unknown slots" do
@@ -36,6 +50,13 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
     assert diagnostic.code == "phoenix.invalid_attr_value"
     assert diagnostic.message == ~s(Invalid value "danger" for .button kind)
+  end
+
+  test "reports invalid attr values on remote component tags" do
+    [diagnostic] = diagnostics(~s(<CoreComponents.button label="Save" kind="danger" />))
+
+    assert diagnostic.code == "phoenix.invalid_attr_value"
+    assert diagnostic.message == ~s(Invalid value "danger" for CoreComponents.button kind)
   end
 
   test "reports missing LiveComponent id and module attrs" do
@@ -113,6 +134,10 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
         def handle_event("save", %{}, socket) do
           {:noreply, socket}
         end
+      end
+
+      defmodule AppWeb.PageLive do
+        alias AppWeb.CoreComponents
       end
       """)
 

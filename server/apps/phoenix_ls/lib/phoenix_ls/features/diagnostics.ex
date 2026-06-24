@@ -5,6 +5,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   alias GenLSP.Enumerations.DiagnosticSeverity
   alias GenLSP.Structures.Diagnostic
+  alias PhoenixLS.Features.ComponentLookup
   alias PhoenixLS.HEEx.Document
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.Index.Fact
@@ -28,13 +29,12 @@ defmodule PhoenixLS.Features.Diagnostics do
       route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
   end
 
-  defp tag_diagnostics(%Tag{kind: :component} = tag, indexes) do
-    component_name = trim_leading(tag.name, ".")
-
+  defp tag_diagnostics(%Tag{kind: kind} = tag, indexes)
+       when kind in [:component, :remote_component] do
     component_diagnostics =
-      case Map.fetch(indexes.components, component_name) do
-        {:ok, _component} -> known_component_diagnostics(tag, component_name, indexes)
-        :error -> []
+      case ComponentLookup.component_for_tag(tag.name, indexes.facts) do
+        %Fact{} = component -> known_component_diagnostics(tag, component, indexes)
+        nil -> []
       end
 
     component_diagnostics ++ route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
@@ -63,8 +63,8 @@ defmodule PhoenixLS.Features.Diagnostics do
     route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
   end
 
-  defp known_component_diagnostics(%Tag{} = tag, component_name, indexes) do
-    attrs = Map.get(indexes.attrs_by_component, component_name, [])
+  defp known_component_diagnostics(%Tag{} = tag, %Fact{} = component, indexes) do
+    attrs = Map.get(indexes.attrs_by_component, component.id, [])
     declared_attr_names = MapSet.new(attrs, & &1.data.name)
     present_attr_names = MapSet.new(tag.attrs, & &1.name)
 
@@ -223,14 +223,11 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   defp indexes(facts) do
     %{
-      components:
-        facts
-        |> facts_by_kind(:component)
-        |> Map.new(&{&1.data.name, &1}),
+      facts: facts,
       attrs_by_component:
         facts
         |> facts_by_kind(:component_attr)
-        |> Enum.group_by(& &1.data.component_name),
+        |> Enum.group_by(& &1.data.component),
       slots:
         facts
         |> facts_by_kind(:component_slot)
