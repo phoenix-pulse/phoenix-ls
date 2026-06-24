@@ -11,8 +11,8 @@ defmodule PhoenixLS.Introspection.Component do
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
     |> top_level_expressions()
-    |> Enum.reduce({[], [], []}, &collect_expression(&1, &2, module, uri, provenance))
-    |> elem(2)
+    |> Enum.reduce(initial_state(), &collect_expression(&1, &2, module, uri, provenance))
+    |> Map.fetch!(:facts)
   end
 
   @spec function_component_fact(
@@ -28,7 +28,7 @@ defmodule PhoenixLS.Introspection.Component do
   def function_component_fact(module, name, 1, :public, body_ast, range, uri, provenance)
       when is_binary(module) and is_binary(name) and is_binary(uri) and is_map(provenance) do
     if contains_heex_sigil?(body_ast) do
-      {:ok, component_fact(module, name, range, uri, provenance)}
+      {:ok, component_fact(module, name, range, uri, provenance, nil)}
     else
       :none
     end
@@ -46,46 +46,83 @@ defmodule PhoenixLS.Introspection.Component do
       ),
       do: :none
 
-  defp collect_expression({:attr, meta, args}, {attrs, slots, facts}, _module, _uri, _provenance) do
-    case attr_declaration(meta, args) do
-      {:ok, attr} -> {attrs ++ [attr], slots, facts}
-      :error -> {attrs, slots, facts}
+  defp initial_state do
+    %{
+      attrs: [],
+      slots: [],
+      facts: [],
+      doc: nil
+    }
+  end
+
+  defp collect_expression({:alias, meta, args}, state, module, uri, provenance) do
+    case component_alias_fact(module, meta, args, uri, provenance) do
+      {:ok, fact} -> append_fact(state, fact)
+      :error -> state
     end
   end
 
-  defp collect_expression({:slot, meta, args}, {attrs, slots, facts}, _module, _uri, _provenance) do
-    case slot_declaration(meta, args) do
-      {:ok, slot} -> {attrs, slots ++ [slot], facts}
-      :error -> {attrs, slots, facts}
+  defp collect_expression({:import, meta, args}, state, module, uri, provenance) do
+    case component_import_fact(module, meta, args, uri, provenance) do
+      {:ok, fact} -> append_fact(state, fact)
+      :error -> state
     end
   end
 
   defp collect_expression(
-         {visibility, meta, [head, body]},
-         {attrs, slots, facts},
-         module,
-         uri,
-         provenance
+         {:@, _meta, [{:doc, _doc_meta, [doc]}]},
+         state,
+         _module,
+         _uri,
+         _provenance
        )
+       when is_binary(doc) do
+    %{state | doc: doc}
+  end
+
+  defp collect_expression({:attr, meta, args}, state, _module, _uri, _provenance) do
+    case attr_declaration(meta, args) do
+      {:ok, attr} -> %{state | attrs: state.attrs ++ [attr]}
+      :error -> state
+    end
+  end
+
+  defp collect_expression({:slot, meta, args}, state, _module, _uri, _provenance) do
+    case slot_declaration(meta, args) do
+      {:ok, slot} -> %{state | slots: state.slots ++ [slot]}
+      :error -> state
+    end
+  end
+
+  defp collect_expression({visibility, meta, [head, body]}, state, module, uri, provenance)
        when visibility in [:def, :defp] do
     with {:ok, name, arity} <- function_signature(head),
          visibility <- visibility(visibility),
          range <- source_range(meta),
          {:ok, component_fact} <-
            function_component_fact(module, name, arity, visibility, body, range, uri, provenance) do
+      component_fact = put_component_doc(component_fact, state.doc)
       component_id = component_fact.id
 
       component_facts =
-        declaration_facts(component_id, module, name, attrs, slots, uri, provenance)
+        declaration_facts(component_id, module, name, state.attrs, state.slots, uri, provenance)
 
-      {[], [], facts ++ [component_fact | component_facts]}
+      %{
+        state
+        | attrs: [],
+          slots: [],
+          doc: nil,
+          facts: state.facts ++ [component_fact | component_facts]
+      }
     else
-      _not_component -> {attrs, slots, facts}
+      _not_component -> %{state | doc: nil}
     end
   end
 
-  defp collect_expression(_expression, pending_and_facts, _module, _uri, _provenance) do
-    pending_and_facts
+  defp collect_expression(_expression, state, _module, _uri, _provenance), do: state
+
+  defp append_fact(state, fact) do
+    %{state | facts: state.facts ++ [fact]}
   end
 
   defp declaration_facts(component_id, module, component_name, attrs, slots, uri, provenance) do
@@ -118,21 +155,31 @@ defmodule PhoenixLS.Introspection.Component do
     attr_facts ++ slot_facts
   end
 
-  defp component_fact(module, name, range, uri, provenance) do
-    Fact.new!(
-      kind: :component,
-      id: "#{module}.#{name}/1",
-      uri: uri,
-      range: range,
-      provenance: provenance,
-      data: %{
+  defp component_fact(module, name, range, uri, provenance, doc) do
+    data =
+      %{
         module: module,
         name: name,
         arity: 1,
         visibility: :public,
         type: :function
       }
+      |> maybe_put(:doc, doc)
+
+    Fact.new!(
+      kind: :component,
+      id: "#{module}.#{name}/1",
+      uri: uri,
+      range: range,
+      provenance: provenance,
+      data: data
     )
+  end
+
+  defp put_component_doc(fact, nil), do: fact
+
+  defp put_component_doc(fact, doc) do
+    %{fact | data: Map.put(fact.data, :doc, doc)}
   end
 
   defp component_attr_fact(component_id, module, component_name, attr, uri, provenance) do
@@ -188,6 +235,82 @@ defmodule PhoenixLS.Introspection.Component do
       }
     )
   end
+
+  defp component_alias_fact(module, meta, [target_ast], uri, provenance) do
+    component_alias_fact(module, meta, [target_ast, []], uri, provenance)
+  end
+
+  defp component_alias_fact(module, meta, [target_ast, options], uri, provenance)
+       when is_list(options) do
+    with {:ok, target} <- alias_to_string(target_ast) do
+      as = options |> Keyword.get(:as) |> alias_as(target)
+
+      {:ok,
+       Fact.new!(
+         kind: :component_alias,
+         id: "#{module}:alias:#{target}",
+         uri: uri,
+         range: source_range(meta),
+         provenance: provenance,
+         data: %{
+           module: module,
+           target: target,
+           as: as
+         }
+       )}
+    end
+  end
+
+  defp component_alias_fact(_module, _meta, _args, _uri, _provenance), do: :error
+
+  defp component_import_fact(module, meta, [target_ast], uri, provenance) do
+    component_import_fact(module, meta, [target_ast, []], uri, provenance)
+  end
+
+  defp component_import_fact(module, meta, [target_ast, options], uri, provenance)
+       when is_list(options) do
+    with {:ok, target} <- alias_to_string(target_ast) do
+      data =
+        %{
+          module: module,
+          target: target
+        }
+        |> maybe_put(:only, Keyword.get(options, :only))
+        |> maybe_put(:except, Keyword.get(options, :except))
+
+      {:ok,
+       Fact.new!(
+         kind: :component_import,
+         id: "#{module}:import:#{target}",
+         uri: uri,
+         range: source_range(meta),
+         provenance: provenance,
+         data: data
+       )}
+    end
+  end
+
+  defp component_import_fact(_module, _meta, _args, _uri, _provenance), do: :error
+
+  defp alias_to_string({:__aliases__, _meta, parts}) do
+    if Enum.all?(parts, &is_atom/1) do
+      {:ok, Enum.map_join(parts, ".", &Atom.to_string/1)}
+    else
+      :error
+    end
+  end
+
+  defp alias_to_string(atom) when is_atom(atom), do: {:ok, Atom.to_string(atom)}
+  defp alias_to_string(_ast), do: :error
+
+  defp alias_as(nil, target) do
+    target
+    |> String.split(".")
+    |> List.last()
+  end
+
+  defp alias_as(atom, _target) when is_atom(atom), do: Atom.to_string(atom)
+  defp alias_as(_other, target), do: alias_as(nil, target)
 
   defp attr_declaration(meta, [name, type]) when is_atom(name) do
     {:ok, %{name: Atom.to_string(name), type: type, options: [], range: source_range(meta)}}
@@ -308,4 +431,7 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp visibility(:def), do: :public
   defp visibility(:defp), do: :private
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

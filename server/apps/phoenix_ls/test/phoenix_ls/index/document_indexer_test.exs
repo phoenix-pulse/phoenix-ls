@@ -130,14 +130,34 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
   test "non-Elixir documents are ignored" do
     document =
       Document.new(
-        "file:///tmp/app/lib/app_web/live/page.html.heex",
-        "phoenix-heex",
+        "file:///tmp/app/README.md",
+        "markdown",
         1,
-        "<div />"
+        "# App\n"
       )
 
     assert DocumentIndexer.index(@store, document) == :ignored
     assert Store.all(@store) == []
+  end
+
+  test "indexes HEEx template documents into template facts" do
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex",
+        "phoenix-heex",
+        4,
+        "<section>\n  <.button label=\"Save\" />\n</section>\n"
+      )
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    assert [template_fact] = Store.by_kind(@store, :template)
+    assert template_fact.id == document.uri
+    assert template_fact.uri == document.uri
+    assert template_fact.range.start.line == 0
+    assert template_fact.range.end.line == 3
+    assert template_fact.data == %{format: :heex}
+    assert template_fact.provenance.document_version == 4
   end
 
   test "delete_uri deletes facts for a closed document" do

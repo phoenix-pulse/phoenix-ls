@@ -5,7 +5,7 @@ defmodule PhoenixLS.Index.ElixirSource do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
-  alias PhoenixLS.Introspection.Component
+  alias PhoenixLS.Introspection.{Component, LiveView, Router, Schema}
 
   @parse_options [columns: true, token_metadata: true]
 
@@ -22,9 +22,15 @@ defmodule PhoenixLS.Index.ElixirSource do
     case module_name(module_ast, module_stack) do
       {:ok, module} ->
         module_fact = module_fact(module, meta, uri, opts)
-        component_facts = Component.facts_for_module_body(module, body, uri, provenance(opts))
+        provenance = provenance(opts)
 
-        [module_fact | collect(body, [module | module_stack], uri, opts)] ++ component_facts
+        introspection_facts =
+          Component.facts_for_module_body(module, body, uri, provenance) ++
+            Router.facts_for_module_body(module, body, uri, provenance) ++
+            Schema.facts_for_module_body(module, body, uri, provenance) ++
+            LiveView.facts_for_module_body(module, body, uri, provenance)
+
+        [module_fact | collect(body, [module | module_stack], uri, opts)] ++ introspection_facts
 
       :error ->
         collect(body, module_stack, uri, opts)

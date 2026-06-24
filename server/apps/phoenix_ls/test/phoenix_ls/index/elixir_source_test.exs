@@ -183,6 +183,105 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
            }
   end
 
+  test "extracts router schema and LiveView facts from Elixir modules" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products/:id", ProductLive.Show, :show
+        get "/products/:id/edit", ProductController, :edit
+      end
+    end
+
+    defmodule App.Catalog.Product do
+      use Ecto.Schema
+
+      schema "products" do
+        field :name, :string
+        belongs_to :account, App.Accounts.Account
+      end
+    end
+
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("select-product", _params, socket) do
+        {:noreply, socket}
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source, version: 34)
+
+    assert facts
+           |> Enum.filter(&(&1.kind == :route))
+           |> Enum.map(& &1.id) == [
+             "AppWeb.Router:live:/products/:id:AppWeb.ProductLive.Show:show",
+             "AppWeb.Router:get:/products/:id/edit:AppWeb.ProductController:edit"
+           ]
+
+    assert facts
+           |> Enum.filter(&(&1.kind in [:schema, :schema_field, :schema_association]))
+           |> Enum.map(& &1.id) == [
+             "App.Catalog.Product:schema:products",
+             "App.Catalog.Product:schema:products:field:name",
+             "App.Catalog.Product:schema:products:association:account"
+           ]
+
+    assert facts
+           |> Enum.filter(&(&1.kind in [:live_view, :live_event]))
+           |> Enum.map(& &1.id) == [
+             "AppWeb.ProductLive",
+             "AppWeb.ProductLive:event:select-product"
+           ]
+
+    assert Enum.all?(facts, &(&1.provenance.document_version == 34))
+  end
+
+  test "extracts component docs imports and aliases without losing attr metadata" do
+    source = """
+    defmodule AppWeb.PageLive do
+      use Phoenix.LiveView
+
+      alias AppWeb.CoreComponents
+      import AppWeb.MoreComponents, only: [card: 1]
+    end
+
+    defmodule AppWeb.CoreComponents do
+      attr :label, :string, required: true, doc: "Visible label"
+      attr :kind, :atom, default: :primary, values: [:primary, :secondary]
+
+      @doc "Renders a button."
+      def button(assigns) do
+        ~H"<button><%= @label %></button>"
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert [alias_fact] = Enum.filter(facts, &(&1.kind == :component_alias))
+    assert alias_fact.id == "AppWeb.PageLive:alias:AppWeb.CoreComponents"
+
+    assert alias_fact.data == %{
+             module: "AppWeb.PageLive",
+             target: "AppWeb.CoreComponents",
+             as: "CoreComponents"
+           }
+
+    assert [import_fact] = Enum.filter(facts, &(&1.kind == :component_import))
+    assert import_fact.id == "AppWeb.PageLive:import:AppWeb.MoreComponents"
+    assert import_fact.data.only == [card: 1]
+
+    assert [component_fact] = Enum.filter(facts, &(&1.kind == :component))
+    assert component_fact.data.doc == "Renders a button."
+
+    assert [label_attr, kind_attr] = Enum.filter(facts, &(&1.kind == :component_attr))
+    assert label_attr.data.options == [required: true, doc: "Visible label"]
+    assert kind_attr.data.options == [default: :primary, values: [:primary, :secondary]]
+  end
+
   test "returns parse errors without raising" do
     assert {:error, {:parse_error, _reason}} = ElixirSource.facts(@uri, "defmodule Broken do")
   end
