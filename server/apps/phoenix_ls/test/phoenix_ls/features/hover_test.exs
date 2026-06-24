@@ -17,8 +17,23 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers remote function component tags through aliases" do
+    assert_hover("<CoreComponents.button| />", [
+      "component AppWeb.CoreComponents.button/1",
+      "Renders a button."
+    ])
+  end
+
   test "hovers component attrs" do
     assert_hover("<.button lab|el=\"Save\" />", [
+      "attr :label, :string",
+      "required: true",
+      "Visible label"
+    ])
+  end
+
+  test "hovers remote component attrs through aliases" do
+    assert_hover("<CoreComponents.button lab|el=\"Save\" />", [
       "attr :label, :string",
       "required: true",
       "Visible label"
@@ -111,6 +126,10 @@ defmodule PhoenixLS.Features.HoverTest do
         def handle_event("select-product", %{"id" => id}, socket) do
           {:noreply, assign(socket, :selected_id, id)}
         end
+      end
+
+      defmodule AppWeb.PageLive do
+        alias AppWeb.CoreComponents
       end
       """)
 

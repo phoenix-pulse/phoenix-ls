@@ -17,9 +17,21 @@ defmodule PhoenixLS.Features.DefinitionTest do
     assert_definition("<.button| />", :component, "AppWeb.CoreComponents.button/1")
   end
 
+  test "goes to remote function component definitions through aliases" do
+    assert_definition("<CoreComponents.button| />", :component, "AppWeb.CoreComponents.button/1")
+  end
+
   test "goes to component attr definitions" do
     assert_definition(
       "<.button lab|el=\"Save\" />",
+      :component_attr,
+      "AppWeb.CoreComponents.button/1:attr:label"
+    )
+  end
+
+  test "goes to remote component attr definitions through aliases" do
+    assert_definition(
+      "<CoreComponents.button lab|el=\"Save\" />",
       :component_attr,
       "AppWeb.CoreComponents.button/1:attr:label"
     )
@@ -138,6 +150,10 @@ defmodule PhoenixLS.Features.DefinitionTest do
         def handle_event("select-product", %{"id" => id}, socket) do
           {:noreply, assign(socket, :selected_id, id)}
         end
+      end
+
+      defmodule AppWeb.PageLive do
+        alias AppWeb.CoreComponents
       end
       """)
 

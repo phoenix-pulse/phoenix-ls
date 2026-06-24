@@ -5,6 +5,7 @@ defmodule PhoenixLS.Features.Completion.Components do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Features.ComponentLookup
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
@@ -48,22 +49,15 @@ defmodule PhoenixLS.Features.Completion.Components do
 
   defp remote_component_tag_items(facts, prefix) do
     facts
-    |> component_aliases()
-    |> Enum.flat_map(fn alias_fact ->
-      facts
-      |> facts_by_kind(:component)
-      |> Enum.filter(&(&1.data.module == alias_fact.data.target))
-      |> Enum.map(fn component_fact ->
-        label = alias_fact.data.as <> "." <> component_fact.data.name
-
-        {label,
-         completion_item(
-           label: label,
-           kind: CompletionItemKind.function(),
-           detail: component_fact.id,
-           data: component_data(component_fact)
-         )}
-      end)
+    |> ComponentLookup.remote_component_entries()
+    |> Enum.map(fn {label, component_fact} ->
+      {label,
+       completion_item(
+         label: label,
+         kind: CompletionItemKind.function(),
+         detail: component_fact.id,
+         data: component_data(component_fact)
+       )}
     end)
     |> prefixed_items(prefix)
   end
@@ -87,10 +81,10 @@ defmodule PhoenixLS.Features.Completion.Components do
   end
 
   defp remote_component_attr_items(facts, tag, prefix) do
-    with {:ok, module, component_name} <- remote_component_module(facts, tag) do
+    with %Fact{} = component <- ComponentLookup.component_for_tag(tag, facts) do
       facts
       |> facts_by_kind(:component_attr)
-      |> Enum.filter(&(&1.data.module == module and &1.data.component_name == component_name))
+      |> Enum.filter(&(&1.data.component == component.id))
       |> Enum.map(fn fact ->
         label = fact.data.name
 
@@ -104,7 +98,7 @@ defmodule PhoenixLS.Features.Completion.Components do
       end)
       |> prefixed_items(prefix)
     else
-      :error -> []
+      nil -> []
     end
   end
 
@@ -164,10 +158,6 @@ defmodule PhoenixLS.Features.Completion.Components do
     Enum.filter(facts, &(&1.kind == kind))
   end
 
-  defp component_aliases(facts) do
-    facts_by_kind(facts, :component_alias)
-  end
-
   defp component_tag?("." <> _name), do: true
   defp component_tag?(_tag), do: false
 
@@ -178,30 +168,14 @@ defmodule PhoenixLS.Features.Completion.Components do
   defp trim_tag_prefix(":" <> name), do: name
 
   defp remote_component_prefix?(prefix) when is_binary(prefix) do
-    remote_component_tag?(prefix)
+    ComponentLookup.remote_component_tag?(prefix)
   end
 
   defp remote_component_tag?(tag) when is_binary(tag) do
-    case String.split(tag, ".", parts: 2) do
-      [alias_name, component_name] -> alias_name != "" and component_name != ""
-      _other -> false
-    end
+    ComponentLookup.remote_component_tag?(tag)
   end
 
   defp remote_component_tag?(_tag), do: false
-
-  defp remote_component_module(facts, tag) do
-    case String.split(tag, ".", parts: 2) do
-      [alias_name, component_name] ->
-        case Enum.find(component_aliases(facts), &(&1.data.as == alias_name)) do
-          nil -> :error
-          alias_fact -> {:ok, alias_fact.data.target, component_name}
-        end
-
-      _other ->
-        :error
-    end
-  end
 
   defp component_data(fact) do
     %{"kind" => "component", "id" => fact.id}

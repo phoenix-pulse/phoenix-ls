@@ -3,19 +3,20 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   Resolves cursor contexts to indexed Phoenix facts.
   """
 
+  alias PhoenixLS.Features.ComponentLookup
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
   @spec cursor_fact(CursorContext.t(), [Fact.t()]) :: Fact.t() | nil
-  def cursor_fact(%CursorContext{kind: :tag_name, prefix: "." <> component_name}, facts) do
-    find_component(facts, component_name)
+  def cursor_fact(%CursorContext{kind: :tag_name, prefix: tag}, facts) do
+    ComponentLookup.component_for_tag(tag, facts)
   end
 
   def cursor_fact(
-        %CursorContext{kind: :attribute_name, tag: "." <> component_name, prefix: prefix},
+        %CursorContext{kind: :attribute_name, tag: tag, prefix: prefix},
         facts
       ) do
-    find_component_attr(facts, component_name, prefix)
+    ComponentLookup.component_attr_for_tag(tag, prefix, facts)
   end
 
   def cursor_fact(%CursorContext{kind: :expression, prefix: prefix}, facts) do
@@ -42,18 +43,6 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   end
 
   def cursor_fact(_context, _facts), do: nil
-
-  defp find_component(facts, name) do
-    Enum.find(facts, &(&1.kind == :component and &1.data.name == name))
-  end
-
-  defp find_component_attr(facts, component_name, prefix) do
-    Enum.find(
-      facts,
-      &(&1.kind == :component_attr and &1.data.component_name == component_name and
-          String.starts_with?(&1.data.name, prefix))
-    )
-  end
 
   defp find_route(facts, path_prefix) do
     Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))
