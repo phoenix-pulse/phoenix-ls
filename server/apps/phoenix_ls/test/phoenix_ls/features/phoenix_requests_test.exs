@@ -225,6 +225,36 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
     assert association["onReplace"] == "delete"
   end
 
+  test "does not synthesize belongs_to foreign key fields when define_field is false" do
+    {:ok, facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule App.Catalog.Product do
+        use Ecto.Schema
+
+        schema "products" do
+          field :name, :string
+          belongs_to :category, App.Catalog.Category, define_field: false
+        end
+      end
+      """)
+
+    assert [
+             %{
+               "fields" => fields,
+               "associations" => [
+                 %{
+                   "name" => "category",
+                   "foreignKey" => "category_id",
+                   "defineField" => false
+                 }
+               ]
+             }
+           ] = PhoenixRequests.handle("phoenix/listSchemas", Snapshot.new(facts))
+
+    assert Enum.map(fields, & &1["name"]) == ["id", "name"]
+    refute Enum.any?(fields, &(&1["name"] == "category_id"))
+  end
+
   test "unknown phoenix request returns nil" do
     assert PhoenixRequests.handle("phoenix/unknown", snapshot()) == nil
   end

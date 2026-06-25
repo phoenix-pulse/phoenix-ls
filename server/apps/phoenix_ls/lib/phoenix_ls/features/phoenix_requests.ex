@@ -225,6 +225,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   defp generated_association_field_payloads(schema_fact, associations, explicit_field_names) do
     associations
     |> Enum.filter(&(&1.data.association == :belongs_to))
+    |> Enum.filter(&association_defines_field?/1)
     |> Enum.reject(&MapSet.member?(explicit_field_names, association_foreign_key(&1)))
     |> Enum.map(fn association ->
       type = association_type(association, schema_fact)
@@ -267,6 +268,10 @@ defmodule PhoenixLS.Features.PhoenixRequests do
 
   defp association_type(%Fact{data: %{options: options}}, schema_fact) do
     Keyword.get(options || [], :type, schema_fact.data.foreign_key_type)
+  end
+
+  defp association_defines_field?(%Fact{data: %{options: options}}) do
+    Keyword.get(options || [], :define_field, true) != false
   end
 
   defp schema_association_payload(fact) do
@@ -390,6 +395,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> maybe_put("joinThrough", option_value(options, :join_through, &option_string/1))
     |> maybe_put("joinKeys", option_value(options, :join_keys, &inspect/1))
     |> maybe_put("onReplace", option_value(options, :on_replace, &value_string/1))
+    |> maybe_put("defineField", option_value(options, :define_field, & &1))
   end
 
   defp option_value(options, key, transform) do
