@@ -183,6 +183,54 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
                    500
   end
 
+  test "GenLSP transport resolves HEEx schema field access to schema sources", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "schema_definition_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    schema_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app/catalog/product.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<p>{@product.na|me}</p>")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, schema_uri, "elixir", schema_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(schema_uri, 3)
+
+    GenLSP.Test.request(test_client, %{
+      id: 5,
+      jsonrpc: "2.0",
+      method: "textDocument/definition",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 5,
+                     "result" => %{"uri" => ^schema_uri}
+                   },
+                   500
+  end
+
   test "GenLSP transport resolves HEEx assigns to same-module LiveView assign sources",
        context do
     handler_id = {__MODULE__, self(), make_ref()}
@@ -329,6 +377,18 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
         ~H\"\"\"
         <button><%= @label %></button>
         \"\"\"
+      end
+    end
+    """
+  end
+
+  defp schema_source do
+    """
+    defmodule App.Catalog.Product do
+      use Ecto.Schema
+
+      schema "products" do
+        field :name, :string
       end
     end
     """
