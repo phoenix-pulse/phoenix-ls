@@ -5,9 +5,10 @@ defmodule PhoenixLS.Features.Completion.Templates do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Features.TemplateFacts
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Introspection.Template.RenderCall
-  alias PhoenixLS.Support.{Positions, URI}
+  alias PhoenixLS.Support.Positions
 
   @sentinel "__phoenix_ls_template_completion__"
 
@@ -75,38 +76,11 @@ defmodule PhoenixLS.Features.Completion.Templates do
 
   defp template_items(uri, prefix, facts) do
     facts
-    |> Enum.filter(&(&1.kind == :template))
-    |> Enum.flat_map(&template_entry/1)
+    |> TemplateFacts.candidate_entries(uri)
     |> Enum.filter(&(&1.format == "html"))
     |> Enum.filter(&String.starts_with?(&1.name, prefix))
-    |> Enum.filter(&candidate_template?(uri, &1))
     |> Enum.sort_by(&{&1.name, &1.uri})
     |> Enum.map(&template_item/1)
-  end
-
-  defp template_entry(%Fact{uri: uri}) do
-    with {:ok, path} <- URI.file_uri_to_path(uri),
-         {:ok, name, format} <- template_name_and_format(path) do
-      [%{uri: uri, path: path, name: name, format: format}]
-    else
-      _invalid_template -> []
-    end
-  end
-
-  defp template_name_and_format(path) do
-    case Path.basename(path) |> String.split(".") do
-      [name, format, "heex"] when name != "" and format != "" -> {:ok, name, format}
-      [name, "heex"] when name != "" -> {:ok, name, "html"}
-      _other -> :error
-    end
-  end
-
-  defp candidate_template?(nil, _entry), do: true
-
-  defp candidate_template?(uri, entry) do
-    uri
-    |> RenderCall.candidate_uris(entry.name, entry.format)
-    |> Enum.member?(entry.uri)
   end
 
   defp template_item(entry) do
@@ -115,7 +89,7 @@ defmodule PhoenixLS.Features.Completion.Templates do
     %CompletionItem{
       label: label,
       kind: CompletionItemKind.value(),
-      detail: "Template file: #{Path.basename(entry.path)}",
+      detail: "Template file: #{entry.filename}",
       insert_text: entry.name,
       insert_text_format: InsertTextFormat.plain_text(),
       data: %{

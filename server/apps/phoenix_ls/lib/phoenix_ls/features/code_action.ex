@@ -16,6 +16,7 @@ defmodule PhoenixLS.Features.CodeAction do
   alias PhoenixLS.Features.ComponentLookup
   alias PhoenixLS.Features.CodeAction.Ranges
   alias PhoenixLS.Features.CodeAction.Routes
+  alias PhoenixLS.Features.CodeAction.Templates
   alias PhoenixLS.Features.CodeAction.RouteHelpers
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.HEEx.Parser
@@ -120,6 +121,19 @@ defmodule PhoenixLS.Features.CodeAction do
         }
       }
     end)
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.unknown_template"
+         } = diagnostic,
+         source,
+         uri,
+         _tags,
+         facts
+       ) do
+    Templates.actions(diagnostic, uri, source, facts)
   end
 
   defp action_for_diagnostic(

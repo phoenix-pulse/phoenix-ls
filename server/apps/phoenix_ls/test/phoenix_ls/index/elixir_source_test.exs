@@ -279,6 +279,24 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert reference.data.arity == 3
   end
 
+  test "extracts controller render atom references with full source range" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        render(conn, :missing)
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert [reference] = Enum.filter(facts, &(&1.kind == :template_reference))
+
+    assert reference.data.template == "missing"
+    assert reference.data.format == "html"
+    assert reference.range == range(2, 17, 2, 25)
+  end
+
   test "extracts component docs imports and aliases without losing attr metadata" do
     source = """
     defmodule AppWeb.PageLive do

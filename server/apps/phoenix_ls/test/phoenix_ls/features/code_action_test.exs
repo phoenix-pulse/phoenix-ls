@@ -7,9 +7,11 @@ defmodule PhoenixLS.Features.CodeActionTest do
   alias PhoenixLS.Features.Diagnostics
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
 
   @uri "file:///tmp/app/lib/app_web/live/page.html.heex"
   @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
 
   test "adds a missing required attr before a self-closing component tag closes" do
     source = "<.button />"
@@ -484,6 +486,42 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "replaces unknown render templates with known templates" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        render(conn, :missing)
+      end
+    end
+    """
+
+    facts = template_reference_facts(source)
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Change template to "index.html.heex"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @controller_uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 2, character: 17},
+                         end: %Position{line: 2, character: 25}
+                       },
+                       new_text: ":index"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
@@ -533,5 +571,11 @@ defmodule PhoenixLS.Features.CodeActionTest do
       """)
 
     facts
+  end
+
+  defp template_reference_facts(source) do
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+
+    controller_facts ++ Template.facts(@template_uri, "<h1>Index</h1>")
   end
 end

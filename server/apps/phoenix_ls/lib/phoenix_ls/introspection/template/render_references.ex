@@ -83,7 +83,7 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
 
   defp token_end_offset(_source, {:atom, {_line, _column, chars}, _value}, start_offset)
        when is_list(chars) do
-    {:ok, start_offset + byte_size(IO.iodata_to_binary(chars))}
+    {:ok, start_offset + 1 + byte_size(IO.iodata_to_binary(chars))}
   end
 
   defp token_end_offset(source, {:bin_string, _meta, _value}, start_offset) do
