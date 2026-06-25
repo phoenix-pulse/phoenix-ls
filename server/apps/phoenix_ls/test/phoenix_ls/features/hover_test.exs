@@ -6,10 +6,12 @@ defmodule PhoenixLS.Features.HoverTest do
   alias PhoenixLS.Features.Hover, as: HoverFeature
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
   alias PhoenixLS.Support.Positions
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
   @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
 
   test "hovers local function component tags" do
     assert_hover("<.button| />", [
@@ -125,6 +127,27 @@ defmodule PhoenixLS.Features.HoverTest do
 
     assert String.contains?(value, ~s(get "/products/:id", AppWeb.ProductController, :show))
     refute String.contains?(value, ~s(get "/products", AppWeb.ProductController, :index))
+  end
+
+  test "hovers controller render template atoms" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def index(conn, _params) do
+          render(conn, :in|dex)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    template_facts = Template.facts(@template_uri, "<h1>Index</h1>")
+    markdown = MarkupKind.markdown()
+
+    assert %Hover{contents: %{kind: ^markdown, value: value}} =
+             HoverFeature.hover(@controller_uri, position, controller_facts ++ template_facts)
+
+    assert String.contains?(value, "template index.html.heex")
+    assert String.contains?(value, "format :heex")
   end
 
   test "returns nil outside supported hover contexts" do

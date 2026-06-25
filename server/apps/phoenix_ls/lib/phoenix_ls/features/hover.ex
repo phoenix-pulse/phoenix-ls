@@ -8,6 +8,7 @@ defmodule PhoenixLS.Features.Hover do
   alias PhoenixLS.Features.{PhoenixFactLookup, SourceReferenceLookup}
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Support.URI, as: SupportURI
 
   @spec hover(CursorContext.t(), [Fact.t()]) :: Hover.t() | nil
   def hover(%CursorContext{} = context, facts) do
@@ -66,6 +67,14 @@ defmodule PhoenixLS.Features.Hover do
     |> compact_join()
   end
 
+  defp markdown(%Fact{kind: :template} = fact) do
+    [
+      code("template #{template_name(fact.uri)}"),
+      "format #{inspect(fact.data.format)}"
+    ]
+    |> compact_join()
+  end
+
   defp markdown(%Fact{kind: :schema_field} = fact) do
     [
       code("field :#{fact.data.name}, #{inspect(fact.data.type)}"),
@@ -102,6 +111,13 @@ defmodule PhoenixLS.Features.Hover do
 
   defp code(value) do
     "```elixir\n#{value}\n```"
+  end
+
+  defp template_name(uri) do
+    case SupportURI.file_uri_to_path(uri) do
+      {:ok, path} -> Path.basename(path)
+      {:error, _reason} -> uri
+    end
   end
 
   defp compact_join(values) do
