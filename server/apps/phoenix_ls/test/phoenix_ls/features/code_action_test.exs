@@ -172,6 +172,36 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "replaces unknown verified routes with known static routes" do
+    source = ~s(<.link navigate={~p"/prodcts"} />)
+    facts = facts() ++ route_facts()
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Change route to "/products"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 17},
+                         end: %Position{line: 0, character: 29}
+                       },
+                       new_text: ~s(~p"/products")
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "removes self-closing unknown slots" do
     source = "<:footer />"
     {:ok, document} = Parser.parse(source)
@@ -487,5 +517,21 @@ defmodule PhoenixLS.Features.CodeActionTest do
       """)
 
     controller_facts ++ router_facts
+  end
+
+  defp route_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live "/products", ProductLive.Index, :index
+          live "/products/:id", ProductLive.Show, :show
+        end
+      end
+      """)
+
+    facts
   end
 end
