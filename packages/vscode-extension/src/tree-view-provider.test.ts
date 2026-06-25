@@ -139,6 +139,52 @@ describe('PhoenixPulseTreeProvider', () => {
     });
   });
 
+  it('shows ERD association metadata in association tooltips', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listSchemas') {
+          return [
+            {
+              name: 'App.Catalog.Product',
+              tableName: 'products',
+              filePath: '/workspace/lib/app/catalog/product.ex',
+              location: { line: 10, character: 2 },
+              fieldsCount: 0,
+              associationsCount: 1,
+              fields: [],
+              associations: [
+                {
+                  fieldName: 'tags',
+                  targetModule: 'App.Catalog.Tag',
+                  type: 'many_to_many',
+                  joinThrough: 'products_tags',
+                  joinKeys: '[product_id: :id, tag_id: :id]',
+                  onReplace: 'delete',
+                  filePath: '/workspace/lib/app/catalog/product.ex',
+                  location: { line: 18, character: 6 }
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const schemasCategory = roots.find(item => item.label === 'Schemas');
+    const schemas = await provider.getChildren(schemasCategory);
+    const sections = await provider.getChildren(schemas[0]);
+    const associationsSection = sections.find(item => item.label === 'Associations');
+    const associations = await provider.getChildren(associationsSection);
+
+    expect(associations[0].tooltip).toContain('Join through: products_tags');
+    expect(associations[0].tooltip).toContain('Join keys: [product_id: :id, tag_id: :id]');
+    expect(associations[0].tooltip).toContain('On replace: delete');
+  });
+
   it('navigates component attrs and slots to nested source locations', async () => {
     const client = {
       sendRequest: vi.fn(async method => {

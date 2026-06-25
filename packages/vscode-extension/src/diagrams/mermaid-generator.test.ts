@@ -21,4 +21,31 @@ describe('generateMermaidDiagram', () => {
     expect(diagram).toContain('string legacy_id\n');
     expect(diagram).not.toContain('string legacy_id FK');
   });
+
+  it('includes many-to-many join metadata in relationship labels', () => {
+    const diagram = generateMermaidDiagram([
+      {
+        name: 'App.Catalog.Product',
+        tableName: 'products',
+        fields: [],
+        associations: [
+          {
+            fieldName: 'tags',
+            targetModule: 'App.Catalog.Tag',
+            type: 'many_to_many',
+            cardinality: 'many_to_many',
+            joinThrough: 'products_tags'
+          }
+        ]
+      },
+      {
+        name: 'App.Catalog.Tag',
+        tableName: 'tags',
+        fields: [],
+        associations: []
+      }
+    ]);
+
+    expect(diagram).toContain('products }o--o{ tags : "many to many via products_tags"');
+  });
 });

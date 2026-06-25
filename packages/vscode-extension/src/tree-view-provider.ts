@@ -30,6 +30,9 @@ interface SchemaInfo {
     targetModule: string;
     type: string;
     cardinality?: string;
+    joinThrough?: string;
+    joinKeys?: string;
+    onReplace?: string;
     filePath?: string;
     location?: { line: number; character: number };
   }>;
@@ -416,7 +419,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         'charts.orange'
       );
       item.description = assoc.type;
-      item.tooltip = `Association: ${assoc.fieldName}\nType: ${assoc.type}\nTarget: ${assoc.targetModule}`;
+      item.tooltip = associationTooltip(assoc);
       const targetSchema = this.schemasCache.find(s => s.name === assoc.targetModule);
 
       if (assoc.filePath && assoc.location) {
@@ -1254,6 +1257,28 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         return '$(link)';
     }
   }
+}
+
+function associationTooltip(assoc: SchemaInfo['associations'][number]): string {
+  const lines = [
+    `Association: ${assoc.fieldName}`,
+    `Type: ${assoc.type}`,
+    `Target: ${assoc.targetModule}`
+  ];
+
+  if (assoc.joinThrough) {
+    lines.push(`Join through: ${assoc.joinThrough}`);
+  }
+
+  if (assoc.joinKeys) {
+    lines.push(`Join keys: ${assoc.joinKeys}`);
+  }
+
+  if (assoc.onReplace) {
+    lines.push(`On replace: ${assoc.onReplace}`);
+  }
+
+  return lines.join('\n');
 }
 
 class PhoenixTreeItem extends vscode.TreeItem {

@@ -16,6 +16,9 @@ interface SchemaInfo {
     targetModule: string;
     type: string;
     cardinality?: string;
+    joinThrough?: string;
+    joinKeys?: string;
+    onReplace?: string;
   }>;
 }
 
@@ -67,7 +70,7 @@ export function generateMermaidDiagram(schemas: SchemaInfo[]): string {
       // Look up target in mapping, fallback to simple name
       const targetName = nameMapping.get(assoc.targetModule) || getSimpleName(assoc.targetModule);
       const relationship = getRelationshipSymbol(assoc.type);
-      const label = assoc.type.replace(/_/g, ' ');
+      const label = relationshipLabel(assoc);
 
       // Format: SourceSchema relationship TargetSchema : "label"
       mermaid += `    ${sourceName} ${relationship} ${targetName} : "${label}"\n`;
@@ -131,6 +134,16 @@ function getRelationshipSymbol(type: string): string {
     default:
       return '||--||';
   }
+}
+
+function relationshipLabel(assoc: SchemaInfo['associations'][number]): string {
+  const base = assoc.type.replace(/_/g, ' ');
+
+  if (assoc.type === 'many_to_many' && assoc.joinThrough) {
+    return `${base} via ${assoc.joinThrough}`;
+  }
+
+  return base;
 }
 
 /**
