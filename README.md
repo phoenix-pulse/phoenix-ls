@@ -40,6 +40,8 @@ Complete Neovim plugin using the same LSP server as VS Code.
 
 **Install:** See [NEOVIM.md](./NEOVIM.md) for complete installation guide
 
+Release-candidate packaging, install, troubleshooting, logs, and custom server path notes are in [docs/release.md](./docs/release.md).
+
 ---
 
 ## 🚀 Installation

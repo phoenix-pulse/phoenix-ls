@@ -64,6 +64,7 @@ trash/
 !**/README.md
 !**/CONTRIBUTING.md
 !NEOVIM.md
+!docs/release.md
 !docs/elixir-v2-rewrite-plan.md
 !docs/elixir-v2-scope-matrix.md
 !docs/superpowers/plans/*.md
