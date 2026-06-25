@@ -5,7 +5,7 @@ defmodule PhoenixLS.Features.Hover do
 
   alias GenLSP.Enumerations.MarkupKind
   alias GenLSP.Structures.{Hover, MarkupContent}
-  alias PhoenixLS.Features.PhoenixFactLookup
+  alias PhoenixLS.Features.{PhoenixFactLookup, SourceReferenceLookup}
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
@@ -13,6 +13,14 @@ defmodule PhoenixLS.Features.Hover do
   def hover(%CursorContext{} = context, facts) do
     context
     |> PhoenixFactLookup.cursor_fact(facts)
+    |> hover_for_fact()
+  end
+
+  @spec hover(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [Fact.t()]) ::
+          Hover.t() | nil
+  def hover(uri, position, facts) when is_binary(uri) and is_list(facts) do
+    uri
+    |> SourceReferenceLookup.target_at(position, facts)
     |> hover_for_fact()
   end
 

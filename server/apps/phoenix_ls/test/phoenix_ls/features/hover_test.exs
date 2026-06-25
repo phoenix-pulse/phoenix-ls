@@ -9,6 +9,7 @@ defmodule PhoenixLS.Features.HoverTest do
   alias PhoenixLS.Support.Positions
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
+  @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
 
   test "hovers local function component tags" do
     assert_hover("<.button| />", [
@@ -80,6 +81,26 @@ defmodule PhoenixLS.Features.HoverTest do
       "handle_event(\"select-product\", ...)",
       "AppWeb.ProductLive"
     ])
+  end
+
+  test "hovers route helpers in Elixir source files" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_pa|th(conn, :show, 1)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    markdown = MarkupKind.markdown()
+
+    assert %Hover{contents: %{kind: ^markdown, value: value}} =
+             HoverFeature.hover(@controller_uri, position, controller_facts ++ facts())
+
+    assert String.contains?(value, ~s(live "/products/:id", AppWeb.ProductLive.Show, :show))
+    assert String.contains?(value, "router AppWeb.Router")
   end
 
   test "returns nil outside supported hover contexts" do

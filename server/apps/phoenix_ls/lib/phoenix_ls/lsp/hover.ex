@@ -20,11 +20,16 @@ defmodule PhoenixLS.LSP.Hover do
       with uri when is_binary(uri) <- text_document.uri,
            {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
            {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
-           {:ok, document} <- DocumentStore.fetch(engine.document_store, uri),
-           {:ok, cursor_context} <- CursorContext.at(document.text, position) do
+           {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         facts = Snapshot.all(snapshot)
 
-        HoverFeature.hover(cursor_context, facts)
+        case CursorContext.at(document.text, position) do
+          {:ok, cursor_context} ->
+            HoverFeature.hover(cursor_context, facts) || HoverFeature.hover(uri, position, facts)
+
+          _invalid_context ->
+            HoverFeature.hover(uri, position, facts)
+        end
       else
         _missing_or_invalid -> nil
       end
