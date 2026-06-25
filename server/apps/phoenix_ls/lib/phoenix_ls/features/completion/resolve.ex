@@ -4,6 +4,8 @@ defmodule PhoenixLS.Features.Completion.Resolve do
   """
 
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Support.URI, as: SupportURI
 
   @kind_descriptions %{
     "route" => "A verified Phoenix route indexed from router routes.",
@@ -30,9 +32,28 @@ defmodule PhoenixLS.Features.Completion.Resolve do
 
   @spec resolve(CompletionItem.t()) :: CompletionItem.t()
   def resolve(%CompletionItem{} = item) do
-    case documentation(item) do
+    resolve(item, [])
+  end
+
+  @spec resolve(CompletionItem.t(), [Fact.t()]) :: CompletionItem.t()
+  def resolve(%CompletionItem{} = item, facts) when is_list(facts) do
+    case documentation(item, facts) do
       nil -> item
       documentation -> %{item | documentation: documentation}
+    end
+  end
+
+  defp documentation(%CompletionItem{} = item, facts) do
+    lines =
+      [
+        documentation(item),
+        source_context(item, facts)
+      ]
+      |> Enum.reject(&blank?/1)
+
+    case lines do
+      [] -> nil
+      lines -> Enum.join(lines, "\n\n")
     end
   end
 
@@ -57,6 +78,41 @@ defmodule PhoenixLS.Features.Completion.Resolve do
   end
 
   defp documentation(_item), do: nil
+
+  defp source_context(%CompletionItem{data: %{"id" => id}}, facts) when is_binary(id) do
+    facts
+    |> Enum.find(&(&1.id == id))
+    |> source_context_for_fact()
+  end
+
+  defp source_context(_item, _facts), do: nil
+
+  defp source_context_for_fact(nil), do: nil
+
+  defp source_context_for_fact(%Fact{} = fact) do
+    [
+      source_location_line(fact),
+      source_module_line(fact)
+    ]
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n")
+  end
+
+  defp source_location_line(%Fact{} = fact) do
+    "Source: #{source_path(fact.uri)}:#{fact.range.start.line + 1}:#{fact.range.start.character + 1}"
+  end
+
+  defp source_module_line(%Fact{data: %{module: module}}) when is_binary(module),
+    do: "Module: #{module}"
+
+  defp source_module_line(_fact), do: nil
+
+  defp source_path(uri) do
+    case SupportURI.file_uri_to_path(uri) do
+      {:ok, path} -> path
+      {:error, _reason} -> uri
+    end
+  end
 
   defp route_helper_documentation(helper) do
     """

@@ -30,6 +30,35 @@ defmodule PhoenixLS.Features.Completion.ResolveTest do
     assert %{documentation: "Renders a button."} = Resolve.resolve(item)
   end
 
+  test "adds source context for indexed fact completion payloads" do
+    item = %CompletionItem{
+      label: ".button",
+      detail: "AppWeb.CoreComponents.button/1",
+      data: %{"kind" => "component", "id" => "AppWeb.CoreComponents.button/1"}
+    }
+
+    fact =
+      PhoenixLS.Index.Fact.new!(
+        kind: :component,
+        id: "AppWeb.CoreComponents.button/1",
+        uri: "file:///tmp/app/lib/app_web/components/core_components.ex",
+        range: %GenLSP.Structures.Range{
+          start: %GenLSP.Structures.Position{line: 10, character: 2},
+          end: %GenLSP.Structures.Position{line: 10, character: 12}
+        },
+        provenance: %{source: :test},
+        data: %{module: "AppWeb.CoreComponents", name: "button"}
+      )
+
+    assert %{documentation: documentation} = Resolve.resolve(item, [fact])
+
+    assert documentation =~ "AppWeb.CoreComponents.button/1"
+    assert documentation =~ "function component"
+    assert documentation =~ "Source"
+    assert documentation =~ "/tmp/app/lib/app_web/components/core_components.ex:11:3"
+    assert documentation =~ "AppWeb.CoreComponents"
+  end
+
   cases = [
     {"route", "/users", "GET AppWeb.UserController :index",
      %{"kind" => "route", "id" => "route:/users"},

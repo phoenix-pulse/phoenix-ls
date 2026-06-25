@@ -36,7 +36,7 @@ defmodule PhoenixLS.LSP.Completion do
   @spec resolve(CompletionItemResolve.t(), RequestContext.t()) ::
           {:reply, GenLSP.Structures.CompletionItem.t(), GenLSP.LSP.t()}
   def resolve(%CompletionItemResolve{params: item}, %RequestContext{} = context) do
-    {:reply, Resolve.resolve(item), context.lsp}
+    {:reply, Resolve.resolve(item, known_project_facts(context)), context.lsp}
   end
 
   defp context_completion_items(
@@ -58,4 +58,16 @@ defmodule PhoenixLS.LSP.Completion do
 
   defp context_completion_items(%CursorContext{} = context, facts),
     do: Phoenix.complete(context, facts)
+
+  defp known_project_facts(%RequestContext{} = context) do
+    context
+    |> RequestContext.known_project_roots()
+    |> Enum.flat_map(fn root_uri ->
+      case RequestContext.project_snapshot_for_uri(context, root_uri) do
+        {:ok, snapshot} -> Snapshot.all(snapshot)
+        :error -> []
+      end
+    end)
+    |> Enum.uniq_by(&{&1.kind, &1.uri, &1.id})
+  end
 end

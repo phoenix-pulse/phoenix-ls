@@ -407,6 +407,51 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  test "GenLSP transport resolves completion items with indexed source context", context do
+    attach_indexer()
+
+    root = fixture_project(context, "resolve_source_context_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    assert_indexed(component_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 10,
+      jsonrpc: "2.0",
+      method: "completionItem/resolve",
+      params: %{
+        label: ".button",
+        detail: "AppWeb.CoreComponents.button/1",
+        data: %{
+          "kind" => "component",
+          "id" => "AppWeb.CoreComponents.button/1"
+        }
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 10,
+                     "result" => %{
+                       "documentation" => documentation
+                     }
+                   },
+                   500
+
+    assert String.contains?(documentation, "function component")
+    assert String.contains?(documentation, "Source")
+    assert String.contains?(documentation, SupportURI.file_uri_to_path!(component_uri))
+    assert String.contains?(documentation, "AppWeb.CoreComponents")
+  end
+
   def handle_indexer_event(event, measurements, metadata, parent) do
     send(parent, {:indexer_event, event, measurements, metadata})
   end
