@@ -165,6 +165,7 @@ function validateEventPayloads(events) {
     if (!nonEmptyString(event.handler)) missing.push('handler');
     if (typeof event.arity !== 'number' || !Number.isFinite(event.arity)) missing.push('arity');
     if (!nonEmptyString(event.module)) missing.push('module');
+    if (!nonEmptyString(event.source)) missing.push('source');
     if (!nonEmptyString(event.filePath)) missing.push('filePath');
     if (!validLocation(event.location)) missing.push('location');
 

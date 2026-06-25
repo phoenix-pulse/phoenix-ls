@@ -117,7 +117,7 @@ describe('dogfoodBundledServer', () => {
         spawn: createFakeServerSpawn({ results })
       })
     ).rejects.toThrow(
-      'phoenix/listEvents[0] missing contract fields: name, type, handler, arity, module, filePath, location'
+      'phoenix/listEvents[0] missing contract fields: name, type, handler, arity, module, source, filePath, location'
     );
   });
 });
@@ -161,6 +161,7 @@ function completeExplorerResults() {
         handler: 'handle_event/3',
         arity: 3,
         module: 'AppWeb.ProductLive.Index',
+        source: 'handler',
         filePath: '/workspace/lib/app_web/live/product_live/index.ex',
         location: { line: 48, character: 4 }
       }

@@ -364,6 +364,7 @@ function event(name) {
     handler: 'handle_event/3',
     arity: 3,
     module: 'LiveviewComponentsAppWeb.PageLive',
+    source: 'handler',
     filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
     location: { line: 5, character: 2 }
   };

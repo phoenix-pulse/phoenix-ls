@@ -4,12 +4,32 @@ defmodule PhoenixLS.Introspection.Template do
   """
 
   alias GenLSP.Structures.{Position, Range}
+  alias PhoenixLS.HEEx.Document.Attribute
+  alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Introspection.Template.RenderReferences
 
   @parse_options [columns: true, token_metadata: true]
+  @event_phx_attrs [
+    "phx-click",
+    "phx-submit",
+    "phx-change",
+    "phx-blur",
+    "phx-focus",
+    "phx-keydown",
+    "phx-keyup",
+    "phx-window-keydown",
+    "phx-window-keyup",
+    "phx-window-focus",
+    "phx-window-blur",
+    "phx-click-away",
+    "phx-capture-click",
+    "phx-viewport-top",
+    "phx-viewport-bottom",
+    "phx-auto-recover"
+  ]
 
   defmodule Template do
     @moduledoc """
@@ -18,6 +38,15 @@ defmodule PhoenixLS.Introspection.Template do
 
     @enforce_keys [:format, :name, :module, :kind]
     defstruct [:format, :name, :module, :kind]
+  end
+
+  defmodule EventUsage do
+    @moduledoc """
+    Typed HEEx LiveView event usage fact payload.
+    """
+
+    @enforce_keys [:module, :event, :attribute, :handler, :arity]
+    defstruct [:module, :event, :attribute, :handler, :arity]
   end
 
   @spec facts(String.t(), String.t(), keyword()) :: [Fact.t()]
@@ -39,6 +68,24 @@ defmodule PhoenixLS.Introspection.Template do
         }
       )
     ]
+  end
+
+  @spec event_usage_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def event_usage_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
+    metadata = template_metadata(uri)
+
+    case Parser.parse(source) do
+      {:ok, document} ->
+        document.tags
+        |> Enum.flat_map(& &1.attrs)
+        |> Enum.filter(&event_attr?/1)
+        |> Enum.filter(&literal_attr_value?/1)
+        |> Enum.reject(&blank?(&1.value))
+        |> Enum.map(&event_usage_fact(&1, uri, metadata.module, provenance(opts)))
+
+      {:error, _reason} ->
+        []
+    end
   end
 
   @spec render_reference_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
@@ -86,6 +133,40 @@ defmodule PhoenixLS.Introspection.Template do
       kind: kind
     }
   end
+
+  defp event_usage_fact(%Attribute{} = attr, uri, module, provenance) do
+    Fact.new!(
+      kind: :live_event_usage,
+      id: event_usage_id(uri, attr),
+      uri: uri,
+      range: attr.value_range || attr.name_range,
+      provenance: provenance,
+      data: %EventUsage{
+        module: module,
+        event: attr.value,
+        attribute: attr.name,
+        handler: "handle_event/3",
+        arity: 3
+      }
+    )
+  end
+
+  defp event_usage_id(uri, %Attribute{} = attr) do
+    position = (attr.value_range || attr.name_range).start
+
+    "#{uri}:event_usage:#{attr.name}:#{attr.value}:#{position.line}:#{position.character}"
+  end
+
+  defp event_attr?(%Attribute{name: name}), do: name in @event_phx_attrs
+
+  defp literal_attr_value?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
+    do: true
+
+  defp literal_attr_value?(_attr), do: false
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_value), do: false
 
   defp file_path(uri) do
     case SupportURI.file_uri_to_path(uri) do

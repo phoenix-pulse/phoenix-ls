@@ -24,6 +24,7 @@ package.preload["phoenix-pulse.lsp"] = function()
             handler = "handle_event/3",
             arity = 3,
             module = "AppWeb.ProductLive.Index",
+            source = "handler",
             filePath = "/workspace/lib/app_web/live/product_live/index.ex",
             location = { line = 48, character = 4 },
           },

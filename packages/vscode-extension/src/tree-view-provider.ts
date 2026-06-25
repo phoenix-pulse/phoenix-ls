@@ -109,6 +109,11 @@ interface EventInfo {
   handler?: string;
   arity?: number;
   module?: string;
+  source?: string;
+  handled?: boolean;
+  attribute?: string;
+  handlerFilePath?: string;
+  handlerLocation?: { line: number; character: number };
   filePath: string;
   location: { line: number; character: number };
 }
@@ -900,6 +905,26 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
 
     return events.map(event => {
       const handler = event.handler || event.type;
+      const source = event.source || 'handler';
+      const handledUsage = source === 'usage' && event.handled === true;
+      const missingUsage = source === 'usage' && event.handled === false;
+      const description = missingUsage
+        ? 'missing handle_event/3'
+        : handledUsage
+          ? `usage -> ${handler}`
+          : handler;
+      const details = [
+        `Event: ${event.name}`,
+        `Source: ${source}`,
+        `Handler: ${handler}`,
+        `Type: ${event.type}`
+      ];
+
+      if (event.attribute) details.push(`Attribute: ${event.attribute}`);
+      if (event.module) details.push(`Module: ${event.module}`);
+      if (event.handlerFilePath) details.push(`Handler source: ${event.handlerFilePath}`);
+      details.push(event.filePath);
+
       const item = new PhoenixTreeItem(
         event.name,
         'event',
@@ -907,8 +932,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         '$(zap)',
         'charts.red'
       );
-      item.description = handler;
-      item.tooltip = `Event: ${event.name}\nHandler: ${handler}\nType: ${event.type}${event.module ? `\nModule: ${event.module}` : ''}\n${event.filePath}`;
+      item.description = description;
+      item.tooltip = details.join('\n');
       item.command = {
         command: 'phoenixPulse.goToItem',
         title: 'Go to Event',

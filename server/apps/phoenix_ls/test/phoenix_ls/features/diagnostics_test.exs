@@ -194,7 +194,15 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     [diagnostic] = diagnostics(~s(<button phx-click="missing">))
 
     assert diagnostic.code == "phoenix.unknown_event"
-    assert diagnostic.message == ~s(Unknown LiveView event "missing")
+    assert diagnostic.message == ~s(Missing handle_event/3 handler for LiveView event "missing")
+
+    assert diagnostic.data == %{
+             "kind" => "missing_live_event_handler",
+             "event" => "missing",
+             "attribute" => "phx-click",
+             "handler" => "handle_event/3",
+             "knownEvents" => ["save"]
+           }
   end
 
   test "does not report expression-based phx event values as unknown events" do

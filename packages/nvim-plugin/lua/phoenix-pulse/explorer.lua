@@ -110,7 +110,7 @@ end
 -- Generate unique ID for event
 local function generate_event_id(event)
   local file = event.filePath or event.file or "unknown"
-  return "event:" .. file .. ":" .. (event.name or "unknown")
+  return "event:" .. file .. ":" .. (event.source or "handler") .. ":" .. (event.name or "unknown")
 end
 
 -- Generate unique ID for template
@@ -1207,6 +1207,11 @@ function M.render()
     local context = {}
     if event.module then
       table.insert(context, event.module)
+    end
+    if event.source == "usage" and event.handled == false then
+      table.insert(context, "missing handle_event/3")
+    elseif event.source == "usage" then
+      table.insert(context, "usage")
     end
     if event.handler then
       table.insert(context, event.handler)

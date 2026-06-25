@@ -38,8 +38,8 @@ defmodule PhoenixLS.Index.DocumentIndexer do
   defp reindex_template(index_store, document) do
     :ok = Store.delete_uri(index_store, document.uri)
 
-    document.uri
-    |> Template.facts(document.text, version: document.version)
+    (Template.facts(document.uri, document.text, version: document.version) ++
+       Template.event_usage_facts(document.uri, document.text, version: document.version))
     |> Enum.each(&Store.put(index_store, &1))
 
     :ok

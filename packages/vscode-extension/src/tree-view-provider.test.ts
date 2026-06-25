@@ -441,6 +441,7 @@ describe('PhoenixPulseTreeProvider', () => {
               handler: 'handle_event/3',
               arity: 3,
               module: 'AppWeb.ProductLive.Index',
+              source: 'handler',
               filePath: '/workspace/lib/app_web/live/product_live/index.ex',
               location: { line: 48, character: 4 }
             }
@@ -461,11 +462,68 @@ describe('PhoenixPulseTreeProvider', () => {
     expect(events[0].label).toBe('save');
     expect(events[0].description).toBe('handle_event/3');
     expect(events[0].tooltip).toContain('Module: AppWeb.ProductLive.Index');
+    expect(events[0].tooltip).toContain('Source: handler');
     expect(events[0].tooltip).toContain('Handler: handle_event/3');
     expect(events[0].command).toMatchObject({
       command: 'phoenixPulse.goToItem',
       arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 48, character: 4 }]
     });
+  });
+
+  it('shows LiveView event usages with handler mapping state', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listEvents') {
+          return [
+            {
+              name: 'save',
+              type: 'handle_event',
+              handler: 'handle_event/3',
+              arity: 3,
+              module: 'AppWeb.ProductLive.Index',
+              source: 'usage',
+              handled: true,
+              attribute: 'phx-click',
+              handlerFilePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              handlerLocation: { line: 48, character: 4 },
+              filePath: '/workspace/lib/app_web/live/product_live/index.html.heex',
+              location: { line: 2, character: 20 }
+            },
+            {
+              name: 'missing',
+              type: 'handle_event',
+              handler: 'handle_event/3',
+              arity: 3,
+              module: 'AppWeb.ProductLive.Index',
+              source: 'usage',
+              handled: false,
+              attribute: 'phx-submit',
+              filePath: '/workspace/lib/app_web/live/product_live/index.html.heex',
+              location: { line: 8, character: 12 }
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const eventsCategory = roots.find(item => item.label === 'Events');
+    const modules = await provider.getChildren(eventsCategory);
+    const events = await provider.getChildren(modules[0]);
+
+    expect(events[0].description).toBe('usage -> handle_event/3');
+    expect(events[0].tooltip).toContain('Source: usage');
+    expect(events[0].tooltip).toContain('Attribute: phx-click');
+    expect(events[0].tooltip).toContain('Handler source: /workspace/lib/app_web/live/product_live/index.ex');
+    expect(events[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/live/product_live/index.html.heex', { line: 2, character: 20 }]
+    });
+    expect(events[1].description).toBe('missing handle_event/3');
+    expect(events[1].tooltip).toContain('Attribute: phx-submit');
   });
 
   it('keeps event modules with matching basenames under separate nodes', async () => {
@@ -477,7 +535,9 @@ describe('PhoenixPulseTreeProvider', () => {
               name: 'save',
               type: 'handle_event',
               handler: 'handle_event/3',
+              arity: 3,
               module: 'AppWeb.ProductLive.Index',
+              source: 'handler',
               filePath: '/workspace/lib/app_web/live/product_live/index.ex',
               location: { line: 48, character: 4 }
             },
@@ -485,7 +545,9 @@ describe('PhoenixPulseTreeProvider', () => {
               name: 'archive',
               type: 'handle_event',
               handler: 'handle_event/3',
+              arity: 3,
               module: 'AppWeb.Admin.ProductLive.Index',
+              source: 'handler',
               filePath: '/workspace/lib/app_web/live/admin/product_live/index.ex',
               location: { line: 21, character: 4 }
             }

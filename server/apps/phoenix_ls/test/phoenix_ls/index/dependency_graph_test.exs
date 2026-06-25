@@ -50,6 +50,7 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
         :component_attr,
         :template,
         :live_event,
+        :live_event_usage,
         :live_view_function,
         :live_view
       ])

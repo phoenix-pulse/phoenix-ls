@@ -422,13 +422,22 @@ defmodule PhoenixLS.Features.Diagnostics do
     |> Enum.filter(&literal_attr_value?/1)
     |> Enum.reject(&blank?(&1.value))
     |> Enum.reject(&MapSet.member?(indexes.events, &1.value))
-    |> Enum.map(fn attr ->
-      diagnostic(
-        attr.value_range || attr.name_range,
-        "phoenix.unknown_event",
-        ~s(Unknown LiveView event "#{attr.value}")
-      )
-    end)
+    |> Enum.map(&unknown_event_diagnostic(&1, indexes))
+  end
+
+  defp unknown_event_diagnostic(%Attribute{} = attr, indexes) do
+    diagnostic(
+      attr.value_range || attr.name_range,
+      "phoenix.unknown_event",
+      ~s(Missing handle_event/3 handler for LiveView event "#{attr.value}"),
+      %{
+        "kind" => "missing_live_event_handler",
+        "event" => attr.value,
+        "attribute" => attr.name,
+        "handler" => "handle_event/3",
+        "knownEvents" => indexes.event_names
+      }
+    )
   end
 
   defp phx_attr_name_diagnostics(%Tag{} = tag) do
@@ -962,6 +971,12 @@ defmodule PhoenixLS.Features.Diagnostics do
         facts
         |> facts_by_kind(:live_event)
         |> MapSet.new(& &1.data.event),
+      event_names:
+        facts
+        |> facts_by_kind(:live_event)
+        |> Enum.map(& &1.data.event)
+        |> Enum.uniq()
+        |> Enum.sort(),
       routes:
         facts
         |> facts_by_kind(:route)

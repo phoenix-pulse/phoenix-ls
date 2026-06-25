@@ -294,6 +294,66 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
            ] = PhoenixRequests.handle("phoenix/listEvents", snapshot())
   end
 
+  test "lists LiveView event usages with handler mapping state" do
+    {:ok, handler_facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def handle_event("save", _params, socket), do: {:noreply, socket}
+      end
+      """)
+
+    usage_facts =
+      Template.event_usage_facts(
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        ~s(<button phx-click="save" /><button phx-submit="missing" />)
+      )
+
+    events =
+      PhoenixRequests.handle("phoenix/listEvents", Snapshot.new(handler_facts ++ usage_facts))
+
+    assert Enum.find(events, &(&1["source"] == "handler" and &1["name"] == "save")) ==
+             %{
+               "name" => "save",
+               "type" => "handle_event",
+               "handler" => "handle_event/3",
+               "arity" => 3,
+               "module" => "AppWeb.ProductLive",
+               "source" => "handler",
+               "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+               "location" => %{"line" => 3, "character" => 2}
+             }
+
+    assert Enum.find(events, &(&1["source"] == "usage" and &1["name"] == "save")) == %{
+             "name" => "save",
+             "type" => "phx-click",
+             "handler" => "handle_event/3",
+             "arity" => 3,
+             "module" => "AppWeb.ProductLive",
+             "source" => "usage",
+             "handled" => true,
+             "handlerFilePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+             "handlerLocation" => %{"line" => 3, "character" => 2},
+             "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+             "location" => %{"line" => 0, "character" => 19},
+             "attribute" => "phx-click"
+           }
+
+    assert Enum.find(events, &(&1["source"] == "usage" and &1["name"] == "missing")) == %{
+             "name" => "missing",
+             "type" => "phx-submit",
+             "handler" => "handle_event/3",
+             "arity" => 3,
+             "module" => "AppWeb.ProductLive",
+             "source" => "usage",
+             "handled" => false,
+             "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+             "location" => %{"line" => 0, "character" => 47},
+             "attribute" => "phx-submit"
+           }
+  end
+
   test "lists LiveView modules with functions" do
     assert [
              %{

@@ -139,20 +139,14 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   end
 
   defp list_events(facts) do
-    facts
-    |> facts_by_kind(:live_event)
-    |> Enum.map(fn fact ->
-      %{
-        "name" => fact.data.event,
-        "type" => event_type(fact),
-        "handler" => Map.get(fact.data, :handler) || event_type(fact),
-        "arity" => Map.get(fact.data, :arity),
-        "module" => fact.data.module,
-        "filePath" => file_path(fact.uri),
-        "location" => location(fact)
-      }
-    end)
-    |> Enum.sort_by(&{&1["filePath"], &1["name"]})
+    handlers = facts_by_kind(facts, :live_event)
+    handler_index = event_handler_index(handlers)
+
+    (Enum.map(handlers, &live_event_payload/1) ++
+       (facts
+        |> facts_by_kind(:live_event_usage)
+        |> Enum.map(&event_usage_payload(&1, handler_index))))
+    |> Enum.sort_by(&{&1["module"], &1["name"], event_source_rank(&1), &1["filePath"]})
   end
 
   defp list_live_view(facts) do
@@ -352,6 +346,52 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       "location" => location(fact)
     }
   end
+
+  defp live_event_payload(fact) do
+    %{
+      "name" => fact.data.event,
+      "type" => event_type(fact),
+      "handler" => Map.get(fact.data, :handler) || event_type(fact),
+      "arity" => Map.get(fact.data, :arity),
+      "module" => fact.data.module,
+      "source" => "handler",
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact)
+    }
+  end
+
+  defp event_usage_payload(fact, handler_index) do
+    handler_fact = Map.get(handler_index, {fact.data.module, fact.data.event})
+
+    %{
+      "name" => fact.data.event,
+      "type" => fact.data.attribute,
+      "handler" => fact.data.handler,
+      "arity" => fact.data.arity,
+      "module" => fact.data.module,
+      "source" => "usage",
+      "handled" => not is_nil(handler_fact),
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact),
+      "attribute" => fact.data.attribute
+    }
+    |> maybe_put("handlerFilePath", handler_file_path(handler_fact))
+    |> maybe_put("handlerLocation", handler_location(handler_fact))
+  end
+
+  defp event_handler_index(handlers) do
+    Map.new(handlers, &{{&1.data.module, &1.data.event}, &1})
+  end
+
+  defp handler_file_path(%Fact{} = fact), do: file_path(fact.uri)
+  defp handler_file_path(_fact), do: nil
+
+  defp handler_location(%Fact{} = fact), do: location(fact)
+  defp handler_location(_fact), do: nil
+
+  defp event_source_rank(%{"source" => "handler"}), do: 0
+  defp event_source_rank(%{"source" => "usage"}), do: 1
+  defp event_source_rank(_payload), do: 2
 
   defp live_view_function_payloads(functions, events) do
     (Enum.map(functions, &live_view_function_payload/1) ++

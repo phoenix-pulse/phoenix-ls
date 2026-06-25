@@ -407,6 +407,7 @@ function validEventPayload(event) {
     typeof event.arity === 'number' &&
     Number.isFinite(event.arity) &&
     nonEmptyString(event.module) &&
+    nonEmptyString(event.source) &&
     nonEmptyString(event.filePath) &&
     validLocation(event.location)
   );

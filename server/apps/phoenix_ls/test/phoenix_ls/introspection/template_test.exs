@@ -156,4 +156,30 @@ defmodule PhoenixLS.Introspection.TemplateTest do
       File.rm_rf!(tmp_root)
     end
   end
+
+  test "extracts literal LiveView event usages from HEEx phx attributes" do
+    uri = "file:///tmp/app/lib/app_web/live/product_live.html.heex"
+
+    source = """
+    <button phx-click="save" phx-value-id="1">Save</button>
+    <form phx-submit="missing" phx-change={@changeset}></form>
+    """
+
+    assert [save, missing] = Template.event_usage_facts(uri, source)
+
+    assert save.kind == :live_event_usage
+    assert save.data.module == "AppWeb.ProductLive"
+    assert save.data.event == "save"
+    assert save.data.attribute == "phx-click"
+    assert save.data.handler == "handle_event/3"
+    assert save.data.arity == 3
+    assert save.range.start.line == 0
+    assert save.range.start.character == 19
+
+    assert missing.kind == :live_event_usage
+    assert missing.data.module == "AppWeb.ProductLive"
+    assert missing.data.event == "missing"
+    assert missing.data.attribute == "phx-submit"
+    assert missing.range.start.line == 1
+  end
 end
