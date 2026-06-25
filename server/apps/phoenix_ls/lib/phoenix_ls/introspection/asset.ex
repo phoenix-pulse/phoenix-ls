@@ -32,10 +32,10 @@ defmodule PhoenixLS.Introspection.Asset do
 
   @spec static_asset_path?(String.t(), String.t()) :: boolean()
   def static_asset_path?(path, root_path) when is_binary(path) and is_binary(root_path) do
-    static_root = static_root(root_path)
     expanded_path = Path.expand(path)
 
-    supported_path?(expanded_path) and under_path?(expanded_path, static_root)
+    supported_path?(expanded_path) and
+      match?({:ok, _root}, static_root_for_path(expanded_path, root_path))
   end
 
   @spec facts(String.t(), String.t(), String.t(), keyword()) :: [Fact.t()]
@@ -65,10 +65,9 @@ defmodule PhoenixLS.Introspection.Asset do
   end
 
   defp public_path(path, root_path) do
-    static_root = static_root(root_path)
     expanded_path = Path.expand(path)
 
-    if under_path?(expanded_path, static_root) do
+    with {:ok, static_root} <- static_root_for_path(expanded_path, root_path) do
       public_path =
         expanded_path
         |> Path.relative_to(static_root)
@@ -77,14 +76,29 @@ defmodule PhoenixLS.Introspection.Asset do
 
       {:ok, "/" <> public_path}
     else
-      :error
+      _outside_static_roots -> :error
     end
   end
 
-  defp static_root(root_path) do
+  defp static_root_for_path(path, root_path) do
     root_path
-    |> Path.expand()
-    |> Path.join("priv/static")
+    |> static_roots()
+    |> Enum.find(&under_path?(path, &1))
+    |> case do
+      nil -> :error
+      static_root -> {:ok, static_root}
+    end
+  end
+
+  defp static_roots(root_path) do
+    expanded_root = Path.expand(root_path)
+
+    [
+      Path.join(expanded_root, "priv/static")
+      | Path.wildcard(Path.join(expanded_root, "apps/*/priv/static"))
+    ]
+    |> Enum.map(&Path.expand/1)
+    |> Enum.uniq()
   end
 
   defp under_path?(path, root) do

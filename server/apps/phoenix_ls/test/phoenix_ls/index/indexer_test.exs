@@ -174,6 +174,59 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
+  test "asynchronously indexes umbrella app source files from disk", context do
+    root = tmp_dir(context)
+
+    component_path =
+      Path.join([root, "apps", "shop", "lib", "shop_web", "components", "core_components.ex"])
+
+    template_path =
+      Path.join([
+        root,
+        "apps",
+        "shop",
+        "lib",
+        "shop_web",
+        "controllers",
+        "page_html",
+        "index.html.heex"
+      ])
+
+    File.mkdir_p!(Path.dirname(component_path))
+    File.mkdir_p!(Path.dirname(template_path))
+
+    File.write!(component_path, """
+    defmodule ShopWeb.CoreComponents do
+      def button(assigns) do
+        ~H\"\"\"
+        <button>Save</button>
+        \"\"\"
+      end
+    end
+    """)
+
+    File.write!(template_path, "<section><.button /></section>\n")
+    asset_path = Path.join([root, "apps", "shop", "priv", "static", "images", "logo.svg"])
+    File.mkdir_p!(Path.dirname(asset_path))
+    File.write!(asset_path, "<svg></svg>")
+
+    assert Indexer.schedule_project(@indexer, SupportURI.path_to_file_uri!(root)) == :ok
+
+    assert_eventually(fn ->
+      assert ["ShopWeb.CoreComponents.button/1"] =
+               @store
+               |> Store.by_kind(:component)
+               |> Enum.map(& &1.id)
+
+      assert [template] = Store.by_kind(@store, :template)
+      assert template.uri == SupportURI.path_to_file_uri!(template_path)
+
+      assert [asset] = Store.by_kind(@store, :asset)
+      assert asset.id == "/images/logo.svg"
+      assert asset.uri == SupportURI.path_to_file_uri!(asset_path)
+    end)
+  end
+
   test "disabled project indexing skips disk warmup but keeps open document indexing", context do
     root = tmp_dir(context)
     path = Path.join([root, "lib", "disabled_project_live.ex"])

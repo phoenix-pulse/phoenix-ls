@@ -9,7 +9,10 @@ defmodule PhoenixLS.Index.ProjectScan do
   @source_globs [
     "lib/**/*.ex",
     "lib/**/*.heex",
-    "priv/static/**/*"
+    "priv/static/**/*",
+    "apps/*/lib/**/*.ex",
+    "apps/*/lib/**/*.heex",
+    "apps/*/priv/static/**/*"
   ]
 
   @spec uris(String.t()) :: {:ok, [String.t()]} | {:error, :not_file_uri}

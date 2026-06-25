@@ -25,6 +25,21 @@ defmodule PhoenixLS.Introspection.AssetTest do
     assert fact.data.size == 11
   end
 
+  test "builds public paths for umbrella app static asset facts", context do
+    root = tmp_dir(context)
+    path = Path.join([root, "apps", "shop", "priv", "static", "images", "logo.svg"])
+    uri = SupportURI.path_to_file_uri!(path)
+
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "<svg></svg>")
+
+    assert [fact] = Asset.facts(uri, path, root)
+    assert fact.id == "/images/logo.svg"
+    assert fact.data.public_path == "/images/logo.svg"
+    assert fact.data.file_path == path
+    assert fact.data.type == :image
+  end
+
   test "ignores non-static and unsupported files", context do
     root = tmp_dir(context)
     outside_path = Path.join([root, "assets", "app.css"])

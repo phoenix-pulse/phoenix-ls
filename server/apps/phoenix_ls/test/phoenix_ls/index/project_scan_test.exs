@@ -41,6 +41,31 @@ defmodule PhoenixLS.Index.ProjectScanTest do
               ]}
   end
 
+  test "returns sorted umbrella app source and static file uris", context do
+    root = tmp_dir(context)
+
+    live_path = Path.join(root, "apps/shop/lib/shop_web/live/cart_live.ex")
+
+    template_path =
+      Path.join(root, "apps/shop/lib/shop_web/controllers/page_html/index.html.heex")
+
+    asset_path = Path.join(root, "apps/shop/priv/static/images/logo.svg")
+
+    write!(live_path, "defmodule ShopWeb.CartLive do\nend\n")
+    write!(template_path, "<section />")
+    write!(asset_path, "<svg></svg>")
+    write!(Path.join(root, "apps/shop/test/support/fixture.ex"), "defmodule Ignored do\nend\n")
+    write!(Path.join(root, "apps/shop/priv/static/cache_manifest.json"), "{}")
+
+    assert ProjectScan.uris(SupportURI.path_to_file_uri!(root)) ==
+             {:ok,
+              [
+                SupportURI.path_to_file_uri!(template_path),
+                SupportURI.path_to_file_uri!(live_path),
+                SupportURI.path_to_file_uri!(asset_path)
+              ]}
+  end
+
   test "rejects non-file root uris" do
     assert ProjectScan.uris("untitled:Project") == {:error, :not_file_uri}
   end
