@@ -4,6 +4,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   """
 
   alias PhoenixLS.Features.Completion.{
+    AssignFields,
     Assets,
     ElixirFallback,
     FormFields,
@@ -27,6 +28,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
       Routes.complete(context, facts),
       Assets.complete(context, facts),
       Schemas.complete(context, facts),
+      AssignFields.complete(context, facts),
       HTMLAttributes.complete(context, facts),
       LiveView.complete(context, facts),
       LiveViewJS.complete(context, facts),

@@ -177,6 +177,28 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.insert_text == "@selected_id"
   end
 
+  test "completes schema fields for assign property access" do
+    items = complete("<p>{@product.na|}</p>")
+
+    assert Enum.map(items, & &1.label) == ["name"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.field()
+    assert item.detail == "field :name, :string"
+    assert item.insert_text == "name"
+  end
+
+  test "completes schema fields for assigns map property access" do
+    items = complete("<p>{assigns.product.na|}</p>")
+
+    assert Enum.map(items, & &1.label) == ["name"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.field()
+    assert item.detail == "field :name, :string"
+    assert item.insert_text == "name"
+  end
+
   test "completes LiveView event names in phx attributes" do
     items = complete("<button phx-click=\"sel|\">")
 

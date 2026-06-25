@@ -43,6 +43,13 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
     Enum.filter(facts, &schema_field?(&1, schema_id))
   end
 
+  @spec identifier?(String.t()) :: boolean()
+  def identifier?(<<first::utf8, rest::binary>>) do
+    identifier_start?(first) and rest_identifier?(rest)
+  end
+
+  def identifier?(_value), do: false
+
   defp schema_id_for_name(name, facts) do
     with {:ok, candidate} <- camelized_candidate(name) do
       facts
@@ -115,12 +122,6 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
       :error
     end
   end
-
-  defp identifier?(<<first::utf8, rest::binary>>) do
-    identifier_start?(first) and rest_identifier?(rest)
-  end
-
-  defp identifier?(_value), do: false
 
   defp rest_identifier?(<<char::utf8, rest::binary>>) do
     identifier_char?(char) and rest_identifier?(rest)
