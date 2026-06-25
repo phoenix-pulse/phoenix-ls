@@ -45,6 +45,14 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "goes to route definitions from route helpers" do
+    assert_definition(
+      "<p>{Routes.product_pa|th(@socket, :show, 1)}</p>",
+      :route,
+      "AppWeb.Router:live:/products/:id:AppWeb.ProductLive.Show:show"
+    )
+  end
+
   test "goes to schema field definitions" do
     assert_definition(
       "<.input field={@form[:na|me]} />",

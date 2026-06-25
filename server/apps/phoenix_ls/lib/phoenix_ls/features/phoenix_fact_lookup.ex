@@ -25,6 +25,9 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
       String.starts_with?(prefix, "~p\"") or String.starts_with?(prefix, "~p'") ->
         find_route(facts, route_path_prefix(prefix))
 
+      String.starts_with?(prefix, "Routes.") ->
+        find_route_helper(facts, route_helper_prefix(prefix))
+
       String.starts_with?(prefix, "@form[:") ->
         find_schema_field(facts, form_field_prefix(prefix))
 
@@ -51,6 +54,18 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   defp find_route(facts, path_prefix) do
     Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))
   end
+
+  defp find_route_helper(facts, helper_prefix) do
+    Enum.find(facts, &route_helper_match?(&1, helper_prefix))
+  end
+
+  defp route_helper_match?(%Fact{kind: :route, data: %{helper_base: helper_base}}, helper_prefix)
+       when is_binary(helper_base) do
+    String.starts_with?(helper_base <> "_path", helper_prefix) or
+      String.starts_with?(helper_base <> "_url", helper_prefix)
+  end
+
+  defp route_helper_match?(_fact, _helper_prefix), do: false
 
   defp find_schema_field(facts, field_prefix) do
     Enum.find(
@@ -90,6 +105,7 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
 
   defp route_path_prefix("~p\"" <> path), do: path
   defp route_path_prefix("~p'" <> path), do: path
+  defp route_helper_prefix("Routes." <> helper), do: helper
 
   defp form_field_prefix("@form[:" <> field), do: field
 end

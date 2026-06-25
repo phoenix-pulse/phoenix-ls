@@ -47,6 +47,13 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers route helpers" do
+    assert_hover("<p>{Routes.product_pa|th(@socket, :show, 1)}</p>", [
+      "live \"/products/:id\", AppWeb.ProductLive.Show, :show",
+      "router AppWeb.Router"
+    ])
+  end
+
   test "hovers schema form fields" do
     assert_hover("<.input field={@form[:na|me]} />", [
       "field :name, :string",
