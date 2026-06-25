@@ -333,6 +333,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       "name" => "handle_event",
       "type" => "handle_event",
       "eventName" => fact.data.event,
+      "filePath" => file_path(fact.uri),
       "location" => location(fact)
     }
   end
@@ -366,6 +367,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     %{
       "name" => fact.data.name,
       "type" => Atom.to_string(fact.data.type),
+      "filePath" => file_path(fact.uri),
       "location" => location(fact)
     }
   end

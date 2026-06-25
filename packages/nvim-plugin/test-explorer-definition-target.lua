@@ -74,3 +74,17 @@ local slot = {
 local slot_target = explorer._definition_target({ component = component, slot = slot })
 assert_equal(slot_target.file, slot.filePath, "component slot file")
 assert_equal(slot_target.line, 26, "component slot line")
+
+local liveview_module = {
+  filePath = "/workspace/lib/app_web/live/product_live/index.ex",
+  location = { line = 5, character = 2 },
+}
+
+local liveview_function = {
+  filePath = "/workspace/lib/app_web/live/product_live/events.ex",
+  location = { line = 48, character = 4 },
+}
+
+local function_target = explorer._definition_target({ module = liveview_module, func = liveview_function })
+assert_equal(function_target.file, liveview_function.filePath, "LiveView function file")
+assert_equal(function_target.line, 49, "LiveView function line")

@@ -177,27 +177,32 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                  %{
                    "name" => "mount",
                    "type" => "mount",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _mount_line, "character" => 2}
                  },
                  %{
                    "name" => "handle_params",
                    "type" => "handle_params",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _params_line, "character" => 2}
                  },
                  %{
                    "name" => "render",
                    "type" => "render",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _render_line, "character" => 2}
                  },
                  %{
                    "name" => "handle_event",
                    "type" => "handle_event",
                    "eventName" => "select-product",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _line, "character" => 2}
                  },
                  %{
                    "name" => "handle_info",
                    "type" => "handle_info",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _info_line, "character" => 2}
                  }
                ]

@@ -285,6 +285,47 @@ describe('PhoenixPulseTreeProvider', () => {
     });
   });
 
+  it('navigates LiveView functions to function source locations', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listLiveView') {
+          return [
+            {
+              module: 'AppWeb.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              location: { line: 5, character: 2 },
+              assigns: [],
+              functions: [
+                {
+                  name: 'handle_event',
+                  type: 'handle_event',
+                  eventName: 'save',
+                  filePath: '/workspace/lib/app_web/live/product_live/events.ex',
+                  location: { line: 48, character: 4 }
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const liveViewCategory = roots.find(item => item.label === 'LiveView');
+    const folders = await provider.getChildren(liveViewCategory);
+    const modules = await provider.getChildren(folders[0]);
+    const children = await provider.getChildren(modules[0]);
+
+    expect(children[0].label).toBe('save');
+    expect(children[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/live/product_live/events.ex', { line: 48, character: 4 }]
+    });
+  });
+
   it('stores route payload data for copy commands without parsing labels', async () => {
     const client = {
       sendRequest: vi.fn(async method => {

@@ -115,6 +115,7 @@ interface LiveViewInfo {
     name: string;
     type: 'mount' | 'handle_event' | 'handle_info' | 'handle_params' | 'render';
     eventName?: string; // For handle_event/handle_info
+    filePath?: string;
     location: { line: number; character: number };
   }>;
 }
@@ -1003,6 +1004,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       const functions = functionsByType[type];
       if (functions.length > 0) {
         for (const func of functions) {
+          const functionFilePath = func.filePath || module.filePath;
           const item = new PhoenixTreeItem(
             func.name,
             'liveview-function',
@@ -1011,11 +1013,11 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             'charts.blue'
           );
           item.description = type;
-          item.tooltip = `${func.name}/? (${type})\n${module.filePath}`;
+          item.tooltip = `${func.name}/? (${type})\n${functionFilePath}`;
           item.command = {
             command: 'phoenixPulse.goToItem',
             title: 'Go to Function',
-            arguments: [module.filePath, func.location]
+            arguments: [functionFilePath, func.location]
           };
           items.push(item);
         }
@@ -1028,6 +1030,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       if (functions.length > 0) {
         for (const func of functions) {
           const displayName = func.eventName || func.name;
+          const functionFilePath = func.filePath || module.filePath;
           const item = new PhoenixTreeItem(
             displayName,
             'liveview-function',
@@ -1036,11 +1039,11 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             'charts.red'
           );
           item.description = type;
-          item.tooltip = `${displayName} (${type})\n${module.filePath}`;
+          item.tooltip = `${displayName} (${type})\n${functionFilePath}`;
           item.command = {
             command: 'phoenixPulse.goToItem',
             title: 'Go to Function',
-            arguments: [module.filePath, func.location]
+            arguments: [functionFilePath, func.location]
           };
           items.push(item);
         }
