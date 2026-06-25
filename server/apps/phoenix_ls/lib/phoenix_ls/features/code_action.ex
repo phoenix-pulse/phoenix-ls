@@ -176,6 +176,29 @@ defmodule PhoenixLS.Features.CodeAction do
   defp action_for_diagnostic(
          %Diagnostic{
            source: @source,
+           code: "phoenix.stream_invalid_pattern",
+           data: %{"kind" => "stream_invalid_pattern", "stream" => stream, "item" => item}
+         } = diagnostic,
+         _source,
+         uri,
+         _tags,
+         _facts
+       )
+       when is_binary(stream) and is_binary(item) do
+    [
+      text_edit_action(
+        "Use stream tuple pattern",
+        diagnostic,
+        uri,
+        diagnostic.range,
+        ":for={{dom_id, #{item}} <- @streams.#{stream}}"
+      )
+    ]
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
            code: "phoenix.stream_missing_phx_update",
            data: %{"kind" => "stream_missing_phx_update"}
          } = diagnostic,

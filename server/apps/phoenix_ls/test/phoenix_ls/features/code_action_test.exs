@@ -231,6 +231,35 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "rewrites invalid stream patterns to tuple destructuring" do
+    source =
+      ~s(<table phx-update="stream"><tr :for={user <- @streams.users} id={user.id}></tr></table>)
+
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: "Use stream tuple pattern",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: range,
+                       new_text: ":for={{dom_id, user} <- @streams.users}"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert range == diagnostic.range
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "adds missing phx-update stream attribute" do
     source = """
     <tr :for={{dom_id, user} <- @streams.users} id={dom_id}>
