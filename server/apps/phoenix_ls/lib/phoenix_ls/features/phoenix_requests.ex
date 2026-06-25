@@ -121,7 +121,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
         "format" => format_string(fact.data.format),
         "filePath" => path,
         "location" => location(fact),
-        "module" => ""
+        "module" => template_module(path)
       }
     end)
     |> Enum.sort_by(& &1["filePath"])
@@ -385,4 +385,45 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> Path.basename()
     |> Path.rootname()
   end
+
+  defp template_module(path) do
+    path
+    |> Path.split()
+    |> module_parts_from_template_path()
+    |> case do
+      [] -> ""
+      parts -> Enum.join(parts, ".")
+    end
+  end
+
+  defp module_parts_from_template_path(parts) do
+    case Enum.split_while(parts, &(&1 != "lib")) do
+      {_before_lib, ["lib", web_root | rest]} ->
+        template_dirs =
+          rest
+          |> Enum.drop(-1)
+          |> Enum.reject(&template_context_dir?/1)
+
+        [module_segment(web_root) | Enum.map(template_dirs, &module_segment/1)]
+        |> Enum.reject(&(&1 == ""))
+
+      _path_without_lib ->
+        []
+    end
+  end
+
+  defp template_context_dir?(dir), do: dir in ["controllers", "live", "templates", "components"]
+
+  defp module_segment(segment) do
+    segment
+    |> String.split("_")
+    |> Enum.map(&module_word/1)
+    |> Enum.join()
+  end
+
+  defp module_word(""), do: ""
+  defp module_word("api"), do: "API"
+  defp module_word("html"), do: "HTML"
+  defp module_word("json"), do: "JSON"
+  defp module_word(word), do: String.capitalize(word)
 end

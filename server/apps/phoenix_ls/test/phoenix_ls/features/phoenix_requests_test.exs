@@ -132,7 +132,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "format" => "heex",
                "filePath" => "/tmp/app/lib/app_web/controllers/page_html/index.html.heex",
                "location" => %{"line" => 0, "character" => 0},
-               "module" => ""
+               "module" => "AppWeb.PageHTML"
              }
            ] = PhoenixRequests.handle("phoenix/listTemplates", facts())
   end
