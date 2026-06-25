@@ -232,22 +232,26 @@
           },
           "description": "Configure file associations for Phoenix HEEx files"
         },
-        "phoenixPulse.useElixirParser": {
+        "phoenixPulse.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Phoenix LS Elixir executable. Leave empty to use the bundled executable or the monorepo development build."
+        },
+        "phoenixPulse.sourceOnlyMode": {
           "type": "boolean",
           "default": true,
-          "description": "Use Elixir's AST parser for 100% accurate parsing. Requires Elixir to be installed. If disabled or Elixir not found, falls back to regex parsing."
+          "description": "Prefer source-only indexing and diagnostics without loading project code."
         },
-        "phoenixPulse.parserConcurrency": {
-          "type": "number",
-          "default": 10,
-          "minimum": 1,
-          "maximum": 20,
-          "description": "Maximum number of concurrent Elixir parser processes. Higher values = faster scanning, but may cause system resource issues. Recommended: 5-10."
+        "phoenixPulse.logLevel": {
+          "type": "string",
+          "enum": ["error", "warn", "info", "debug"],
+          "default": "info",
+          "description": "Log level passed to the Phoenix LS Elixir server."
         },
-        "phoenixPulse.showProgressNotifications": {
+        "phoenixPulse.indexing.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show progress notifications during workspace scanning."
+          "description": "Enable project indexing in the Phoenix LS Elixir server."
         }
       }
     }
@@ -263,7 +267,6 @@
     "clean": "rm -rf out/"
   },
   "dependencies": {
-    "@phoenix-pulse/language-server": "^1.0.0",
     "vscode-languageclient": "^8.1.0",
     "vscode-uri": "^3.0.7"
   },

@@ -4,11 +4,11 @@ import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  TransportKind,
   DefinitionRequest
 } from 'vscode-languageclient/node';
 import { PhoenixPulseTreeProvider } from './tree-view-provider';
 import { ErdProvider } from './diagrams/erd-provider';
+import { resolveServer } from './server-resolver';
 
 let client: LanguageClient;
 let clientReady: Promise<void> = Promise.resolve();
@@ -77,47 +77,29 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     try {
-    // Path to the language server module
-    // Try multiple resolution strategies
-    let serverModule: string;
-    try {
-      // Try to require.resolve from node_modules (workspace link during development)
-      serverModule = require.resolve('@phoenix-pulse/language-server');
-    } catch (e) {
-      // Fallback 1: Bundled LSP in extension (production)
-      const bundledPath = context.asAbsolutePath(path.join('lsp', 'dist', 'server.js'));
-      const fs = require('fs');
-      if (fs.existsSync(bundledPath)) {
-        serverModule = bundledPath;
-      } else {
-        // Fallback 2: Monorepo development (relative to extension)
-        serverModule = context.asAbsolutePath(
-          path.join('..', 'language-server', 'dist', 'server.js')
-        );
+      const resolvedServer = resolveServer(context, outputChannel);
+
+      if (!resolvedServer) {
+        vscode.window.showErrorMessage('Phoenix LS executable not found. Configure phoenixPulse.serverPath.');
+        return;
       }
-    }
 
-    outputChannel.appendLine(`LSP server module path: ${serverModule}`);
-    console.log(`LSP server module path: ${serverModule}`);
+      outputChannel.appendLine(`Phoenix LS executable path: ${resolvedServer.command}`);
+      console.log(`Phoenix LS executable path: ${resolvedServer.command}`);
 
-    // Check if server module exists
-    const fs = require('fs');
-    if (!fs.existsSync(serverModule)) {
-      const errorMsg = `ERROR: LSP server module not found at ${serverModule}`;
-      outputChannel.appendLine(errorMsg);
-      vscode.window.showErrorMessage(errorMsg);
-      return;
-    }
-
-    // Server options - run the LSP server using Node.js IPC
-    const serverOptions: ServerOptions = {
-      run: { module: serverModule, transport: TransportKind.ipc },
-      debug: {
-        module: serverModule,
-        transport: TransportKind.ipc,
-        options: { execArgv: ['--nolazy', '--inspect=6009'] }
-      }
-    };
+      // Server options - run the Elixir LSP executable using stdio
+      const serverOptions: ServerOptions = {
+        run: {
+          command: resolvedServer.command,
+          args: resolvedServer.args,
+          options: { env: resolvedServer.env }
+        },
+        debug: {
+          command: resolvedServer.command,
+          args: resolvedServer.args,
+          options: { env: { ...resolvedServer.env, PHOENIX_LS_LOG_LEVEL: 'debug' } }
+        }
+      };
 
     // Client options - configure which files the LSP should handle
     const clientOptions: LanguageClientOptions = {

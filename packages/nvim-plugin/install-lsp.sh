@@ -1,35 +1,31 @@
 #!/bin/bash
-# Phoenix Pulse Neovim Plugin - LSP Installer
-# This script installs the language server from npm
+# Phoenix Pulse Neovim Plugin - Phoenix LS escript installer
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_APP_DIR="$SCRIPT_DIR/../../server/apps/phoenix_ls"
+TARGET_DIR="$SCRIPT_DIR/server"
+TARGET="$TARGET_DIR/phoenix_ls"
 
-echo "Phoenix Pulse: Installing LSP server from npm..."
-
-# Check if npm is installed
-if ! command -v npm &> /dev/null; then
-    echo "❌ Error: npm is not installed"
-    echo "   Please install Node.js and npm first"
-    echo "   Visit: https://nodejs.org/"
-    exit 1
+if ! command -v mix >/dev/null 2>&1; then
+  echo "Error: mix is not installed. Install Elixir before building Phoenix LS." >&2
+  exit 1
 fi
 
-# Navigate to plugin directory
-cd "$SCRIPT_DIR"
-
-# Install dependencies (language server from npm)
-echo "Running npm install..."
-npm install
-
-# Verify installation
-LSP_PATH="$SCRIPT_DIR/node_modules/@phoenix-pulse/language-server/dist/server.js"
-if [ -f "$LSP_PATH" ]; then
-    echo "✅ LSP server installed successfully!"
-    echo "   Location: $LSP_PATH"
-else
-    echo "❌ Error: LSP server installation failed"
-    echo "   Expected at: $LSP_PATH"
-    exit 1
+if [ ! -d "$SERVER_APP_DIR" ]; then
+  echo "Error: Phoenix LS source not found at $SERVER_APP_DIR" >&2
+  exit 1
 fi
+
+echo "Phoenix Pulse: building Phoenix LS escript..."
+(
+  cd "$SERVER_APP_DIR"
+  mix escript.build
+)
+
+mkdir -p "$TARGET_DIR"
+cp "$SERVER_APP_DIR/phoenix_ls" "$TARGET"
+chmod +x "$TARGET"
+
+echo "Phoenix LS executable installed at: $TARGET"

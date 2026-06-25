@@ -6,9 +6,6 @@
   "scripts": {
     "install-lsp": "./install-lsp.sh"
   },
-  "dependencies": {
-    "@phoenix-pulse/language-server": "^1.0.0"
-  },
   "author": {
     "name": "Onurcan Sever",
     "url": "https://github.com/onsever"

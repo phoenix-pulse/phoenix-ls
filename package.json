@@ -11,15 +11,15 @@
   "scripts": {
     "compile": "npm run compile --workspaces --if-present",
     "compile:lsp": "npm run compile -w @phoenix-pulse/language-server",
-    "compile:vscode": "npm run compile -w @phoenix-pulse/vscode-extension",
+    "compile:vscode": "npm run compile -w phoenix-pulse",
     "watch": "npm run watch --workspaces --if-present",
     "watch:lsp": "npm run watch -w @phoenix-pulse/language-server",
-    "watch:vscode": "npm run watch -w @phoenix-pulse/vscode-extension",
+    "watch:vscode": "npm run watch -w phoenix-pulse",
     "test": "npm test --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
-    "package:vscode": "npm run package -w @phoenix-pulse/vscode-extension",
+    "package:vscode": "npm run package -w phoenix-pulse",
     "publish:lsp": "npm publish -w @phoenix-pulse/language-server",
-    "publish:vscode": "npm run publish -w @phoenix-pulse/vscode-extension"
+    "publish:vscode": "npm run publish -w phoenix-pulse"
   },
   "repository": {
     "type": "git",

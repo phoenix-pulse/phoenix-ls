@@ -103,8 +103,13 @@ require("phoenix-pulse").setup({
     refresh = "<leader>pr",           -- Refresh registries
   },
 
-  -- Custom LSP server path (auto-detected if nil)
+  -- Custom Phoenix LS Elixir executable path (auto-detected if nil)
   lsp_server_path = nil,
+
+  -- Server runtime options
+  source_only_mode = true,
+  log_level = "info",
+  indexing_enabled = true,
 
   -- Float window configuration (if explorer_mode = "float")
   float_config = {
@@ -267,13 +272,13 @@ require("phoenix-pulse").setup({
 
 **Check LSP server exists:**
 ```bash
-ls packages/nvim-plugin/node_modules/@phoenix-pulse/language-server/dist/server.js
+ls packages/nvim-plugin/server/phoenix_ls
 ```
 
-**If missing, reinstall:**
+**If missing, build the Elixir escript or configure `lsp_server_path`:**
 ```bash
-cd packages/nvim-plugin
-./install-lsp.sh
+cd server/apps/phoenix_ls
+mix escript.build
 ```
 
 **Check LSP logs:**
@@ -415,7 +420,6 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 - **GitHub Repository:** https://github.com/phoenix-pulse/phoenix-ls
 - **Organization:** https://github.com/phoenix-pulse
-- **npm Package:** https://www.npmjs.com/package/@phoenix-pulse/language-server
 - **Issues:** https://github.com/phoenix-pulse/phoenix-ls/issues
 
 ---

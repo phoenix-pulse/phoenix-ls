@@ -18,8 +18,13 @@ local default_config = {
     refresh = "<leader>pr",
   },
 
-  -- LSP server path (auto-detected from npm package or workspace)
-  lsp_server_path = nil,  -- Will be auto-detected from node_modules/@phoenix-pulse/language-server
+  -- Phoenix LS Elixir executable path (auto-detected from bundle or workspace)
+  lsp_server_path = nil,
+
+  -- Server runtime options
+  source_only_mode = true,
+  log_level = "info",
+  indexing_enabled = true,
 }
 
 -- Merged user config
@@ -34,11 +39,11 @@ function M.setup(user_config)
   if not M.config.lsp_server_path then
     local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
 
-    -- Try multiple paths (npm package, workspace development, legacy bundled)
+    -- Try multiple paths (bundled executable, workspace development)
     local possible_paths = {
-      plugin_root .. "/node_modules/@phoenix-pulse/language-server/dist/server.js",  -- npm installed (production)
-      plugin_root .. "/../language-server/dist/server.js",                           -- Workspace development
-      plugin_root .. "/lsp/server.js",                                               -- Legacy bundled (backward compat)
+      plugin_root .. "/server/phoenix_ls",
+      plugin_root .. "/bin/phoenix_ls",
+      plugin_root .. "/../../server/apps/phoenix_ls/phoenix_ls",
     }
 
     for _, path in ipairs(possible_paths) do
@@ -58,8 +63,7 @@ function M.setup(user_config)
   if vim.fn.filereadable(M.config.lsp_server_path) == 0 then
     vim.notify(
       "[Phoenix Pulse] LSP server not found at: " .. M.config.lsp_server_path .. "\n" ..
-      "Please run the installation script: ./install-lsp.sh\n" ..
-      "Or manually install: cd ~/.local/share/nvim/lazy/phoenix-pulse && npm install",
+      "Configure lsp_server_path with the Phoenix LS Elixir executable path.",
       vim.log.levels.ERROR
     )
     return

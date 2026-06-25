@@ -364,14 +364,17 @@ Phoenix Pulse includes configurable settings. Access them via:
 
 ```json
 {
-  // Use Elixir's AST parser (requires Elixir installed)
-  "phoenixPulse.useElixirParser": true,
+  // Custom Phoenix LS Elixir executable path (auto-detected if empty)
+  "phoenixPulse.serverPath": "",
 
-  // Parser concurrency (1-20, default: 10)
-  "phoenixPulse.parserConcurrency": 10,
+  // Prefer source-only indexing without loading project code
+  "phoenixPulse.sourceOnlyMode": true,
 
-  // Show progress notifications during workspace scanning
-  "phoenixPulse.showProgressNotifications": true
+  // Server log level
+  "phoenixPulse.logLevel": "info",
+
+  // Enable project indexing
+  "phoenixPulse.indexing.enabled": true
 }
 ```
 
@@ -431,9 +434,9 @@ Check the "Phoenix Pulse" output channel for slow operations:
 - **Slow**: > 200ms indicates issue
 
 **Solutions:**
-1. Lower concurrency: `"phoenixPulse.parserConcurrency": 5`
-2. Disable progress notifications: `"phoenixPulse.showProgressNotifications": false`
-3. Check Elixir is installed: `elixir --version`
+1. Check the configured executable: `"phoenixPulse.serverPath"`
+2. Check Elixir is installed: `elixir --version`
+3. Set `"phoenixPulse.logLevel": "debug"` and inspect the Phoenix Pulse output channel
 
 ### Still having issues?
 
@@ -489,6 +492,5 @@ Inspired by the amazing Phoenix framework, LiveView, and the developers pushing 
 <p align="center">
   <a href="https://github.com/phoenix-pulse/phoenix-ls">GitHub</a> •
   <a href="https://github.com/phoenix-pulse/phoenix-ls/issues">Issues</a> •
-  <a href="https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse">VS Code Marketplace</a> •
-  <a href="https://www.npmjs.com/package/@phoenix-pulse/language-server">npm Package</a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse">VS Code Marketplace</a>
 </p>

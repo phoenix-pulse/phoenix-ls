@@ -19,7 +19,12 @@ function M.setup(config)
   if not configs.phoenix_pulse then
     configs.phoenix_pulse = {
       default_config = {
-        cmd = { "node", config.lsp_server_path, "--stdio" },
+        cmd = { config.lsp_server_path, "--stdio" },
+        cmd_env = {
+          PHOENIX_LS_SOURCE_ONLY = config.source_only_mode and "1" or "0",
+          PHOENIX_LS_LOG_LEVEL = config.log_level or "info",
+          PHOENIX_LS_INDEXING = config.indexing_enabled and "1" or "0",
+        },
         filetypes = { "elixir", "heex", "eelixir" },
         root_dir = function(fname)
           return lspconfig.util.root_pattern("mix.exs", ".git")(fname)
