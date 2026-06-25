@@ -4,7 +4,9 @@
   "description": "Neovim plugin for Phoenix LiveView development",
   "private": true,
   "scripts": {
-    "install-lsp": "./install-lsp.sh"
+    "install-lsp": "./install-lsp.sh",
+    "update-lsp": "./install-lsp.sh",
+    "test": "bash ./test-install-lsp.sh"
   },
   "author": {
     "name": "Onurcan Sever",

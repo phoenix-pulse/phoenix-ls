@@ -44,7 +44,7 @@ Code extension, providing:
 2. REQUIREMENTS                                   *phoenix-pulse-requirements*
 
   - Neovim 0.8+ (tested on 0.9 and 0.10)
-  - Node.js 16+
+  - Elixir/Mix 1.17+ when building from source, or a bundled executable
   - nvim-lspconfig plugin
   - nvim-web-devicons (optional, for icons)
   - Phoenix LS Elixir executable
@@ -57,6 +57,7 @@ Using lazy.nvim: >lua
     return {
       {
         dir = "~/phoenix-pulse/packages/nvim-plugin",
+        build = "./install-lsp.sh",
         dependencies = {
           "neovim/nvim-lspconfig",
           "nvim-tree/nvim-web-devicons",
@@ -210,10 +211,10 @@ LSP SERVER NOT FOUND~
 
 Error: `[Phoenix Pulse] LSP server not found`
 
-Solution: Build the Elixir escript or configure `lsp_server_path`:
+Solution: Build or update the Elixir escript, or configure `lsp_server_path`:
 >bash
-    cd phoenix-pulse/server/apps/phoenix_ls
-    mix escript.build
+    cd phoenix-pulse/packages/nvim-plugin
+    ./install-lsp.sh
 <
 
 Verify `phoenix_ls` exists or point `lsp_server_path` at your executable.

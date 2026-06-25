@@ -9,7 +9,7 @@ This is the complete Neovim plugin for Phoenix Pulse, providing all LSP features
 ## 📋 Requirements
 
 - **Neovim**: 0.8.0 or higher (tested on 0.9 and 0.10)
-- **Node.js**: 16+ (for Language Server)
+- **Elixir/Mix**: 1.17+ when building from source, or a bundled Phoenix LS executable
 - **Phoenix**: 1.6+ or 1.7+ project
 - **nvim-lspconfig**: Required plugin
 - **nvim-web-devicons**: Optional (recommended for icons)
@@ -24,7 +24,7 @@ This is the complete Neovim plugin for Phoenix Pulse, providing all LSP features
 {
   "phoenix-pulse/phoenix-ls",
   dir = "packages/nvim-plugin",
-  build = "./install-lsp.sh",  -- Installs LSP from npm
+  build = "./install-lsp.sh",  -- Builds or verifies the Phoenix LS executable
   dependencies = {
     "neovim/nvim-lspconfig",
     "nvim-tree/nvim-web-devicons",  -- Optional but recommended
@@ -71,10 +71,12 @@ require("phoenix-pulse").setup()
 # Clone the repository
 git clone https://github.com/phoenix-pulse/phoenix-ls ~/.config/nvim/pack/plugins/start/phoenix-ls
 
-# Install LSP server
+# Install or update the Phoenix LS executable
 cd ~/.config/nvim/pack/plugins/start/phoenix-ls/packages/nvim-plugin
 ./install-lsp.sh
 ```
+
+`./install-lsp.sh` rebuilds the Elixir escript when repository source and Mix are available. Packaged installs can include `server/phoenix_ls`; in that case the same hook validates and uses the bundled executable without requiring the full repository source.
 
 ---
 
@@ -277,8 +279,8 @@ ls packages/nvim-plugin/server/phoenix_ls
 
 **If missing, build the Elixir escript or configure `lsp_server_path`:**
 ```bash
-cd server/apps/phoenix_ls
-mix escript.build
+cd packages/nvim-plugin
+./install-lsp.sh
 ```
 
 **Check LSP logs:**

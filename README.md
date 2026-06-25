@@ -70,7 +70,7 @@ code --install-extension phoenix-pulse-1.3.0.vsix
 {
   "phoenix-pulse/phoenix-ls",
   dir = "packages/nvim-plugin",
-  build = "./install-lsp.sh",  -- Installs LSP from npm
+  build = "./install-lsp.sh",  -- Builds or verifies the Phoenix LS executable
   dependencies = { "neovim/nvim-lspconfig" },
   ft = { "elixir", "heex", "eelixir" },
   config = function()
@@ -104,8 +104,8 @@ See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details
 - **VS Code**: 1.75.0 or higher
 - **Neovim**: 0.8.0 or higher (for Neovim users)
 - **Phoenix**: 1.6+ or 1.7+ project
-- **Node.js**: 16+ (for language server)
-- **Elixir**: 1.13+ (optional, for 100% accurate parsing)
+- **Node.js**: 16+ (for workspace development tooling)
+- **Elixir/Mix**: 1.17+ when building the local Phoenix LS executable from source
 
 ---
 
@@ -151,9 +151,9 @@ code --install-extension phoenix-pulse-*.vsix
 
 **Test Neovim Plugin:**
 ```bash
-# Install LSP for Neovim
+# Install or update the Phoenix LS executable for Neovim
 cd packages/nvim-plugin
-./install-lsp.sh
+./install-lsp.sh  # or: npm run update-lsp
 
 # Add to your Neovim config (pointing to local directory)
 {
