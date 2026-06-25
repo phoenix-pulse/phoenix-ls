@@ -14,6 +14,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
     PhxValues,
     Routes,
     Schemas,
+    ShortcutSnippets,
     Snippets,
     Templates
   }
@@ -55,6 +56,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
     |> Routes.complete(position, facts)
     |> Kernel.++(FormFields.complete(source, position, facts))
     |> Kernel.++(PhxValues.complete(source, position, facts))
+    |> Kernel.++(ShortcutSnippets.complete(source, position, facts))
     |> Kernel.++(Templates.complete(uri, source, position, facts))
     |> uniq_by_label()
   end

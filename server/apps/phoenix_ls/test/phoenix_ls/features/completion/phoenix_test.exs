@@ -309,6 +309,39 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.insert_text == "phx-value-name={product.name}"
   end
 
+  test "completes Phoenix shortcut snippets with replacement edits" do
+    {source, position} = source_and_position(".live|")
+
+    items = Phoenix.complete(@uri, source, position, facts())
+
+    assert Enum.map(items, & &1.label) == [".live"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.snippet()
+    assert item.detail == "Phoenix component shortcut"
+    assert item.text_edit.new_text == ~s(<.live_component module={${1:Module}} id="${2:id}" />)
+    assert item.text_edit.range.start.line == 0
+    assert item.text_edit.range.start.character == 0
+    assert item.text_edit.range.end.character == 5
+  end
+
+  test "completes Phoenix pattern and event shortcut snippets" do
+    {form_source, form_position} = source_and_position("form.phx|")
+    form_items = Phoenix.complete(@uri, form_source, form_position, facts())
+
+    assert [form] = form_items
+    assert form.label == "form.phx"
+    assert form.text_edit.new_text =~ ~s(<form phx-submit="${1:save}">)
+
+    {event_source, event_position} = source_and_position("<button @click|>")
+    event_items = Phoenix.complete(@uri, event_source, event_position, facts())
+
+    assert [event] = event_items
+    assert event.label == "@click"
+    assert event.kind == CompletionItemKind.event()
+    assert event.text_edit.new_text == ~s(phx-click="${1:action}")
+  end
+
   test "completes element-specific HTML attributes" do
     items = complete("<img s|>")
     labels = Enum.map(items, & &1.label)
