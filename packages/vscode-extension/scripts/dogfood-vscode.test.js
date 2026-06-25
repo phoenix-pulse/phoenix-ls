@@ -31,7 +31,7 @@ describe('dogfoodVSCode', () => {
       timeoutMs: 200,
       pollIntervalMs: 1,
       runCommand(command, args, options) {
-        calls.push({ command, args, cwd: options.cwd });
+        calls.push({ command, args, cwd: options.cwd, env: options.env });
 
         if (command === 'npm' && args.join(' ') === 'run package') {
           return { status: 0, stdout: 'packaged', stderr: '' };
@@ -47,6 +47,7 @@ describe('dogfoodVSCode', () => {
 
         if (command === process.execPath && args.includes('--new-window')) {
           writeVSCodeLogs(path.dirname(argValue(args, '--user-data-dir')));
+          writeRequestSnapshot(options.env.PHOENIX_PULSE_DOGFOOD_SNAPSHOT);
           return { status: 0, stdout: 'opened', stderr: '' };
         }
 
@@ -77,6 +78,21 @@ describe('dogfoodVSCode', () => {
       noPhoenixErrors: true,
       bundledProcess: true
     });
+    expect(summary.requestCounts).toEqual({
+      'phoenix/listRoutes': 3,
+      'phoenix/listTemplates': 4,
+      'phoenix/listEvents': 2
+    });
+    expect(summary.requestChecks).toEqual({
+      routePayloads: true,
+      resourceRoutes: true,
+      forwardRoutes: true,
+      liveSessions: true,
+      templatePayloads: true,
+      templateKinds: true,
+      eventPayloads: true,
+      eventHandlers: true
+    });
     expect(calls.map(call => call.command)).toEqual([
       'npm',
       process.execPath,
@@ -90,6 +106,9 @@ describe('dogfoodVSCode', () => {
     );
     expect(calls[3].args).toEqual(expect.arrayContaining(['--user-data-dir', expect.stringContaining('code-user')]));
     expect(calls[3].args).toEqual(expect.arrayContaining(['--extensions-dir', expect.stringContaining('code-extensions')]));
+    expect(calls[3].env.PHOENIX_PULSE_DOGFOOD_SNAPSHOT).toEqual(
+      expect.stringContaining('custom-request-snapshot.json')
+    );
     expect(killed).toEqual([expect.stringContaining('code-user')]);
   });
 
@@ -251,6 +270,94 @@ function writeVSCodeLogs(root, extraLines = []) {
       ...extraLines
     ].join('\n')
   );
+}
+
+function writeRequestSnapshot(snapshotPath, overrides = {}) {
+  const snapshot = {
+    counts: {
+      'phoenix/listRoutes': 3,
+      'phoenix/listTemplates': 4,
+      'phoenix/listEvents': 2
+    },
+    results: {
+      'phoenix/listRoutes': [
+        {
+          verb: 'get',
+          path: '/products',
+          controller: 'LiveviewComponentsAppWeb.ProductController',
+          action: 'index',
+          helperBase: 'product',
+          pathParams: [],
+          pipelines: ['browser'],
+          filePath: '/workspace/lib/liveview_components_app_web/router.ex',
+          location: { line: 8, character: 4 },
+          scopePath: '/'
+        },
+        {
+          verb: 'forward',
+          path: '/mailbox',
+          controller: 'LiveviewComponentsAppWeb.MailboxPlug',
+          action: '',
+          helperBase: 'mailbox',
+          pathParams: [],
+          pipelines: ['browser'],
+          filePath: '/workspace/lib/liveview_components_app_web/router.ex',
+          location: { line: 9, character: 4 },
+          scopePath: '/'
+        },
+        {
+          verb: 'live',
+          path: '/admin/products/:id',
+          controller: 'LiveviewComponentsAppWeb.Admin.ProductLive',
+          action: 'show',
+          helperBase: 'admin_product',
+          pathParams: ['id'],
+          pipelines: ['browser', 'require_admin'],
+          liveSession: 'admin',
+          filePath: '/workspace/lib/liveview_components_app_web/router.ex',
+          location: { line: 14, character: 6 },
+          scopePath: '/admin'
+        }
+      ],
+      'phoenix/listTemplates': [
+        template('controller'),
+        template('layout'),
+        template('component'),
+        template('live_view')
+      ],
+      'phoenix/listEvents': [
+        event('select-product'),
+        event('archive-product')
+      ]
+    },
+    ...overrides
+  };
+
+  fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+  fs.writeFileSync(snapshotPath, JSON.stringify(snapshot));
+}
+
+function template(kind) {
+  return {
+    name: `${kind}.html`,
+    format: 'heex',
+    kind,
+    module: `LiveviewComponentsAppWeb.${kind}`,
+    filePath: `/workspace/${kind}.html.heex`,
+    location: { line: 0, character: 0 }
+  };
+}
+
+function event(name) {
+  return {
+    name,
+    type: 'handle_event',
+    handler: 'handle_event/3',
+    arity: 3,
+    module: 'LiveviewComponentsAppWeb.PageLive',
+    filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
+    location: { line: 5, character: 2 }
+  };
 }
 
 function argValue(args, name) {

@@ -8,6 +8,7 @@ import {
 import { PhoenixPulseTreeProvider } from './tree-view-provider';
 import { ErdProvider } from './diagrams/erd-provider';
 import { resolveServer } from './server-resolver';
+import { maybeWriteDogfoodSnapshot } from './dogfood';
 
 let client: LanguageClient;
 let clientReady: Promise<void> = Promise.resolve();
@@ -104,6 +105,10 @@ export async function activate(context: vscode.ExtensionContext) {
           treeDataProvider: treeProvider
         });
         context.subscriptions.push(treeView);
+
+        void maybeWriteDogfoodSnapshot(client, outputChannel).catch(error => {
+          outputChannel.appendLine(`[Phoenix Pulse] Dogfood custom request snapshot failed: ${error}`);
+        });
 
         // Register refresh command
         const refreshCommand = vscode.commands.registerCommand('phoenixPulse.refreshExplorer', () => {

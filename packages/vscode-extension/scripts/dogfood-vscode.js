@@ -40,6 +40,7 @@ async function dogfoodVSCode(options = {}) {
   const workspaceRoot = path.join(dogfoodRoot, path.basename(fixtureRoot));
   const userDataDir = path.join(dogfoodRoot, 'code-user');
   const extensionsDir = path.join(dogfoodRoot, 'code-extensions');
+  const requestSnapshotPath = path.join(dogfoodRoot, 'custom-request-snapshot.json');
 
   fs.accessSync(fixtureRoot, fs.constants.R_OK);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -82,9 +83,16 @@ async function dogfoodVSCode(options = {}) {
       throw new Error(`VS Code dogfood did not install ${extensionId}`);
     }
 
-    openEditor({ dogfoodRoot, userDataDir, extensionsDir, workspaceRoot });
+    openEditor({ dogfoodRoot, userDataDir, extensionsDir, workspaceRoot, requestSnapshotPath });
 
     const observed = await waitForLogChecks(dogfoodRoot, timeoutMs, pollIntervalMs);
+
+    if (observed.checks.noPhoenixErrors === false) {
+      throw new Error('VS Code dogfood observed Phoenix Pulse log errors');
+    }
+
+    const requestSnapshot = await waitForRequestSnapshot(requestSnapshotPath, timeoutMs, pollIntervalMs);
+    const requestChecks = validateRequestSnapshot(requestSnapshot);
 
     const status = runChecked(
       runCommand,
@@ -96,10 +104,6 @@ async function dogfoodVSCode(options = {}) {
     const bundledProcess = /server[\/\\]phoenix_ls[\s\S]*--stdio/.test(status);
     const logChecks = { ...observed.checks, bundledProcess };
     const missing = missingChecks(logChecks);
-
-    if (logChecks.noPhoenixErrors === false) {
-      throw new Error('VS Code dogfood observed Phoenix Pulse log errors');
-    }
 
     if (missing.length > 0) {
       throw new Error(`VS Code dogfood did not observe: ${missing.join(', ')}`);
@@ -113,7 +117,10 @@ async function dogfoodVSCode(options = {}) {
       vsixPath,
       extensionId: installedExtension.trim(),
       phoenixLog: observed.phoenixLog,
-      logChecks
+      logChecks,
+      requestSnapshotPath,
+      requestCounts: requestSnapshot.counts,
+      requestChecks
     };
   } finally {
     killIsolatedEditor(userDataDir);
@@ -155,7 +162,7 @@ function latestVsix(extensionDir) {
 }
 
 function defaultOpenEditor(codeCommand, runCommand, extensionDir) {
-  return ({ userDataDir, extensionsDir, workspaceRoot }) => {
+  return ({ userDataDir, extensionsDir, workspaceRoot, requestSnapshotPath }) => {
     runChecked(
       runCommand,
       codeCommand,
@@ -169,7 +176,13 @@ function defaultOpenEditor(codeCommand, runCommand, extensionDir) {
         'trace',
         workspaceRoot
       ],
-      { cwd: extensionDir }
+      {
+        cwd: extensionDir,
+        env: {
+          ...process.env,
+          PHOENIX_PULSE_DOGFOOD_SNAPSHOT: requestSnapshotPath
+        }
+      }
     );
   };
 }
@@ -307,6 +320,108 @@ function missingChecks(checks) {
   return Object.entries(checks)
     .filter(([name, ok]) => name !== 'noPhoenixErrors' && !ok)
     .map(([name]) => name);
+}
+
+async function waitForRequestSnapshot(snapshotPath, timeoutMs, pollIntervalMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() <= deadline) {
+    if (fs.existsSync(snapshotPath)) {
+      try {
+        return JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  if (lastError) {
+    throw new Error(`VS Code dogfood custom request snapshot was not readable: ${lastError.message}`);
+  }
+
+  throw new Error(`VS Code dogfood did not write custom request snapshot: ${snapshotPath}`);
+}
+
+function validateRequestSnapshot(snapshot) {
+  const routes = snapshot.results?.['phoenix/listRoutes'] || [];
+  const templates = snapshot.results?.['phoenix/listTemplates'] || [];
+  const events = snapshot.results?.['phoenix/listEvents'] || [];
+
+  const checks = {
+    routePayloads: routes.length > 0 && routes.every(validRoutePayload),
+    resourceRoutes: routes.some(route => route.path === '/products' || route.path === '/products/:id'),
+    forwardRoutes: routes.some(route => route.verb === 'forward' && route.path === '/mailbox'),
+    liveSessions: routes.some(route => route.liveSession === 'admin'),
+    templatePayloads: templates.length > 0 && templates.every(validTemplatePayload),
+    templateKinds: ['controller', 'layout', 'component', 'live_view'].every(kind =>
+      templates.some(template => template.kind === kind)
+    ),
+    eventPayloads: events.length > 0 && events.every(validEventPayload),
+    eventHandlers: events.every(event => event.handler === 'handle_event/3' && event.arity === 3)
+  };
+
+  const missing = Object.entries(checks)
+    .filter(([_name, ok]) => !ok)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw new Error(`VS Code dogfood custom request snapshot failed checks: ${missing.join(', ')}`);
+  }
+
+  return checks;
+}
+
+function validRoutePayload(route) {
+  return (
+    nonEmptyString(route.verb) &&
+    nonEmptyString(route.path) &&
+    nonEmptyString(route.filePath) &&
+    validLocation(route.location) &&
+    nonEmptyString(route.helperBase) &&
+    Array.isArray(route.pathParams) &&
+    Array.isArray(route.pipelines)
+  );
+}
+
+function validTemplatePayload(template) {
+  return (
+    nonEmptyString(template.name) &&
+    nonEmptyString(template.format) &&
+    nonEmptyString(template.kind) &&
+    nonEmptyString(template.module) &&
+    nonEmptyString(template.filePath) &&
+    validLocation(template.location)
+  );
+}
+
+function validEventPayload(event) {
+  return (
+    nonEmptyString(event.name) &&
+    nonEmptyString(event.type) &&
+    nonEmptyString(event.handler) &&
+    typeof event.arity === 'number' &&
+    Number.isFinite(event.arity) &&
+    nonEmptyString(event.module) &&
+    nonEmptyString(event.filePath) &&
+    validLocation(event.location)
+  );
+}
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function validLocation(location) {
+  return (
+    location &&
+    typeof location.line === 'number' &&
+    Number.isFinite(location.line) &&
+    typeof location.character === 'number' &&
+    Number.isFinite(location.character)
+  );
 }
 
 function sleep(ms) {
