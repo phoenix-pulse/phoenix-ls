@@ -159,12 +159,33 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
              %{
                "module" => "AppWeb.ProductLive",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+               "location" => %{"line" => _module_line, "character" => 2},
                "functions" => [
+                 %{
+                   "name" => "mount",
+                   "type" => "mount",
+                   "location" => %{"line" => _mount_line, "character" => 2}
+                 },
+                 %{
+                   "name" => "handle_params",
+                   "type" => "handle_params",
+                   "location" => %{"line" => _params_line, "character" => 2}
+                 },
+                 %{
+                   "name" => "render",
+                   "type" => "render",
+                   "location" => %{"line" => _render_line, "character" => 2}
+                 },
                  %{
                    "name" => "handle_event",
                    "type" => "handle_event",
                    "eventName" => "select-product",
                    "location" => %{"line" => _line, "character" => 2}
+                 },
+                 %{
+                   "name" => "handle_info",
+                   "type" => "handle_info",
+                   "location" => %{"line" => _info_line, "character" => 2}
                  }
                ]
              }
@@ -212,8 +233,18 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
       defmodule AppWeb.ProductLive do
         use Phoenix.LiveView
 
+        def mount(_params, _session, socket), do: {:ok, socket}
+
+        def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+        def render(assigns), do: ~H"<div />"
+
         def handle_event("select-product", %{"id" => id}, socket) do
           {:noreply, assign(socket, :selected_id, id)}
+        end
+
+        def handle_info({:tick, id}, socket) do
+          {:noreply, assign(socket, :tick_id, id)}
         end
       end
       """)

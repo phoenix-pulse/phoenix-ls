@@ -5,6 +5,7 @@ defmodule PhoenixLS.Introspection.Component do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Introspection.LiveView
 
   defmodule Component do
     @moduledoc """
@@ -65,7 +66,10 @@ defmodule PhoenixLS.Introspection.Component do
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
     |> top_level_expressions()
-    |> Enum.reduce(initial_state(), &collect_expression(&1, &2, module, uri, provenance))
+    |> Enum.reduce(
+      initial_state(LiveView.live_view_module?(body_ast)),
+      &collect_expression(&1, &2, module, uri, provenance)
+    )
     |> Map.fetch!(:facts)
   end
 
@@ -100,12 +104,13 @@ defmodule PhoenixLS.Introspection.Component do
       ),
       do: :none
 
-  defp initial_state do
+  defp initial_state(live_view?) do
     %{
       attrs: [],
       slots: [],
       facts: [],
-      doc: nil
+      doc: nil,
+      live_view?: live_view?
     }
   end
 
@@ -153,6 +158,7 @@ defmodule PhoenixLS.Introspection.Component do
     with {:ok, name, arity} <- function_signature(head),
          visibility <- visibility(visibility),
          range <- source_range(meta),
+         false <- live_view_render?(state, name, arity),
          {:ok, component_fact} <-
            function_component_fact(module, name, arity, visibility, body, range, uri, provenance) do
       component_fact = put_component_doc(component_fact, state.doc)
@@ -174,6 +180,9 @@ defmodule PhoenixLS.Introspection.Component do
   end
 
   defp collect_expression(_expression, state, _module, _uri, _provenance), do: state
+
+  defp live_view_render?(%{live_view?: true}, "render", 1), do: true
+  defp live_view_render?(_state, _name, _arity), do: false
 
   defp append_fact(state, fact) do
     %{state | facts: state.facts ++ [fact]}

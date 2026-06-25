@@ -17,6 +17,7 @@ defmodule PhoenixLS.Index.DependencyGraph do
     component_import: :components,
     live_event: :events,
     live_view: :live_views,
+    live_view_function: :live_views,
     assign: :live_views,
     route: :routes,
     schema: :schemas,

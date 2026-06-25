@@ -33,6 +33,26 @@ defmodule PhoenixLS.Introspection.LiveView do
     defstruct [:module, :name]
   end
 
+  defmodule Function do
+    @moduledoc """
+    Typed LiveView callback function fact payload.
+    """
+
+    @enforce_keys [:module, :name, :type, :arity]
+    defstruct [:module, :name, :type, :arity]
+  end
+
+  @spec live_view_module?(term()) :: boolean()
+  def live_view_module?(body_ast) do
+    body_ast
+    |> top_level_expressions()
+    |> live_view_range()
+    |> case do
+      {:ok, _range} -> true
+      :error -> false
+    end
+  end
+
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
@@ -104,8 +124,64 @@ defmodule PhoenixLS.Introspection.LiveView do
   end
 
   defp detail_facts(module, expressions, uri, provenance) do
-    event_facts(module, expressions, uri, provenance) ++
+    function_facts(module, expressions, uri, provenance) ++
+      event_facts(module, expressions, uri, provenance) ++
       assign_facts(module, expressions, uri, provenance)
+  end
+
+  defp function_facts(module, expressions, uri, provenance) do
+    expressions
+    |> Enum.flat_map(fn
+      {:def, meta, [head, _body]} ->
+        case live_view_function(head) do
+          {:ok, name, arity, type} ->
+            [
+              Fact.new!(
+                kind: :live_view_function,
+                id: "#{module}:live_view_function:#{name}/#{arity}",
+                uri: uri,
+                range: source_range(meta),
+                provenance: provenance,
+                data: %Function{
+                  module: module,
+                  name: name,
+                  type: type,
+                  arity: arity
+                }
+              )
+            ]
+
+          :error ->
+            []
+        end
+
+      _expression ->
+        []
+    end)
+  end
+
+  defp live_view_function({:when, _meta, [head | _guards]}), do: live_view_function(head)
+
+  defp live_view_function({:mount, _meta, args}) when is_list(args),
+    do: callback(:mount, args, 3)
+
+  defp live_view_function({:handle_params, _meta, args}) when is_list(args),
+    do: callback(:handle_params, args, 3)
+
+  defp live_view_function({:handle_info, _meta, args}) when is_list(args),
+    do: callback(:handle_info, args, 2)
+
+  defp live_view_function({:render, _meta, args}) when is_list(args),
+    do: callback(:render, args, 1)
+
+  defp live_view_function(_head), do: :error
+
+  defp callback(name, args, arity) when length(args) == arity do
+    {:ok, Atom.to_string(name), arity, name}
+  end
+
+  defp callback(_name, _args, _arity) do
+    :error
   end
 
   defp assign_facts(module, expressions, uri, provenance) do

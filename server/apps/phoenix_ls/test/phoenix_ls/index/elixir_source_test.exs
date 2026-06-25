@@ -105,6 +105,24 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
            }
   end
 
+  test "does not index LiveView render functions as components" do
+    source = """
+    defmodule AppWeb.PageLive do
+      use Phoenix.LiveView
+
+      def render(assigns) do
+        ~H\"\"\"
+        <div />
+        \"\"\"
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert Enum.filter(facts, &(&1.kind == :component)) == []
+  end
+
   test "extracts component attrs slots and slot attrs with source facts" do
     source = """
     defmodule AppWeb.CoreComponents do

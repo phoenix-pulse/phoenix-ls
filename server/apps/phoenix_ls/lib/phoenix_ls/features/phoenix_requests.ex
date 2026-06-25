@@ -147,15 +147,22 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       |> facts_by_kind(:live_event)
       |> Enum.group_by(& &1.data.module)
 
+    functions_by_module =
+      facts
+      |> facts_by_kind(:live_view_function)
+      |> Enum.group_by(& &1.data.module)
+
     facts
     |> facts_by_kind(:live_view)
     |> Enum.map(fn fact ->
       events = Map.get(events_by_module, fact.data.module, [])
+      functions = Map.get(functions_by_module, fact.data.module, [])
 
       %{
         "module" => fact.data.module,
         "filePath" => file_path(fact.uri),
-        "functions" => Enum.map(events, &live_event_function_payload/1)
+        "location" => location(fact),
+        "functions" => live_view_function_payloads(functions, events)
       }
     end)
     |> Enum.sort_by(& &1["module"])
@@ -314,6 +321,32 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       "location" => location(fact)
     }
   end
+
+  defp live_view_function_payloads(functions, events) do
+    (Enum.map(functions, &live_view_function_payload/1) ++
+       Enum.map(events, &live_event_function_payload/1))
+    |> Enum.sort_by(&live_view_function_sort_key/1)
+  end
+
+  defp live_view_function_payload(fact) do
+    %{
+      "name" => fact.data.name,
+      "type" => Atom.to_string(fact.data.type),
+      "location" => location(fact)
+    }
+  end
+
+  defp live_view_function_sort_key(payload) do
+    location = payload["location"] || %{}
+    {live_view_function_rank(payload["type"]), location["line"] || 0, location["character"] || 0}
+  end
+
+  defp live_view_function_rank("mount"), do: 0
+  defp live_view_function_rank("handle_params"), do: 1
+  defp live_view_function_rank("render"), do: 2
+  defp live_view_function_rank("handle_event"), do: 3
+  defp live_view_function_rank("handle_info"), do: 4
+  defp live_view_function_rank(_type), do: 5
 
   defp live_module(%Fact{data: %{verb: :live, plug: plug}}), do: plug
   defp live_module(_fact), do: nil

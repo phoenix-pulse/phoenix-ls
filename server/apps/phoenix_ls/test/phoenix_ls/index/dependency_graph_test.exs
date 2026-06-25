@@ -50,6 +50,7 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
         :component_attr,
         :template,
         :live_event,
+        :live_view_function,
         :live_view
       ])
 
@@ -60,6 +61,12 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
              :routes,
              :schemas,
              :templates
+           ]
+  end
+
+  test "LiveView function changes affect the LiveView read model" do
+    assert DependencyGraph.affected_read_models(MapSet.new([:live_view_function])) == [
+             :live_views
            ]
   end
 
