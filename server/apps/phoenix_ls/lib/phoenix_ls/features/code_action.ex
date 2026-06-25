@@ -87,15 +87,16 @@ defmodule PhoenixLS.Features.CodeAction do
   defp action_for_diagnostic(
          %Diagnostic{
            source: @source,
-           code: "phoenix.invalid_attr_value",
-           data: %{"kind" => "invalid_attr_value", "attr" => attr_name, "values" => values}
+           code: code,
+           data: %{"kind" => kind, "attr" => attr_name, "values" => values}
          } = diagnostic,
          _source,
          uri,
          _tags,
          _facts
        )
-       when is_list(values) do
+       when code in ["phoenix.invalid_attr_value", "phoenix.invalid_phx_attr_value"] and
+              kind in ["invalid_attr_value", "invalid_phx_attr_value"] and is_list(values) do
     Enum.map(values, fn value ->
       %CodeAction{
         title: ~s(Change #{attr_name} to "#{value}"),

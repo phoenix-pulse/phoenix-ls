@@ -62,6 +62,28 @@ defmodule PhoenixLS.Features.CodeActionTest do
            end) == ["primary", "secondary"]
   end
 
+  test "replaces invalid phx attr values with each allowed value" do
+    source = ~s(<div phx-update="morph" />)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    actions = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert Enum.map(actions, & &1.title) == [
+             ~s(Change phx-update to "replace"),
+             ~s(Change phx-update to "append"),
+             ~s(Change phx-update to "prepend"),
+             ~s(Change phx-update to "ignore"),
+             ~s(Change phx-update to "stream")
+           ]
+
+    assert Enum.map(actions, fn action ->
+             [%TextEdit{range: range, new_text: new_text}] = action.edit.changes[@uri]
+             assert range == diagnostic.range
+             new_text
+           end) == ["replace", "append", "prepend", "ignore", "stream"]
+  end
+
   test "removes unknown attrs from component tags" do
     source = ~s(<.button label="Save" unknown="x" />)
     {:ok, document} = Parser.parse(source)
