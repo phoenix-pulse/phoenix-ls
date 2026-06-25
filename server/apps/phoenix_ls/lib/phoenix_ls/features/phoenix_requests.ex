@@ -270,7 +270,9 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   end
 
   defp schema_association_payload(fact) do
-    %{
+    fact.data.options
+    |> association_option_payload()
+    |> Map.merge(%{
       "name" => fact.data.name,
       "fieldName" => fact.data.name,
       "foreignKey" => association_foreign_key(fact),
@@ -280,7 +282,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       "cardinality" => association_cardinality(fact.data.association),
       "filePath" => file_path(fact.uri),
       "location" => location(fact)
-    }
+    })
   end
 
   defp component_attr_payload(fact) do
@@ -381,6 +383,15 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> maybe_put("doc", Keyword.get(options, :doc))
   end
 
+  defp association_option_payload(options) do
+    options = options || []
+
+    %{}
+    |> maybe_put("joinThrough", option_value(options, :join_through, &option_string/1))
+    |> maybe_put("joinKeys", option_value(options, :join_keys, &inspect/1))
+    |> maybe_put("onReplace", option_value(options, :on_replace, &value_string/1))
+  end
+
   defp option_value(options, key, transform) do
     case Keyword.fetch(options, key) do
       {:ok, value} -> transform.(value)
@@ -393,6 +404,9 @@ defmodule PhoenixLS.Features.PhoenixRequests do
 
   defp value_string(value) when is_atom(value), do: Atom.to_string(value)
   defp value_string(value), do: inspect(value)
+
+  defp option_string(value) when is_binary(value), do: value
+  defp option_string(value), do: inspect(value)
 
   defp required?(options), do: Keyword.get(options || [], :required, false) == true
 

@@ -192,6 +192,39 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
            ] = PhoenixRequests.handle("phoenix/listLiveView", facts())
   end
 
+  test "lists many-to-many association metadata for ERD explorers" do
+    {:ok, facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule App.Catalog.Product do
+        use Ecto.Schema
+
+        schema "products" do
+          many_to_many :tags, App.Catalog.Tag,
+            join_through: "products_tags",
+            join_keys: [product_id: :id, tag_id: :id],
+            on_replace: :delete
+        end
+      end
+      """)
+
+    assert [
+             %{
+               "associations" => [
+                 %{
+                   "name" => "tags",
+                   "type" => "many_to_many",
+                   "cardinality" => "many_to_many",
+                   "targetModule" => "App.Catalog.Tag"
+                 } = association
+               ]
+             }
+           ] = PhoenixRequests.handle("phoenix/listSchemas", facts)
+
+    assert association["joinThrough"] == "products_tags"
+    assert association["joinKeys"] == "[product_id: :id, tag_id: :id]"
+    assert association["onReplace"] == "delete"
+  end
+
   test "unknown phoenix request returns nil" do
     assert PhoenixRequests.handle("phoenix/unknown", facts()) == nil
   end
