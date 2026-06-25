@@ -219,6 +219,22 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown template "missing.html.heex")
   end
 
+  test "reports unknown route helpers" do
+    facts =
+      route_helper_facts("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.missing_path(conn, :index)
+        end
+      end
+      """)
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert diagnostic.code == "phoenix.unknown_route_helper"
+    assert diagnostic.message == ~s(Unknown route helper "missing_path")
+  end
+
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
     assert diagnostics(~s(<:inner_block />)) == []
@@ -229,6 +245,19 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
   test "returns no diagnostics for known controller render templates" do
     facts = controller_facts(:index) ++ Template.facts(@template_uri, "<h1>Index</h1>")
+
+    assert Diagnostics.diagnostics(@controller_uri, facts) == []
+  end
+
+  test "returns no diagnostics for known route helpers" do
+    facts =
+      route_helper_facts("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_path(conn, :index)
+        end
+      end
+      """)
 
     assert Diagnostics.diagnostics(@controller_uri, facts) == []
   end
@@ -296,5 +325,23 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
       """)
 
     facts
+  end
+
+  defp route_helper_facts(source) do
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+
+    controller_facts ++
+      elem(
+        ElixirSource.facts(@uri, """
+        defmodule AppWeb.Router do
+          use Phoenix.Router
+
+          scope "/", AppWeb do
+            live "/products", ProductLive.Index, :index
+          end
+        end
+        """),
+        1
+      )
   end
 end

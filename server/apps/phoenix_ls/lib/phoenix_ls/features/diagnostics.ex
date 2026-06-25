@@ -32,11 +32,21 @@ defmodule PhoenixLS.Features.Diagnostics do
       |> facts_by_kind(:template)
       |> MapSet.new(& &1.uri)
 
-    facts
-    |> facts_by_kind(:template_reference)
-    |> Enum.filter(&(&1.uri == uri))
-    |> Enum.reject(&known_template_reference?(&1, template_uris))
-    |> Enum.map(&unknown_template_diagnostic/1)
+    template_diagnostics =
+      facts
+      |> facts_by_kind(:template_reference)
+      |> Enum.filter(&(&1.uri == uri))
+      |> Enum.reject(&known_template_reference?(&1, template_uris))
+      |> Enum.map(&unknown_template_diagnostic/1)
+
+    route_helper_diagnostics =
+      facts
+      |> facts_by_kind(:route_helper_reference)
+      |> Enum.filter(&(&1.uri == uri))
+      |> Enum.reject(&known_route_helper_reference?(&1, facts))
+      |> Enum.map(&unknown_route_helper_diagnostic/1)
+
+    template_diagnostics ++ route_helper_diagnostics
   end
 
   defp tag_diagnostics(%Tag{kind: :component, name: ".live_component"} = tag, indexes, tags) do
@@ -506,6 +516,20 @@ defmodule PhoenixLS.Features.Diagnostics do
       range,
       "phoenix.unknown_template",
       ~s(Unknown template "#{data.template}.#{data.format}.heex")
+    )
+  end
+
+  defp known_route_helper_reference?(%Fact{data: %{helper_base: helper_base}}, facts) do
+    facts
+    |> facts_by_kind(:route)
+    |> Enum.any?(&(&1.data.helper_base == helper_base))
+  end
+
+  defp unknown_route_helper_diagnostic(%Fact{range: range, data: data}) do
+    diagnostic(
+      range,
+      "phoenix.unknown_route_helper",
+      ~s(Unknown route helper "#{data.helper}")
     )
   end
 

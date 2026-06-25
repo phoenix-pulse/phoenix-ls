@@ -6,6 +6,7 @@ defmodule PhoenixLS.Index.ElixirSource do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Introspection.{Component, LiveView, Router, Schema, Template}
+  alias PhoenixLS.Introspection.Router.HelperReferences
 
   @parse_options [columns: true, token_metadata: true]
 
@@ -15,7 +16,9 @@ defmodule PhoenixLS.Index.ElixirSource do
     case Code.string_to_quoted(source, @parse_options) do
       {:ok, quoted} ->
         {:ok,
-         collect(quoted, [], uri, opts) ++ Template.render_reference_facts(uri, source, opts)}
+         collect(quoted, [], uri, opts) ++
+           Template.render_reference_facts(uri, source, opts) ++
+           HelperReferences.facts(quoted, uri, opts)}
 
       {:error, reason} ->
         {:error, {:parse_error, reason}}

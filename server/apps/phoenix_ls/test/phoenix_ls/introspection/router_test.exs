@@ -2,6 +2,7 @@ defmodule PhoenixLS.Introspection.RouterTest do
   use ExUnit.Case, async: true
 
   alias PhoenixLS.Introspection.Router
+  alias PhoenixLS.Introspection.Router.HelperReferences
 
   @uri "file:///tmp/app/lib/app_web/router.ex"
   @provenance %{source: :test}
@@ -96,5 +97,31 @@ defmodule PhoenixLS.Introspection.RouterTest do
     {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
 
     assert Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance) == []
+  end
+
+  test "extracts route helper references with source ranges" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :index)
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+
+    assert [fact] = HelperReferences.facts(quoted, @uri)
+
+    assert fact.kind == :route_helper_reference
+
+    assert fact.data == %HelperReferences.Reference{
+             helper: "product_path",
+             helper_base: "product",
+             variant: :path
+           }
+
+    assert fact.range.start.line == 2
+    assert fact.range.start.character == 11
+    assert fact.range.end.character == 23
   end
 end
