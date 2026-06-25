@@ -9,6 +9,8 @@ defmodule PhoenixLS.Introspection.Template do
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Introspection.Template.RenderReferences
 
+  @parse_options [columns: true, token_metadata: true]
+
   defmodule Template do
     @moduledoc """
     Typed HEEx template fact payload.
@@ -70,6 +72,11 @@ defmodule PhoenixLS.Introspection.Template do
 
   defp template_metadata(uri) do
     path = file_path(uri)
+
+    embedded_template_metadata(path) || path_template_metadata(path)
+  end
+
+  defp path_template_metadata(path) do
     name = template_name(path)
     {module_parts, kind} = module_parts(path, name)
 
@@ -108,6 +115,10 @@ defmodule PhoenixLS.Introspection.Template do
     end
   end
 
+  defp module_suffix(["controllers"], stem) do
+    {[module_segment(stem)], :controller}
+  end
+
   defp module_suffix(["controllers" | dirs], _stem) do
     {Enum.map(dirs, &module_segment/1), :controller}
   end
@@ -116,12 +127,27 @@ defmodule PhoenixLS.Introspection.Template do
     {Enum.map(["layouts" | dirs], &module_segment/1), :layout}
   end
 
+  defp module_suffix(["components"], stem) do
+    kind = if stem in ["layout", "layouts"], do: :layout, else: :component
+
+    {[module_segment(stem)], kind}
+  end
+
   defp module_suffix(["components" | dirs], _stem) do
     {Enum.map(dirs, &module_segment/1), :component}
   end
 
   defp module_suffix(["live" | dirs], stem) do
     {Enum.map(dirs ++ [stem], &module_segment/1), :live_view}
+  end
+
+  defp module_suffix(["templates", layout_dir | _dirs], _stem)
+       when layout_dir in ["layout", "layouts"] do
+    {["LayoutView"], :layout}
+  end
+
+  defp module_suffix(["templates" | dirs], _stem) do
+    {legacy_template_module_parts(dirs), :controller}
   end
 
   defp module_suffix(dirs, _stem) do
@@ -134,6 +160,141 @@ defmodule PhoenixLS.Introspection.Template do
   end
 
   defp template_context_dir?(dir), do: dir in ["controllers", "live", "templates", "components"]
+
+  defp legacy_template_module_parts([]), do: []
+
+  defp legacy_template_module_parts(dirs) do
+    {parents, [view_dir]} = Enum.split(dirs, -1)
+
+    Enum.map(parents, &module_segment/1) ++ [module_segment(view_dir) <> "View"]
+  end
+
+  defp embedded_template_metadata(path) do
+    path
+    |> candidate_module_files()
+    |> Enum.find_value(&embedded_template_metadata(&1, path))
+  end
+
+  defp embedded_template_metadata(module_path, template_path) do
+    with true <- File.regular?(module_path),
+         {:ok, source} <- File.read(module_path),
+         {:ok, quoted} <- Code.string_to_quoted(source, @parse_options),
+         {:ok, module} <- embedded_template_owner(quoted, module_path, template_path) do
+      %{
+        name: template_name(template_path),
+        module: module,
+        kind: owner_template_kind(module_path, module)
+      }
+    else
+      _ignored -> nil
+    end
+  end
+
+  defp candidate_module_files(path) do
+    template_dir = Path.dirname(path)
+    parent_dir = Path.dirname(template_dir)
+    stem = template_stem(template_name(path))
+
+    [
+      Path.join(template_dir, stem <> ".ex"),
+      Path.join(parent_dir, Path.basename(template_dir) <> ".ex")
+    ]
+    |> Kernel.++(Path.wildcard(Path.join(parent_dir, "*.ex")))
+    |> Enum.uniq()
+  end
+
+  defp embedded_template_owner(quoted, module_path, template_path) do
+    {_quoted, owners} =
+      Macro.prewalk(quoted, [], fn
+        {:defmodule, _meta, [module_ast, [do: body]]} = node, acc ->
+          owner =
+            with {:ok, module} <- alias_to_string(module_ast),
+                 true <- module_embeds_template?(body, module_path, template_path) do
+              module
+            else
+              _ignored -> nil
+            end
+
+          {node, maybe_cons(owner, acc)}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    case Enum.reverse(owners) do
+      [module | _rest] -> {:ok, module}
+      [] -> :error
+    end
+  end
+
+  defp module_embeds_template?(body, module_path, template_path) do
+    body
+    |> embed_template_patterns()
+    |> Enum.any?(&embed_pattern_matches?(&1, module_path, template_path))
+  end
+
+  defp embed_template_patterns(body) do
+    {_body, patterns} =
+      Macro.prewalk(body, [], fn
+        {:embed_templates, _meta, [pattern | _rest]} = node, acc when is_binary(pattern) ->
+          {node, [pattern | acc]}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    Enum.reverse(patterns)
+  end
+
+  defp embed_pattern_matches?(pattern, module_path, template_path) do
+    module_path
+    |> Path.dirname()
+    |> Path.join(pattern)
+    |> Path.expand()
+    |> Path.wildcard()
+    |> Enum.any?(&(Path.expand(&1) == Path.expand(template_path)))
+  end
+
+  defp maybe_cons(nil, acc), do: acc
+  defp maybe_cons(value, acc), do: [value | acc]
+
+  defp owner_template_kind(module_path, module) do
+    path_parts = Path.split(module_path)
+    basename = module_path |> Path.basename() |> Path.rootname()
+
+    cond do
+      "controllers" in path_parts ->
+        :controller
+
+      "views" in path_parts and basename in ["layout_view", "layouts_view"] ->
+        :layout
+
+      "views" in path_parts ->
+        :controller
+
+      "components" in path_parts and String.ends_with?(module, ".Layouts") ->
+        :layout
+
+      "components" in path_parts ->
+        :component
+
+      "live" in path_parts ->
+        :live_view
+
+      true ->
+        :template
+    end
+  end
+
+  defp alias_to_string({:__aliases__, _meta, parts}) do
+    if Enum.all?(parts, &is_atom/1) do
+      {:ok, Enum.map_join(parts, ".", &Atom.to_string/1)}
+    else
+      :error
+    end
+  end
+
+  defp alias_to_string(_module_ast), do: :error
 
   defp template_stem(name) do
     name

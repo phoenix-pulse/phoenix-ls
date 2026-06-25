@@ -68,4 +68,92 @@ defmodule PhoenixLS.Introspection.TemplateTest do
              }
     end
   end
+
+  test "infers legacy template, colocated component, layout, and LiveView variants" do
+    cases = [
+      {
+        "file:///tmp/app/lib/app_web/templates/page/index.html.heex",
+        "index.html",
+        "AppWeb.PageView",
+        :controller
+      },
+      {
+        "file:///tmp/app/lib/app_web/templates/layout/app.html.heex",
+        "app.html",
+        "AppWeb.LayoutView",
+        :layout
+      },
+      {
+        "file:///tmp/app/lib/app_web/components/core_components.html.heex",
+        "core_components.html",
+        "AppWeb.CoreComponents",
+        :component
+      },
+      {
+        "file:///tmp/app/lib/app_web/components/layouts.html.heex",
+        "layouts.html",
+        "AppWeb.Layouts",
+        :layout
+      },
+      {
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        "product_live.html",
+        "AppWeb.ProductLive",
+        :live_view
+      },
+      {
+        "file:///tmp/app/lib/app_web/live/product_live/index.html.heex",
+        "index.html",
+        "AppWeb.ProductLive.Index",
+        :live_view
+      }
+    ]
+
+    for {uri, name, module, kind} <- cases do
+      assert [fact] = Template.facts(uri, "<section />")
+
+      assert Map.take(Map.from_struct(fact.data), [:format, :name, :module, :kind]) == %{
+               format: :heex,
+               name: name,
+               module: module,
+               kind: kind
+             }
+    end
+  end
+
+  test "uses embed_templates owner modules for non-conventional template directories" do
+    root = System.unique_integer([:positive])
+    tmp_root = Path.join(System.tmp_dir!(), "phoenix-ls-template-#{root}")
+    controllers_dir = Path.join([tmp_root, "lib", "app_web", "controllers"])
+    templates_dir = Path.join(controllers_dir, "site_templates")
+    module_path = Path.join(controllers_dir, "marketing_html.ex")
+    template_path = Path.join(templates_dir, "landing.html.heex")
+
+    File.mkdir_p!(templates_dir)
+
+    File.write!(module_path, """
+    defmodule AppWeb.MarketingHTML do
+      use AppWeb, :html
+
+      embed_templates "site_templates/*"
+    end
+    """)
+
+    File.write!(template_path, "<section />")
+
+    try do
+      uri = "file://" <> template_path
+
+      assert [fact] = Template.facts(uri, "<section />")
+
+      assert Map.take(Map.from_struct(fact.data), [:format, :name, :module, :kind]) == %{
+               format: :heex,
+               name: "landing.html",
+               module: "AppWeb.MarketingHTML",
+               kind: :controller
+             }
+    after
+      File.rm_rf!(tmp_root)
+    end
+  end
 end

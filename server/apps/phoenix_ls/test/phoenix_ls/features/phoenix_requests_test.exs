@@ -239,6 +239,47 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
            ]
   end
 
+  test "lists legacy and colocated template variants with inferred modules" do
+    facts =
+      [
+        "file:///tmp/app/lib/app_web/templates/page/index.html.heex",
+        "file:///tmp/app/lib/app_web/templates/layout/app.html.heex",
+        "file:///tmp/app/lib/app_web/components/layouts.html.heex",
+        "file:///tmp/app/lib/app_web/components/core_components.html.heex",
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex"
+      ]
+      |> Enum.flat_map(&Template.facts(&1, "<section />"))
+
+    templates =
+      PhoenixRequests.handle("phoenix/listTemplates", Snapshot.new(facts))
+      |> Map.new(&{&1["filePath"], &1})
+
+    assert templates["/tmp/app/lib/app_web/templates/page/index.html.heex"] == %{
+             "name" => "index.html",
+             "format" => "heex",
+             "kind" => "controller",
+             "filePath" => "/tmp/app/lib/app_web/templates/page/index.html.heex",
+             "location" => %{"line" => 0, "character" => 0},
+             "module" => "AppWeb.PageView"
+           }
+
+    assert templates["/tmp/app/lib/app_web/templates/layout/app.html.heex"]["module"] ==
+             "AppWeb.LayoutView"
+
+    assert templates["/tmp/app/lib/app_web/templates/layout/app.html.heex"]["kind"] == "layout"
+
+    assert templates["/tmp/app/lib/app_web/components/layouts.html.heex"]["module"] ==
+             "AppWeb.Layouts"
+
+    assert templates["/tmp/app/lib/app_web/components/layouts.html.heex"]["kind"] == "layout"
+
+    assert templates["/tmp/app/lib/app_web/components/core_components.html.heex"]["module"] ==
+             "AppWeb.CoreComponents"
+
+    assert templates["/tmp/app/lib/app_web/live/product_live.html.heex"]["module"] ==
+             "AppWeb.ProductLive"
+  end
+
   test "lists LiveView events" do
     assert [
              %{
