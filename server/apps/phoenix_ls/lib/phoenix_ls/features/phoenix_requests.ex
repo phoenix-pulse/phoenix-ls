@@ -35,7 +35,11 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       associations = Map.get(associations_by_schema, fact.id, [])
 
       %{
+        "id" => fact.id,
         "name" => fact.data.module,
+        "module" => fact.data.module,
+        "source" => fact.data.source,
+        "table" => fact.data.source,
         "tableName" => fact.data.source,
         "filePath" => file_path(fact.uri),
         "location" => location(fact),
@@ -160,15 +164,22 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     %{
       "name" => fact.data.name,
       "type" => type_string(fact.data.type),
-      "elixirType" => inspect(fact.data.type)
+      "elixirType" => inspect(fact.data.type),
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact)
     }
   end
 
   defp schema_association_payload(fact) do
     %{
+      "name" => fact.data.name,
       "fieldName" => fact.data.name,
+      "schema" => fact.data.related,
       "targetModule" => fact.data.related,
-      "type" => Atom.to_string(fact.data.association)
+      "type" => Atom.to_string(fact.data.association),
+      "cardinality" => association_cardinality(fact.data.association),
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact)
     }
   end
 
@@ -254,6 +265,14 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   defp value_string(value), do: inspect(value)
 
   defp required?(options), do: Keyword.get(options || [], :required, false) == true
+
+  defp association_cardinality(:belongs_to), do: "many_to_one"
+  defp association_cardinality(:has_one), do: "one_to_one"
+  defp association_cardinality(:has_many), do: "one_to_many"
+  defp association_cardinality(:many_to_many), do: "many_to_many"
+  defp association_cardinality(:embeds_one), do: "one_to_one"
+  defp association_cardinality(:embeds_many), do: "one_to_many"
+  defp association_cardinality(_association), do: "unknown"
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

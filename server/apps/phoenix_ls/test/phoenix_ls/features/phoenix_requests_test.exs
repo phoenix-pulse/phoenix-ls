@@ -11,20 +11,35 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
   test "lists schemas with fields and associations" do
     assert [
              %{
+               "id" => "App.Catalog.Product:schema:products",
                "name" => "App.Catalog.Product",
+               "module" => "App.Catalog.Product",
+               "source" => "products",
+               "table" => "products",
                "tableName" => "products",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => line, "character" => 2},
                "fieldsCount" => 1,
                "associationsCount" => 1,
                "fields" => [
-                 %{"name" => "name", "type" => "string", "elixirType" => ":string"}
+                 %{
+                   "name" => "name",
+                   "type" => "string",
+                   "elixirType" => ":string",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _field_line, "character" => 4}
+                 }
                ],
                "associations" => [
                  %{
+                   "name" => "category",
                    "fieldName" => "category",
+                   "schema" => "App.Catalog.Category",
                    "targetModule" => "App.Catalog.Category",
-                   "type" => "belongs_to"
+                   "type" => "belongs_to",
+                   "cardinality" => "many_to_one",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _association_line, "character" => 4}
                  }
                ]
              }

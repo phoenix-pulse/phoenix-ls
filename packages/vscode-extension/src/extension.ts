@@ -315,9 +315,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const copyTableNameCommand = vscode.commands.registerCommand(
           'phoenixPulse.copyTableName',
           (item: any) => {
-            if (item && item.data && item.data.tableName) {
-              vscode.env.clipboard.writeText(item.data.tableName);
-              vscode.window.showInformationMessage(`Copied table: ${item.data.tableName}`);
+            const tableName = item?.data?.tableName || item?.data?.table;
+
+            if (tableName) {
+              vscode.env.clipboard.writeText(tableName);
+              vscode.window.showInformationMessage(`Copied table: ${tableName}`);
             }
           }
         );

@@ -1,8 +1,16 @@
 interface SchemaInfo {
   name: string;
+  table?: string | null;
   tableName?: string;
   fields: Array<{ name: string; type: string; elixirType?: string }>;
-  associations: Array<{ fieldName: string; targetModule: string; type: string }>;
+  associations: Array<{
+    name?: string;
+    fieldName: string;
+    schema?: string;
+    targetModule: string;
+    type: string;
+    cardinality?: string;
+  }>;
 }
 
 /**
@@ -18,7 +26,7 @@ function getSimpleName(modulePath: string): string {
  */
 function getDisplayName(schema: SchemaInfo): string {
   // Use table name if available (e.g., "bootcamps"), otherwise use simple name
-  return schema.tableName || getSimpleName(schema.name);
+  return schema.tableName || schema.table || getSimpleName(schema.name);
 }
 
 /**

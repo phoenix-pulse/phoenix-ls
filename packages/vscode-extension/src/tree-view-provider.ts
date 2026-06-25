@@ -2,14 +2,33 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 
 interface SchemaInfo {
+  id?: string;
   name: string;
+  module?: string;
+  source?: string | null;
+  table?: string | null;
   tableName?: string;
   filePath: string;
   location: { line: number; character: number };
   fieldsCount: number;
   associationsCount: number;
-  fields: Array<{ name: string; type: string; elixirType?: string }>;
-  associations: Array<{ fieldName: string; targetModule: string; type: string }>;
+  fields: Array<{
+    name: string;
+    type: string;
+    elixirType?: string;
+    filePath?: string;
+    location?: { line: number; character: number };
+  }>;
+  associations: Array<{
+    name?: string;
+    fieldName: string;
+    schema?: string;
+    targetModule: string;
+    type: string;
+    cardinality?: string;
+    filePath?: string;
+    location?: { line: number; character: number };
+  }>;
 }
 
 interface ComponentInfo {

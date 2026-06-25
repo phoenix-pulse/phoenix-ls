@@ -67,4 +67,89 @@ defmodule PhoenixLS.Introspection.SchemaTest do
              options: []
            }
   end
+
+  test "extracts embedded schemas and resolves embed association targets" do
+    source = """
+    defmodule App.Catalog.Product do
+      alias App.Inventory.Sku
+
+      schema "products" do
+        embeds_one :metadata, Metadata
+        embeds_many :variants, Variant
+        has_many :skus, Sku
+      end
+
+      embedded_schema do
+        field :draft_name, :string
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Schema.facts_for_module_body("App.Catalog.Product", body, @uri, @provenance)
+
+    assert Enum.map(facts, & &1.id) == [
+             "App.Catalog.Product:schema:products",
+             "App.Catalog.Product:schema:products:association:metadata",
+             "App.Catalog.Product:schema:products:association:variants",
+             "App.Catalog.Product:schema:products:association:skus",
+             "App.Catalog.Product:embedded_schema",
+             "App.Catalog.Product:embedded_schema:field:draft_name"
+           ]
+
+    [metadata_assoc, variants_assoc, skus_assoc] =
+      facts
+      |> Enum.filter(&(&1.kind == :schema_association))
+      |> Enum.map(& &1.data)
+
+    assert metadata_assoc == %Schema.Association{
+             schema: "App.Catalog.Product:schema:products",
+             module: "App.Catalog.Product",
+             name: "metadata",
+             association: :embeds_one,
+             related: "App.Catalog.Product.Metadata",
+             options: []
+           }
+
+    assert variants_assoc.related == "App.Catalog.Product.Variant"
+    assert variants_assoc.association == :embeds_many
+    assert skus_assoc.related == "App.Inventory.Sku"
+
+    assert embedded_schema = Enum.find(facts, &(&1.id == "App.Catalog.Product:embedded_schema"))
+    assert embedded_schema.data == %Schema.Schema{module: "App.Catalog.Product", source: nil}
+
+    assert draft_field =
+             Enum.find(facts, &(&1.id == "App.Catalog.Product:embedded_schema:field:draft_name"))
+
+    assert draft_field.data.schema == embedded_schema.id
+    assert draft_field.data.name == "draft_name"
+  end
+
+  test "extracts timestamp fields from timestamps macro" do
+    source = """
+    defmodule App.Catalog.Product do
+      use Ecto.Schema
+
+      schema "products" do
+        field :name, :string
+        timestamps(type: :utc_datetime)
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Schema.facts_for_module_body("App.Catalog.Product", body, @uri, @provenance)
+
+    assert facts
+           |> Enum.filter(&(&1.kind == :schema_field))
+           |> Enum.map(&{&1.data.name, &1.data.type, &1.range.start.line}) == [
+             {"name", :string, 4},
+             {"inserted_at", :utc_datetime, 5},
+             {"updated_at", :utc_datetime, 5}
+           ]
+  end
 end
