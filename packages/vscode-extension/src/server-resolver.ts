@@ -8,6 +8,26 @@ export interface ResolvedServer {
   env: NodeJS.ProcessEnv;
 }
 
+function isExecutableFile(candidate: string, outputChannel: vscode.OutputChannel): boolean {
+  try {
+    const stat = fs.statSync(candidate);
+
+    if (!stat.isFile()) {
+      outputChannel.appendLine(`Phoenix LS candidate is not a file: ${candidate}`);
+      return false;
+    }
+
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch (error) {
+    if (fs.existsSync(candidate)) {
+      outputChannel.appendLine(`Phoenix LS candidate is not executable: ${candidate}`);
+    }
+
+    return false;
+  }
+}
+
 export function resolveServer(
   context: vscode.ExtensionContext,
   outputChannel: vscode.OutputChannel
@@ -24,7 +44,7 @@ export function resolveServer(
     context.asAbsolutePath(path.join('..', '..', 'server', 'apps', 'phoenix_ls', 'phoenix_ls'))
   ].filter((candidate): candidate is string => candidate.length > 0);
 
-  const command = candidates.find(candidate => fs.existsSync(candidate));
+  const command = candidates.find(candidate => isExecutableFile(candidate, outputChannel));
 
   if (!command) {
     outputChannel.appendLine('Phoenix LS executable not found. Checked:');
