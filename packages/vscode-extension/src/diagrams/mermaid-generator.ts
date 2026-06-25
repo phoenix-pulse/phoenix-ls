@@ -93,8 +93,8 @@ export function generateMermaidDiagram(schemas: SchemaInfo[]): string {
     const fieldsToShow = schema.fields.slice(0, 8);
     for (const field of fieldsToShow) {
       const fieldType = mapElixirTypeToMermaid(field.type);
-      const isPK = field.primaryKey ?? field.name === 'id';
-      const isFK = field.foreignKey ?? field.name.endsWith('_id');
+      const isPK = field.primaryKey === true;
+      const isFK = field.foreignKey === true;
 
       let constraint = '';
       if (isPK) constraint = ' PK';

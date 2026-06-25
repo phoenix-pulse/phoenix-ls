@@ -22,6 +22,25 @@ describe('generateMermaidDiagram', () => {
     expect(diagram).not.toContain('string legacy_id FK');
   });
 
+  it('does not infer constraints when explicit schema field metadata is absent', () => {
+    const diagram = generateMermaidDiagram([
+      {
+        name: 'App.Accounts.User',
+        tableName: 'users',
+        fields: [
+          { name: 'id', type: 'id' },
+          { name: 'legacy_id', type: 'string' }
+        ],
+        associations: []
+      }
+    ]);
+
+    expect(diagram).toContain('string id\n');
+    expect(diagram).toContain('string legacy_id\n');
+    expect(diagram).not.toContain('string id PK');
+    expect(diagram).not.toContain('string legacy_id FK');
+  });
+
   it('includes many-to-many join metadata in relationship labels', () => {
     const diagram = generateMermaidDiagram([
       {

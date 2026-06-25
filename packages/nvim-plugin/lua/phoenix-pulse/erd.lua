@@ -79,15 +79,8 @@ local function generate_mermaid_code(schemas)
     for _, field in ipairs(fields_to_show) do
       local field_type = field.type or "string"
       local field_name = field.name or "unknown"
-      local is_pk = field.primaryKey
-      if is_pk == nil then
-        is_pk = field_name == "id"
-      end
-
-      local is_fk = field.foreignKey
-      if is_fk == nil then
-        is_fk = field_name:match("_id$") ~= nil
-      end
+      local is_pk = field.primaryKey == true
+      local is_fk = field.foreignKey == true
 
       local constraint = ""
       if is_pk then

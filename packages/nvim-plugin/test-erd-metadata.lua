@@ -36,7 +36,10 @@ local diagram = erd._generate_mermaid_code({
   {
     name = "App.Catalog.Product",
     tableName = "products",
-    fields = {},
+    fields = {
+      { name = "id", type = "id" },
+      { name = "legacy_id", type = "string" },
+    },
     associations = {
       {
         fieldName = "tags",
@@ -57,4 +60,12 @@ local diagram = erd._generate_mermaid_code({
 
 if not string.find(diagram, 'products }o%-%-o{ tags : "many to many via products_tags"') then
   error("expected many-to-many join metadata in Mermaid relationship label", 2)
+end
+
+if string.find(diagram, "string id PK", 1, true) then
+  error("expected missing primaryKey metadata not to infer PK from id", 2)
+end
+
+if string.find(diagram, "string legacy_id FK", 1, true) then
+  error("expected missing foreignKey metadata not to infer FK from _id suffix", 2)
 end
