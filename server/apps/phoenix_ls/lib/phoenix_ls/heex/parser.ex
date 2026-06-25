@@ -10,8 +10,13 @@ defmodule PhoenixLS.HEEx.Parser do
 
   @spec parse(String.t()) :: {:ok, Document.t()} | {:error, atom()}
   def parse(source) when is_binary(source) do
-    with {:ok, tags} <- scan(source, 0, []) do
-      {:ok, %Document{tags: Enum.reverse(tags)}}
+    with {:ok, events} <- scan(source, 0, []) do
+      tags =
+        events
+        |> Enum.reverse()
+        |> tags_with_closings()
+
+      {:ok, %Document{tags: tags}}
     end
   end
 
@@ -26,8 +31,8 @@ defmodule PhoenixLS.HEEx.Parser do
             scan(source, skip_heex_expression(source, tag_start), tags)
 
           starts_at?(source, tag_start, "</") ->
-            with {:ok, tag_end} <- tag_end(source, tag_start + 2) do
-              scan(source, tag_end + 1, tags)
+            with {:ok, closing_tag, next_offset} <- parse_closing_tag(source, tag_start) do
+              scan(source, next_offset, [{:close, closing_tag} | tags])
             end
 
           starts_at?(source, tag_start, "<!") ->
@@ -37,10 +42,51 @@ defmodule PhoenixLS.HEEx.Parser do
 
           true ->
             with {:ok, tag, next_offset} <- parse_tag(source, tag_start) do
-              scan(source, next_offset, [tag | tags])
+              scan(source, next_offset, [{:open, tag} | tags])
             end
         end
     end
+  end
+
+  defp tags_with_closings(events) do
+    {tags, _stack} =
+      Enum.reduce(events, {[], []}, fn
+        {:open, %Tag{self_closing?: true} = tag}, {tags, stack} ->
+          {[tag | tags], stack}
+
+        {:open, %Tag{} = tag}, {tags, stack} ->
+          {[tag | tags], [tag | stack]}
+
+        {:close, closing_tag}, {tags, stack} ->
+          case pop_matching_open_tag(stack, closing_tag.name) do
+            {:ok, tag, remaining_stack} ->
+              updated_tag = %{
+                tag
+                | closing_range: closing_tag.range,
+                  closing_name_range: closing_tag.name_range
+              }
+
+              {replace_tag(tags, tag, updated_tag), remaining_stack}
+
+            :error ->
+              {tags, stack}
+          end
+      end)
+
+    Enum.reverse(tags)
+  end
+
+  defp pop_matching_open_tag([%Tag{name: open_name} = tag | rest], close_name)
+       when open_name == close_name,
+       do: {:ok, tag, rest}
+
+  defp pop_matching_open_tag(_stack, _name), do: :error
+
+  defp replace_tag(tags, original_tag, updated_tag) do
+    Enum.map(tags, fn
+      tag when tag == original_tag -> updated_tag
+      tag -> tag
+    end)
   end
 
   defp parse_tag(source, tag_start) do
@@ -60,6 +106,16 @@ defmodule PhoenixLS.HEEx.Parser do
       }
 
       {:ok, tag, tag_end + 1}
+    end
+  end
+
+  defp parse_closing_tag(source, tag_start) do
+    with {:ok, tag_end} <- tag_end(source, tag_start + 2),
+         name_start <- skip_whitespace(source, tag_start + 2, tag_end),
+         {:ok, name, name_end} <- parse_name(source, name_start, tag_end),
+         {:ok, range} <- range(source, tag_start, tag_end + 1),
+         {:ok, name_range} <- range(source, name_start, name_end) do
+      {:ok, %{name: name, range: range, name_range: name_range}, tag_end + 1}
     end
   end
 

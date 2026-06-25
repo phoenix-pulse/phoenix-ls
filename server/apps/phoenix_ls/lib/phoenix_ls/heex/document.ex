@@ -13,7 +13,16 @@ defmodule PhoenixLS.HEEx.Document do
     """
 
     @enforce_keys [:kind, :name, :range, :name_range]
-    defstruct [:kind, :name, :range, :name_range, attrs: [], self_closing?: false]
+    defstruct [
+      :kind,
+      :name,
+      :range,
+      :name_range,
+      :closing_range,
+      :closing_name_range,
+      attrs: [],
+      self_closing?: false
+    ]
 
     @type kind :: :component | :remote_component | :slot | :html
 
@@ -22,6 +31,8 @@ defmodule PhoenixLS.HEEx.Document do
             name: String.t(),
             range: GenLSP.Structures.Range.t(),
             name_range: GenLSP.Structures.Range.t(),
+            closing_range: GenLSP.Structures.Range.t() | nil,
+            closing_name_range: GenLSP.Structures.Range.t() | nil,
             attrs: [PhoenixLS.HEEx.Document.Attribute.t()],
             self_closing?: boolean()
           }

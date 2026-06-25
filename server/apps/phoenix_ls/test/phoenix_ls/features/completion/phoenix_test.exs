@@ -135,6 +135,38 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.insert_text == "name"
   end
 
+  test "does not leak form :let bindings after the form closes" do
+    {source, position} =
+      source_and_position("""
+      <.form :let={f} for={@product}>
+      </.form>
+
+      <.input field={f[:na|]} />
+      """)
+
+    assert Phoenix.complete(@uri, source, position, facts()) == []
+  end
+
+  test "completes schema fields for inputs_for :let bindings" do
+    {source, position} =
+      source_and_position("""
+      <.form :let={f} for={@product}>
+        <.inputs_for :let={variant_form} field={f[:variants]}>
+          <.input field={variant_form[:sk|]} />
+        </.inputs_for>
+      </.form>
+      """)
+
+    items = Phoenix.complete(@uri, source, position, nested_form_facts())
+
+    assert Enum.map(items, & &1.label) == ["sku"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.field()
+    assert item.detail == "field :sku, :string"
+    assert item.insert_text == "sku"
+  end
+
   test "completes assigns in HEEx expressions" do
     items = complete("<p>{@sele|}</p>")
 
@@ -346,6 +378,30 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     Template.facts(@template_uri, "<h1>Index</h1>") ++
       Template.facts(@show_template_uri, "<h1>Show</h1>") ++
       Template.facts(@other_template_uri, "<h1>Other</h1>")
+  end
+
+  defp nested_form_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule App.Catalog.Product do
+        use Ecto.Schema
+
+        schema "products" do
+          field :name, :string
+          has_many :variants, App.Catalog.Variant
+        end
+      end
+
+      defmodule App.Catalog.Variant do
+        use Ecto.Schema
+
+        schema "variants" do
+          field :sku, :string
+        end
+      end
+      """)
+
+    facts
   end
 
   defp source_and_position(marked_source, marker \\ "|") do

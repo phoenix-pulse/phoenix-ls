@@ -1,6 +1,6 @@
 defmodule PhoenixLS.Features.Completion.FormFields do
   @moduledoc """
-  Completion items for schema-backed fields bound through `<.form :let={...}>`.
+  Completion items for schema-backed fields bound through form component variables.
   """
 
   alias PhoenixLS.Features.Completion.Schemas
@@ -40,7 +40,7 @@ defmodule PhoenixLS.Features.Completion.FormFields do
 
   defp schema_for_binding(tags, source, offset, variable, facts) do
     tags
-    |> Enum.filter(&tag_before?(&1, source, offset))
+    |> Enum.filter(&active_tag?(&1, source, offset))
     |> Enum.reduce(%{}, &put_form_binding(&1, &2, facts))
     |> Map.fetch(variable)
   end
@@ -56,11 +56,33 @@ defmodule PhoenixLS.Features.Completion.FormFields do
     end
   end
 
+  defp put_form_binding(%Tag{name: ".inputs_for"} = tag, bindings, facts) do
+    with %Attribute{value: variable, value_kind: :expression} <- find_attr(tag, ":let"),
+         true <- identifier?(variable),
+         {:ok, schema_id} <- schema_id_for_inputs_for(tag, bindings, facts) do
+      Map.put(bindings, variable, schema_id)
+    else
+      _missing_binding -> bindings
+    end
+  end
+
   defp put_form_binding(_tag, bindings, _facts), do: bindings
 
-  defp tag_before?(%Tag{range: %{start: start}}, source, offset) do
+  defp active_tag?(%Tag{self_closing?: true}, _source, _offset), do: false
+
+  defp active_tag?(%Tag{range: %{start: start}, closing_range: closing_range}, source, offset) do
     case Positions.lsp_position_to_offset(source, start) do
-      {:ok, tag_offset} -> tag_offset < offset
+      {:ok, tag_offset} when tag_offset < offset -> before_closing?(closing_range, source, offset)
+      {:ok, _tag_offset} -> false
+      :error -> false
+    end
+  end
+
+  defp before_closing?(nil, _source, _offset), do: true
+
+  defp before_closing?(%{end: close_end}, source, offset) do
+    case Positions.lsp_position_to_offset(source, close_end) do
+      {:ok, close_offset} -> offset <= close_offset
       :error -> false
     end
   end
@@ -68,6 +90,89 @@ defmodule PhoenixLS.Features.Completion.FormFields do
   defp find_attr(%Tag{} = tag, name) do
     Enum.find(tag.attrs, &(&1.name == name))
   end
+
+  defp schema_id_for_inputs_for(tag, bindings, facts) do
+    case schema_id_for_inputs_for_field(tag, bindings, facts) do
+      {:ok, schema_id} -> {:ok, schema_id}
+      :error -> schema_id_for_inputs_for_source(tag, facts)
+    end
+  end
+
+  defp schema_id_for_inputs_for_field(tag, bindings, facts) do
+    with %Attribute{value: source, value_kind: :expression} <- find_attr(tag, "field"),
+         {:ok, base_variable, path} <- form_field_path(source),
+         {:ok, base_schema_id} <- Map.fetch(bindings, base_variable) do
+      schema_id_for_path(base_schema_id, path, facts)
+    else
+      _not_association_field -> :error
+    end
+  end
+
+  defp schema_id_for_inputs_for_source(tag, facts) do
+    with %Attribute{value: source, value_kind: :expression} <- find_attr(tag, "for") do
+      schema_id_for_form_source(source, facts)
+    else
+      _missing_for -> :error
+    end
+  end
+
+  defp form_field_path(source) do
+    with {:ok, ast} <- Code.string_to_quoted(source, columns: true, token_metadata: true),
+         {:ok, base_variable, reversed_path} <- access_path(ast, []) do
+      {:ok, base_variable, Enum.reverse(reversed_path)}
+    else
+      _not_field_access -> :error
+    end
+  end
+
+  defp access_path({{:., _meta, [Access, :get]}, _call_meta, [inner_ast, segment]}, path) do
+    with {:ok, segment} <- path_segment(segment) do
+      access_path(inner_ast, [segment | path])
+    end
+  end
+
+  defp access_path({variable, _meta, nil}, [_segment | _rest] = path) when is_atom(variable) do
+    variable = Atom.to_string(variable)
+
+    if identifier?(variable), do: {:ok, variable, path}, else: :error
+  end
+
+  defp access_path(_ast, _path), do: :error
+
+  defp path_segment(segment) when is_atom(segment), do: {:ok, Atom.to_string(segment)}
+  defp path_segment(segment) when is_binary(segment), do: {:ok, segment}
+  defp path_segment(_segment), do: :error
+
+  defp schema_id_for_path(schema_id, path, facts) do
+    Enum.reduce_while(path, {:ok, schema_id}, fn segment, {:ok, current_schema_id} ->
+      case schema_id_for_association(current_schema_id, segment, facts) do
+        {:ok, next_schema_id} -> {:cont, {:ok, next_schema_id}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp schema_id_for_association(schema_id, name, facts) do
+    with %Fact{data: %{related: related_module}} <-
+           Enum.find(facts, &association_fact?(&1, schema_id, name)),
+         %Fact{id: related_schema_id} <- Enum.find(facts, &schema_for_module?(&1, related_module)) do
+      {:ok, related_schema_id}
+    else
+      _missing_association -> :error
+    end
+  end
+
+  defp association_fact?(%Fact{kind: :schema_association, data: data}, schema_id, name) do
+    data.schema == schema_id and data.name == name
+  end
+
+  defp association_fact?(_fact, _schema_id, _name), do: false
+
+  defp schema_for_module?(%Fact{kind: :schema, data: %{module: fact_module}}, module)
+       when fact_module == module,
+       do: true
+
+  defp schema_for_module?(_fact, _module), do: false
 
   defp schema_id_for_form_source(source, facts) do
     with {:ok, candidate} <- schema_candidate(source) do
