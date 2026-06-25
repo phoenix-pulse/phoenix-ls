@@ -251,6 +251,7 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp event_diagnostics(%Tag{} = tag, indexes) do
     tag.attrs
     |> Enum.filter(&event_attr?/1)
+    |> Enum.filter(&literal_event_attr?/1)
     |> Enum.reject(&blank?(&1.value))
     |> Enum.reject(&MapSet.member?(indexes.events, &1.value))
     |> Enum.map(fn attr ->
@@ -553,6 +554,11 @@ defmodule PhoenixLS.Features.Diagnostics do
       name not in @non_event_phx_attrs and
       not String.starts_with?(name, "phx-value-")
   end
+
+  defp literal_event_attr?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
+    do: true
+
+  defp literal_event_attr?(_attr), do: false
 
   defp global_component_attr?(%Attribute{name: name}) do
     name in @global_component_attrs or

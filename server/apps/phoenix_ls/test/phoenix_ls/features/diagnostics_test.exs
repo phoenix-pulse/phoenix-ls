@@ -117,6 +117,10 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown LiveView event "missing")
   end
 
+  test "does not report expression-based phx event values as unknown events" do
+    assert diagnostics(~S|<button phx-click={JS.show(to: "#modal")} />|) == []
+  end
+
   test "reports HTML :for loops without DOM tracking" do
     [diagnostic] = diagnostics(~s(<div :for={item <- @items}>{item.name}</div>))
 
