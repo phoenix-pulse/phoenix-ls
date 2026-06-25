@@ -10,10 +10,9 @@ server/_build/
 server/apps/phoenix_ls/phoenix_ls
 packages/vscode-extension/server/phoenix_ls
 packages/nvim-plugin/server/phoenix_ls
+server/.expert
 *.vsix
 *.tgz
-
-# DO NOT ignore: packages/nvim-plugin/lsp/ (bundled LSP for users)
 
 # OS files
 .DS_Store
@@ -64,7 +63,5 @@ trash/
 !**/README.md
 !**/CONTRIBUTING.md
 !NEOVIM.md
-!docs/release.md
-!docs/elixir-v2-rewrite-plan.md
-!docs/elixir-v2-scope-matrix.md
-!docs/superpowers/plans/*.md
+docs
+AGENTS.md

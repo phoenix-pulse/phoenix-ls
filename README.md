@@ -4,39 +4,42 @@
 
 This is the `phoenix-ls` monorepo containing the Phoenix Pulse Language Server and editor extensions.
 
-## 📦 Packages
+## Packages
 
 ### [Phoenix LS Elixir Server](./server/apps/phoenix_ls/)
+
 The Elixir-native Language Server Protocol (LSP) server providing intelligent features for Phoenix LiveView development.
 
-- 🧩 Component completions with attributes and slots
-- 📊 Schema completions with association drill-down
-- 🛣️ Route completions for verified routes
-- ⚡ Event completions for LiveView events
-- 🔍 Diagnostics for invalid attributes and values
-- 📖 Hover documentation
-- 🎯 Go-to-definition support
+- Component completions with attributes and slots
+- Schema completions with association drill-down
+- Route completions for verified routes
+- Event completions for LiveView events
+- Diagnostics for invalid attributes and values
+- Hover documentation
+- Go-to-definition support
 
 The server builds to a local `phoenix_ls` escript and is launched by the editor clients over stdio.
 
 ### [VS Code Extension](./packages/vscode-extension/)
+
 VS Code extension for Phoenix LiveView development.
 
 - Phoenix LS-backed LSP features
-- 📦 Project Explorer (TreeView)
-- 📊 ERD Diagram viewer
-- 🎨 Syntax highlighting for HEEx templates
+- Project Explorer (TreeView)
+- ERD Diagram viewer
+- Syntax highlighting for HEEx templates
 
 **Install from:** [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse)
 
 ### [Neovim Plugin](./packages/nvim-plugin/)
+
 Neovim plugin using the same LSP server as VS Code.
 
 - Phoenix LS-backed LSP features
-- 📦 Project Explorer (Float/Split)
-- 📊 ERD Diagram viewer
-- 🔍 Search/filter functionality
-- 📋 Context-aware copy commands
+- Project Explorer (Float/Split)
+- ERD Diagram viewer
+- Search/filter functionality
+- Context-aware copy commands
 
 **Install:** See [NEOVIM.md](./NEOVIM.md) for complete installation guide
 
@@ -44,22 +47,25 @@ Release-candidate packaging, install, troubleshooting, logs, and custom server p
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### VS Code
 
 **From Marketplace (Recommended):**
+
 1. Open VS Code
 2. Press `Ctrl+Shift+X` (or `Cmd+Shift+X` on Mac)
 3. Search for **"Phoenix Pulse"**
 4. Click **Install**
 
 **Or via command line:**
+
 ```bash
 code --install-extension onsever.phoenix-pulse
 ```
 
 **Manual Installation (.vsix):**
+
 ```bash
 # Download .vsix from releases
 code --install-extension phoenix-pulse-1.4.0.vsix
@@ -68,6 +74,7 @@ code --install-extension phoenix-pulse-1.4.0.vsix
 ### Neovim
 
 **Using lazy.nvim:**
+
 ```lua
 {
   "phoenix-pulse/phoenix-ls",
@@ -82,6 +89,7 @@ code --install-extension phoenix-pulse-1.4.0.vsix
 ```
 
 **Using packer.nvim:**
+
 ```lua
 use {
   "phoenix-pulse/phoenix-ls",
@@ -93,6 +101,7 @@ use {
 ```
 
 **Using vim-plug:**
+
 ```vim
 Plug 'phoenix-pulse/phoenix-ls', {'do': 'cd packages/nvim-plugin && ./install-lsp.sh'}
 ```
@@ -101,7 +110,7 @@ See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details
 
 ---
 
-## 📋 Requirements
+## Requirements
 
 - **VS Code**: 1.75.0 or higher
 - **Neovim**: 0.8.0 or higher (for Neovim users)
@@ -111,11 +120,12 @@ See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### For Developers
 
 **Clone and Setup:**
+
 ```bash
 git clone https://github.com/phoenix-pulse/phoenix-ls
 cd phoenix-ls
@@ -125,6 +135,7 @@ npm run compile:vscode   # Builds the VS Code client bundle
 ```
 
 **Development Commands:**
+
 ```bash
 # Compile the VS Code client
 npm run compile:vscode
@@ -142,6 +153,7 @@ npm run update-lsp --workspace phoenix-pulse-nvim
 ```
 
 **Test VS Code Extension:**
+
 ```bash
 cd packages/vscode-extension
 npm run compile
@@ -150,6 +162,7 @@ code --install-extension phoenix-pulse-*.vsix
 ```
 
 **Test Neovim Plugin:**
+
 ```bash
 # Install or update the Phoenix LS executable for Neovim
 cd packages/nvim-plugin
@@ -166,7 +179,7 @@ cd packages/nvim-plugin
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 - [NEOVIM.md](./NEOVIM.md) - Complete Neovim plugin documentation
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
@@ -174,7 +187,7 @@ cd packages/nvim-plugin
 
 ---
 
-## 🏗️ Repository Structure
+## Repository Structure
 
 ```
 phoenix-ls/
@@ -207,7 +220,7 @@ phoenix-ls/
 
 ---
 
-## 🔄 Workflow
+#Workflow
 
 ### Updating the Elixir Language Server
 
@@ -238,6 +251,7 @@ nvim /path/to/phoenix/project
 Do not publish from a development branch. Build local release candidates with the commands in [docs/release.md](./docs/release.md), verify the generated VSIX and bundled `phoenix_ls` executables, then publish only through the release process.
 
 **VS Code Extension to Marketplace:**
+
 ```bash
 cd packages/vscode-extension
 npm version patch
@@ -246,6 +260,7 @@ npm run publish
 ```
 
 **Neovim Plugin:**
+
 ```bash
 # Users install via plugin manager from GitHub
 # No separate publishing needed
@@ -255,35 +270,36 @@ git push --tags
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 **Areas to contribute:**
-- 🐛 Bug fixes
-- ✨ New features
-- 📖 Documentation improvements
-- 🧪 Tests
+
+- Bug fixes
+- New features
+- Documentation improvements
+- Tests
 
 ---
 
-## 📊 Status
+## Status
 
-| Package | Version | Status |
-|---------|---------|--------|
-| Phoenix LS Elixir Server | 0.1.0 | Elixir v2 rewrite in progress |
-| VS Code Extension | 1.4.0 | Uses bundled or configured Elixir server |
-| Neovim Plugin | 1.4.0 | Uses bundled or configured Elixir server |
+| Package                  | Version | Status                                   |
+| ------------------------ | ------- | ---------------------------------------- |
+| Phoenix LS Elixir Server | 0.1.0   | Elixir v2 rewrite in progress            |
+| VS Code Extension        | 1.4.0   | Uses bundled or configured Elixir server |
+| Neovim Plugin            | 1.4.0   | Uses bundled or configured Elixir server |
 
 ---
 
-## 📝 License
+## License
 
 MIT - See [LICENSE](./LICENSE)
 
 ---
 
-## 🙏 Credits
+## Credits
 
 Created by [Onurcan Sever](https://github.com/onsever)
 
@@ -291,7 +307,7 @@ Special thanks to all contributors and the Phoenix/Elixir community!
 
 ---
 
-## 🔗 Links
+## Links
 
 - **GitHub:** https://github.com/phoenix-pulse/phoenix-ls
 - **Organization:** https://github.com/phoenix-pulse
