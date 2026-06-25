@@ -51,6 +51,9 @@ local function generate_mermaid_code(schemas)
         local target_name = name_map[assoc.targetModule] or get_simple_name(assoc.targetModule)
         local symbol = get_relationship_symbol(assoc.type)
         local label = (assoc.type or ""):gsub("_", " ")
+        if assoc.type == "many_to_many" and assoc.joinThrough then
+          label = label .. " via " .. assoc.joinThrough
+        end
 
         table.insert(lines, string.format("    %s %s %s : \"%s\"", source_name, symbol, target_name, label))
       end
@@ -107,6 +110,8 @@ local function generate_mermaid_code(schemas)
 
   return table.concat(lines, "\n")
 end
+
+M._generate_mermaid_code = generate_mermaid_code
 
 -- Generate HTML with embedded Mermaid
 local function generate_html(mermaid_code)

@@ -6,7 +6,8 @@
   "scripts": {
     "install-lsp": "./install-lsp.sh",
     "update-lsp": "./install-lsp.sh",
-    "test": "bash ./test-install-lsp.sh"
+    "test": "bash ./test-install-lsp.sh && npm run test:lua",
+    "test:lua": "cd ../.. && lua packages/nvim-plugin/test-explorer-definition-target.lua && lua packages/nvim-plugin/test-explorer-templates.lua && lua packages/nvim-plugin/test-erd-metadata.lua"
   },
   "author": {
     "name": "Onurcan Sever",
