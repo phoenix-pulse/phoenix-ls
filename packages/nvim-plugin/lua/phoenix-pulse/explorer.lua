@@ -132,6 +132,11 @@ local function generate_liveview_func_id(module, func)
   return "liveview-func:" .. (module.module or "unknown") .. ":" .. (func.name or "unknown") .. ":" .. (func.type or "unknown")
 end
 
+-- Generate unique ID for LiveView assign
+local function generate_liveview_assign_id(module, assign)
+  return "liveview-assign:" .. (module.module or "unknown") .. ":" .. (assign.name or "unknown")
+end
+
 -- Generate unique ID for statistics item
 local function generate_statistics_id(stat_type)
   return "statistics:" .. stat_type
@@ -331,10 +336,18 @@ local function get_liveview_function_icon(func_type)
   end
 end
 
--- Render LiveView module children (functions)
+-- Render LiveView module children (assigns and functions)
 local function render_liveview_module_children(module, parent_id, depth)
   if not is_expanded(parent_id) then
     return
+  end
+
+  if module.assigns and #module.assigns > 0 then
+    for _, assign in ipairs(module.assigns) do
+      local assign_id = generate_liveview_assign_id(module, assign)
+      local assign_line = get_indentation(depth) .. string.format("🏷️ @%s", assign.name or "unknown")
+      add_line(assign_line, assign_id, depth, "liveview-assign", { module = module, assign = assign }, parent_id, false)
+    end
   end
 
   if module.functions and #module.functions > 0 then
@@ -370,13 +383,18 @@ local function render_liveview_folder_children(folder, parent_id, depth)
     end
     local file_name = parts[#parts] or "Unknown"
 
-    local has_children = module.functions and #module.functions > 0
+    local function_count = module.functions and #module.functions or 0
+    local assign_count = module.assigns and #module.assigns or 0
+    local has_children = function_count > 0 or assign_count > 0
     local expanded_icon = has_children and (is_expanded(module_id) and "▼" or "▶") or ""
     local prefix = has_children and (expanded_icon .. " ") or ""
 
     local line = get_indentation(depth) .. prefix .. string.format("📄 %s", file_name)
     if has_children then
-      line = line .. string.format(" (%d functions)", #module.functions)
+      local details = {}
+      if function_count > 0 then table.insert(details, function_count .. " functions") end
+      if assign_count > 0 then table.insert(details, assign_count .. " assigns") end
+      line = line .. " (" .. table.concat(details, ", ") .. ")"
     end
 
     add_line(line, module_id, depth, "liveview-module", module, parent_id, has_children)
@@ -804,6 +822,13 @@ local function definition_target(item)
     return {
       file = item_file(item.func) or item_file(item.module),
       line = item_line(item.func) or item_line(item.module),
+    }
+  end
+
+  if item.assign then
+    return {
+      file = item_file(item.assign) or item_file(item.module),
+      line = item_line(item.assign) or item_line(item.module),
     }
   end
 
