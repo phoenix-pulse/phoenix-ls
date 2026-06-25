@@ -143,6 +143,35 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "removes attrs with unknown LiveView event values" do
+    source = ~s(<button phx-click="missing">)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: ~s(Remove unknown attr "phx-click"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 7},
+                         end: %Position{line: 0, character: 27}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "removes self-closing unknown slots" do
     source = "<:footer />"
     {:ok, document} = Parser.parse(source)

@@ -274,7 +274,11 @@ defmodule PhoenixLS.Features.CodeAction do
         unknown_slot_action(diagnostic, uri, tags)
 
       diagnostic.source == @source and
-          diagnostic.code in ["phoenix.unknown_attr", "phoenix.unknown_phx_attr"] ->
+          diagnostic.code in [
+            "phoenix.unknown_attr",
+            "phoenix.unknown_event",
+            "phoenix.unknown_phx_attr"
+          ] ->
         unknown_attr_action(diagnostic, source, uri, tags)
 
       true ->
@@ -365,7 +369,7 @@ defmodule PhoenixLS.Features.CodeAction do
   defp find_attr(tags, range) do
     tags
     |> Enum.flat_map(& &1.attrs)
-    |> Enum.find(&(&1.name_range == range or &1.range == range))
+    |> Enum.find(&(&1.name_range == range or &1.value_range == range or &1.range == range))
   end
 
   defp attr_fact(facts, tag_name, attr_name) do
