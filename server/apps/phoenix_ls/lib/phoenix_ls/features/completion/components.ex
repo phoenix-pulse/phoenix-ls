@@ -7,7 +7,10 @@ defmodule PhoenixLS.Features.Completion.Components do
   alias GenLSP.Structures.CompletionItem
   alias PhoenixLS.Features.ComponentLookup
   alias PhoenixLS.HEEx.CursorContext
+  alias PhoenixLS.HEEx.Parser
+  alias PhoenixLS.HEEx.Scope
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Support.Positions
 
   @spec complete(CursorContext.t(), [Fact.t()]) :: [CompletionItem.t()]
   def complete(%CursorContext{kind: :tag_name, prefix: prefix, closing?: false}, facts) do
@@ -29,6 +32,52 @@ defmodule PhoenixLS.Features.Completion.Components do
   end
 
   def complete(_context, _facts), do: []
+
+  @spec complete(String.t(), Positions.lsp_position(), [Fact.t()]) :: [CompletionItem.t()]
+  def complete(source, position, facts) when is_binary(source) and is_list(facts) do
+    with {:ok, context} <- CursorContext.at(source, position) do
+      complete(source, position, context, facts)
+    else
+      _invalid_context -> []
+    end
+  end
+
+  defp complete(
+         source,
+         position,
+         %CursorContext{kind: :tag_name, prefix: prefix, closing?: false} = context,
+         facts
+       ) do
+    if String.starts_with?(prefix || "", ":") do
+      with %Fact{} = component <- active_component(source, position, facts) do
+        slot_tag_items(facts, prefix, component.id)
+      else
+        _no_active_component -> []
+      end
+    else
+      complete(context, facts)
+    end
+  end
+
+  defp complete(
+         source,
+         position,
+         %CursorContext{kind: :attribute_name, tag: tag, prefix: prefix} = context,
+         facts
+       ) do
+    if slot_tag?(tag) do
+      with %Fact{} = component <- active_component(source, position, facts) do
+        slot_attr_items(facts, trim_tag_prefix(tag), prefix, component.id)
+      else
+        _no_active_component -> []
+      end
+    else
+      complete(context, facts)
+    end
+  end
+
+  defp complete(_source, _position, %CursorContext{} = context, facts),
+    do: complete(context, facts)
 
   defp component_tag_items(facts, prefix) do
     facts
@@ -102,9 +151,10 @@ defmodule PhoenixLS.Features.Completion.Components do
     end
   end
 
-  defp slot_tag_items(facts, prefix) do
+  defp slot_tag_items(facts, prefix, component_id \\ nil) do
     facts
     |> facts_by_kind(:component_slot)
+    |> filter_component(component_id)
     |> Enum.map(fn fact ->
       label = ":" <> fact.data.name
 
@@ -119,10 +169,11 @@ defmodule PhoenixLS.Features.Completion.Components do
     |> prefixed_items(prefix)
   end
 
-  defp slot_attr_items(facts, slot_name, prefix) do
+  defp slot_attr_items(facts, slot_name, prefix, component_id \\ nil) do
     facts
     |> facts_by_kind(:component_slot_attr)
     |> Enum.filter(&(&1.data.slot == slot_name))
+    |> filter_component(component_id)
     |> Enum.map(fn fact ->
       label = fact.data.name
 
@@ -156,6 +207,27 @@ defmodule PhoenixLS.Features.Completion.Components do
 
   defp facts_by_kind(facts, kind) do
     Enum.filter(facts, &(&1.kind == kind))
+  end
+
+  defp filter_component(facts, nil), do: facts
+
+  defp filter_component(facts, component_id),
+    do: Enum.filter(facts, &(&1.data.component == component_id))
+
+  defp active_component(source, position, facts) do
+    with {:ok, offset} <- Positions.lsp_position_to_offset(source, position),
+         {:ok, document} <- Parser.parse(source) do
+      document.tags
+      |> Scope.active_tags(source, offset)
+      |> Enum.reverse()
+      |> Enum.find_value(fn tag ->
+        if tag.kind in [:component, :remote_component] do
+          ComponentLookup.component_for_tag(tag.name, facts)
+        end
+      end)
+    else
+      _unavailable_scope -> nil
+    end
   end
 
   defp component_tag?("." <> _name), do: true

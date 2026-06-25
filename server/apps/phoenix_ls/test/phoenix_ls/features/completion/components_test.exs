@@ -100,6 +100,26 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
            }
   end
 
+  test "source-aware slot completions are scoped to the active component" do
+    assert complete_source("<.button><:| /></.button>") |> Enum.map(& &1.label) == [
+             ":inner_block"
+           ]
+
+    assert complete_source("<.card><:| /></.card>") |> Enum.map(& &1.label) == [":footer"]
+  end
+
+  test "source-aware slot completions are not offered outside component blocks" do
+    assert complete_source("<:| />") == []
+  end
+
+  test "source-aware slot attr completions are scoped to the active component slot" do
+    button_items = complete_source("<.button><:inner_block | /></.button>")
+    card_items = complete_source("<.card><:footer | /></.card>")
+
+    assert Enum.map(button_items, & &1.label) == ["class"]
+    assert Enum.map(card_items, & &1.label) == ["role"]
+  end
+
   test "does not complete outside supported component contexts" do
     assert complete("<p>Hello |world</p>") == []
     assert complete("<p>{@na|me}</p>") == []
@@ -111,6 +131,12 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     {:ok, context} = CursorContext.at(source, position)
 
     Components.complete(context, component_facts())
+  end
+
+  defp complete_source(marked_source) do
+    {source, position} = source_and_position(marked_source)
+
+    Components.complete(source, position, component_facts())
   end
 
   defp component_facts do
@@ -131,8 +157,14 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
           \"\"\"
         end
 
+        slot :footer do
+          attr :role, :string
+        end
+
         def card(assigns) do
-          ~H"<section />"
+          ~H\"\"\"
+          <section><%= render_slot(@footer) %></section>
+          \"\"\"
         end
       end
 

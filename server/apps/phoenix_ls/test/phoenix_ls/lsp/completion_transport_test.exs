@@ -8,6 +8,8 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
   alias PhoenixLS.Support.URI, as: SupportURI
 
   test "GenLSP transport returns component completions from open project indexes", context do
+    attach_indexer()
+
     root = fixture_project(context, "completion_project")
     root_uri = SupportURI.path_to_file_uri!(root)
 
@@ -24,6 +26,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri)
 
     GenLSP.Test.request(test_client, %{
       id: 2,
@@ -49,6 +52,55 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
       ],
       500
     )
+  end
+
+  test "GenLSP transport scopes slot completions to the active component", context do
+    attach_indexer()
+
+    root = fixture_project(context, "slot_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.card><:| /></.card>")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source_with_slots())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 22,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 22,
+                     "result" => [
+                       %{
+                         "data" => %{
+                           "id" => "AppWeb.CoreComponents.card/1:slot:footer",
+                           "kind" => "component_slot"
+                         },
+                         "detail" => "slot :footer",
+                         "insertText" => ":footer",
+                         "label" => ":footer"
+                       }
+                     ]
+                   },
+                   500
   end
 
   test "GenLSP transport returns an empty completion list for unsupported contexts", context do
@@ -212,6 +264,29 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  def handle_indexer_event(event, measurements, metadata, parent) do
+    send(parent, {:indexer_event, event, measurements, metadata})
+  end
+
+  defp attach_indexer do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+  end
+
+  defp assert_indexed(uri) do
+    assert_receive {:indexer_event, [:phoenix_ls, :indexer, :document], _measurements,
+                    %{uri: ^uri, result: :ok}},
+                   500
+  end
+
   defp initialize(test_client, root_uri) do
     version = PhoenixLS.version()
 
@@ -278,6 +353,28 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
       def button(assigns) do
         ~H\"\"\"
         <button><%= @label %></button>
+        \"\"\"
+      end
+    end
+    """
+  end
+
+  defp component_source_with_slots do
+    """
+    defmodule AppWeb.CoreComponents do
+      slot :inner_block
+
+      def button(assigns) do
+        ~H\"\"\"
+        <button><%= render_slot(@inner_block) %></button>
+        \"\"\"
+      end
+
+      slot :footer
+
+      def card(assigns) do
+        ~H\"\"\"
+        <section><%= render_slot(@footer) %></section>
         \"\"\"
       end
     end
