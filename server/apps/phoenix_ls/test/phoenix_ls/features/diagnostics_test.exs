@@ -134,6 +134,28 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
            ) == []
   end
 
+  test "reports invalid constrained phx attr values" do
+    [diagnostic] = diagnostics(~s(<div phx-update="morph" />))
+
+    assert diagnostic.code == "phoenix.invalid_phx_attr_value"
+    assert diagnostic.message == ~s(Invalid value "morph" for phx-update)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_phx_attr_value",
+             "attr" => "phx-update",
+             "value" => "morph",
+             "values" => ["replace", "append", "prepend", "ignore", "stream"]
+           }
+  end
+
+  test "does not report valid constrained phx attr values" do
+    assert diagnostics(~s(<div phx-update="replace" />)) == []
+    assert diagnostics(~s(<div phx-update="append" />)) == []
+    assert diagnostics(~s(<div phx-update="prepend" />)) == []
+    assert diagnostics(~s(<div phx-update="ignore" />)) == []
+    assert diagnostics(~s(<div phx-update="stream" />)) == []
+  end
+
   test "reports HTML :for loops without DOM tracking" do
     [diagnostic] = diagnostics(~s(<div :for={item <- @items}>{item.name}</div>))
 

@@ -54,6 +54,9 @@ defmodule PhoenixLS.Features.Diagnostics do
   ]
   @known_phx_attrs @event_phx_attrs ++ @non_event_phx_attrs
   @dynamic_phx_attr_prefixes ["phx-value-"]
+  @phx_attr_value_sets %{
+    "phx-update" => ["replace", "append", "prepend", "ignore", "stream"]
+  }
   @global_prefix_attrs ["aria-", "data-"]
 
   @spec diagnostics(Document.t(), [Fact.t()]) :: [Diagnostic.t()]
@@ -132,6 +135,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   defp shared_tag_diagnostics(%Tag{} = tag, indexes, tags) do
     phx_attr_name_diagnostics(tag) ++
+      phx_attr_value_diagnostics(tag) ++
       route_diagnostics(tag, indexes) ++
       event_diagnostics(tag, indexes) ++
       stream_diagnostics(tag, tags)
@@ -289,7 +293,7 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp event_diagnostics(%Tag{} = tag, indexes) do
     tag.attrs
     |> Enum.filter(&event_attr?/1)
-    |> Enum.filter(&literal_event_attr?/1)
+    |> Enum.filter(&literal_attr_value?/1)
     |> Enum.reject(&blank?(&1.value))
     |> Enum.reject(&MapSet.member?(indexes.events, &1.value))
     |> Enum.map(fn attr ->
@@ -318,6 +322,42 @@ defmodule PhoenixLS.Features.Diagnostics do
       )
     end)
   end
+
+  defp phx_attr_value_diagnostics(%Tag{} = tag) do
+    tag.attrs
+    |> Enum.flat_map(fn attr ->
+      case Map.fetch(@phx_attr_value_sets, attr.name) do
+        {:ok, values} -> validate_phx_attr_value(attr, values)
+        :error -> []
+      end
+    end)
+  end
+
+  defp validate_phx_attr_value(%Attribute{value: value} = attr, values)
+       when is_binary(value) do
+    allowed_values = MapSet.new(values)
+
+    if literal_attr_value?(attr) and not blank?(value) and
+         not MapSet.member?(allowed_values, value) do
+      [
+        diagnostic(
+          attr.value_range || attr.name_range,
+          "phoenix.invalid_phx_attr_value",
+          ~s(Invalid value "#{value}" for #{attr.name}),
+          %{
+            "kind" => "invalid_phx_attr_value",
+            "attr" => attr.name,
+            "value" => value,
+            "values" => values
+          }
+        )
+      ]
+    else
+      []
+    end
+  end
+
+  defp validate_phx_attr_value(_attr, _values), do: []
 
   defp for_tracking_diagnostics(%Tag{kind: :html} = tag) do
     case find_attr(tag, ":for") do
@@ -609,10 +649,10 @@ defmodule PhoenixLS.Features.Diagnostics do
     name in @event_phx_attrs
   end
 
-  defp literal_event_attr?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
+  defp literal_attr_value?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
     do: true
 
-  defp literal_event_attr?(_attr), do: false
+  defp literal_attr_value?(_attr), do: false
 
   defp phx_attr?(%Attribute{name: "phx-" <> _suffix}), do: true
   defp phx_attr?(_attr), do: false
