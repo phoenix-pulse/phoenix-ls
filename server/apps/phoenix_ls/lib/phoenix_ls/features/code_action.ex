@@ -8,19 +8,18 @@ defmodule PhoenixLS.Features.CodeAction do
   alias GenLSP.Structures.{
     CodeAction,
     Diagnostic,
-    Position,
     Range,
     TextEdit,
     WorkspaceEdit
   }
 
   alias PhoenixLS.Features.ComponentLookup
+  alias PhoenixLS.Features.CodeAction.Ranges
   alias PhoenixLS.Features.CodeAction.Routes
   alias PhoenixLS.Features.CodeAction.RouteHelpers
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.Fact
-  alias PhoenixLS.Support.Positions
 
   @source "PhoenixLS"
 
@@ -53,7 +52,7 @@ defmodule PhoenixLS.Features.CodeAction do
        ) do
     with %Tag{} = tag <- find_tag(tags, tag_name, diagnostic.range),
          %Fact{} = attr <- attr_fact(facts, tag_name, attr_name),
-         {:ok, range} <- insert_range(source, tag) do
+         {:ok, range} <- Ranges.insert_range(source, tag) do
       [insert_attr_action(diagnostic, uri, range, attr_name, default_value(attr))]
     else
       _missing_context -> []
@@ -76,7 +75,7 @@ defmodule PhoenixLS.Features.CodeAction do
          _facts
        ) do
     with %Tag{} = tag <- find_tag(tags, tag_name, diagnostic.range),
-         {:ok, range} <- insert_range(source, tag) do
+         {:ok, range} <- Ranges.insert_range(source, tag) do
       [
         insert_attr_action(
           diagnostic,
@@ -170,7 +169,7 @@ defmodule PhoenixLS.Features.CodeAction do
           changes: %{
             uri => [
               %TextEdit{
-                range: zero_width_range(diagnostic.range.end),
+                range: Ranges.zero_width(diagnostic.range.end),
                 new_text: " :key={#{item}.id}"
               }
             ]
@@ -192,7 +191,7 @@ defmodule PhoenixLS.Features.CodeAction do
          _facts
        ) do
     with %Tag{} = tag <- find_tag_by_name_range(tags, diagnostic.range),
-         {:ok, range} <- insert_range(source, tag) do
+         {:ok, range} <- Ranges.insert_range(source, tag) do
       [
         text_edit_action(
           "Add id={#{dom_id}}",
@@ -242,7 +241,7 @@ defmodule PhoenixLS.Features.CodeAction do
          _facts
        ) do
     with %Tag{} = tag <- find_tag_by_name_range(tags, diagnostic.range),
-         {:ok, range} <- insert_range(source, tag) do
+         {:ok, range} <- Ranges.insert_range(source, tag) do
       [
         text_edit_action(
           ~s(Add phx-update="stream"),
@@ -269,7 +268,7 @@ defmodule PhoenixLS.Features.CodeAction do
          _facts
        ) do
     with %Attribute{} = attr <- find_attr(tags, diagnostic.range),
-         {:ok, range} <- attr_removal_range(source, attr) do
+         {:ok, range} <- Ranges.attr_removal_range(source, attr) do
       [text_edit_action("Remove unnecessary stream :key", diagnostic, uri, range, "")]
     else
       _missing_context -> []
@@ -340,7 +339,7 @@ defmodule PhoenixLS.Features.CodeAction do
 
   defp unknown_attr_action(diagnostic, source, uri, tags) do
     with %Attribute{} = attr <- find_attr(tags, diagnostic.range),
-         {:ok, range} <- attr_removal_range(source, attr) do
+         {:ok, range} <- Ranges.attr_removal_range(source, attr) do
       [
         %CodeAction{
           title: ~s(Remove unknown attr "#{attr.name}"),
@@ -365,7 +364,7 @@ defmodule PhoenixLS.Features.CodeAction do
 
   defp unknown_slot_action(diagnostic, uri, tags) do
     with %Tag{kind: :slot} = tag <- find_tag_by_name_range(tags, diagnostic.range),
-         %Range{} = range <- tag_removal_range(tag) do
+         %Range{} = range <- Ranges.tag_removal_range(tag) do
       [text_edit_action(~s(Remove unknown slot "#{tag.name}"), diagnostic, uri, range, "")]
     else
       _missing_context -> []
@@ -393,94 +392,6 @@ defmodule PhoenixLS.Features.CodeAction do
       |> Enum.find(&(&1.data.component == component.id and &1.data.name == attr_name))
     end
   end
-
-  defp insert_range(source, %Tag{} = tag) do
-    with {:ok, end_offset} <- Positions.lsp_position_to_offset(source, tag.range.end),
-         true <- end_offset > 0,
-         {:ok, insert_offset} <- insert_offset(source, end_offset - 1, tag.self_closing?),
-         {:ok, position} <- Positions.offset_to_lsp_position(source, insert_offset) do
-      position = %Position{line: position.line, character: position.character}
-
-      {:ok, %Range{start: position, end: position}}
-    else
-      _error -> :error
-    end
-  end
-
-  defp attr_removal_range(source, %Attribute{range: range}) do
-    with {:ok, start_offset} <- Positions.lsp_position_to_offset(source, range.start),
-         {:ok, start} <-
-           Positions.offset_to_lsp_position(
-             source,
-             rewind_inline_whitespace(source, start_offset)
-           ) do
-      {:ok, %Range{start: position(start), end: range.end}}
-    else
-      _error -> :error
-    end
-  end
-
-  defp tag_removal_range(%Tag{range: %{start: start}, closing_range: %{end: end_position}}) do
-    %Range{start: start, end: end_position}
-  end
-
-  defp tag_removal_range(%Tag{range: %Range{} = range}), do: range
-
-  defp insert_offset(_source, gt_offset, false), do: {:ok, gt_offset}
-
-  defp insert_offset(source, gt_offset, true) do
-    with {:ok, slash_offset} <- previous_non_whitespace(source, gt_offset - 1) do
-      {:ok, rewind_whitespace(source, slash_offset - 1)}
-    end
-  end
-
-  defp previous_non_whitespace(_source, offset) when offset < 0, do: :error
-
-  defp previous_non_whitespace(source, offset) do
-    if whitespace_at?(source, offset) do
-      previous_non_whitespace(source, offset - 1)
-    else
-      {:ok, offset}
-    end
-  end
-
-  defp rewind_whitespace(_source, offset) when offset < 0, do: 0
-
-  defp rewind_whitespace(source, offset) do
-    if whitespace_at?(source, offset) do
-      rewind_whitespace(source, offset - 1)
-    else
-      offset + 1
-    end
-  end
-
-  defp whitespace_at?(source, offset) do
-    :binary.at(source, offset) in [?\s, ?\t, ?\n, ?\r]
-  end
-
-  defp rewind_inline_whitespace(_source, 0), do: 0
-
-  defp rewind_inline_whitespace(source, offset) do
-    previous_offset = offset - 1
-
-    if inline_whitespace_at?(source, previous_offset) do
-      rewind_inline_whitespace(source, previous_offset)
-    else
-      offset
-    end
-  end
-
-  defp inline_whitespace_at?(source, offset) when offset >= 0 do
-    :binary.at(source, offset) in [?\s, ?\t]
-  end
-
-  defp inline_whitespace_at?(_source, _offset), do: false
-
-  defp position(%{line: line, character: character}) do
-    %Position{line: line, character: character}
-  end
-
-  defp zero_width_range(%Position{} = position), do: %Range{start: position, end: position}
 
   defp default_value(%Fact{data: %{type: :string}}), do: ~s("")
   defp default_value(%Fact{data: %{type: :boolean}}), do: "{false}"
