@@ -104,6 +104,44 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.detail == "handle_event(\"select-product\", ...)"
   end
 
+  test "completes LiveView JS commands in phx expression attributes" do
+    items = complete(~s(<button phx-click={JS.|}>))
+
+    labels = Enum.map(items, & &1.label)
+
+    assert "JS.show" in labels
+    assert "JS.push" in labels
+    assert "JS.toggle_attribute" in labels
+    assert "JS.ignore_attributes" in labels
+
+    show = Enum.find(items, &(&1.label == "JS.show"))
+
+    assert show.kind == CompletionItemKind.function()
+    assert show.detail == "Show elements"
+    assert show.insert_text == "JS.show(to: \"${1:#selector}\")"
+    assert show.insert_text_format == 2
+    assert show.data == %{"kind" => "live_view_js_command", "name" => "show"}
+  end
+
+  test "completes chainable LiveView JS commands after pipe operator" do
+    items = complete(~S[<button phx-click={JS.show(to: "#modal") |> §}>], "§")
+
+    labels = Enum.map(items, & &1.label)
+
+    assert "hide" in labels
+    assert "focus_first" in labels
+    assert "push" in labels
+    refute "JS.hide" in labels
+
+    hide = Enum.find(items, &(&1.label == "hide"))
+
+    assert hide.kind == CompletionItemKind.function()
+    assert hide.detail == "Hide elements"
+    assert hide.insert_text == "hide(to: \"${1:#selector}\")"
+    assert hide.insert_text_format == 2
+    assert hide.data == %{"kind" => "live_view_js_command", "name" => "hide"}
+  end
+
   test "completes small HTML and Phoenix snippets" do
     assert [html_item] = complete("<di|>")
     assert html_item.label == "div"
@@ -130,8 +168,8 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert hd(items).kind == CompletionItemKind.function()
   end
 
-  defp complete(marked_source) do
-    {source, position} = source_and_position(marked_source)
+  defp complete(marked_source, marker \\ "|") do
+    {source, position} = source_and_position(marked_source, marker)
     {:ok, context} = CursorContext.at(source, position)
 
     Phoenix.complete(context, facts())
@@ -192,19 +230,19 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
       ]
   end
 
-  defp source_and_position(marked_source) do
-    marker_offset = marker_offset!(marked_source)
-    source = String.replace(marked_source, "|", "")
+  defp source_and_position(marked_source, marker \\ "|") do
+    marker_offset = marker_offset!(marked_source, marker)
+    source = String.replace(marked_source, marker, "")
     {:ok, position} = Positions.offset_to_lsp_position(source, marker_offset)
 
     {source, position}
   end
 
-  defp marker_offset!(marked_source) do
+  defp marker_offset!(marked_source, marker) do
     marked_source
-    |> :binary.matches("|")
+    |> :binary.matches(marker)
     |> case do
-      [{offset, 1}] -> offset
+      [{offset, marker_size}] when marker_size == byte_size(marker) -> offset
       [] -> raise ArgumentError, "missing cursor marker"
       _matches -> raise ArgumentError, "multiple cursor markers"
     end
