@@ -21,12 +21,32 @@ defmodule PhoenixLS.Features.ComponentLookup do
 
   def component_for_tag(_tag, _facts), do: nil
 
+  @spec slot_for_tag(String.t() | nil, [Fact.t()]) :: Fact.t() | nil
+  def slot_for_tag(":" <> slot_prefix, facts) do
+    Enum.find(
+      facts_by_kind(facts, :component_slot),
+      &String.starts_with?(&1.data.name, slot_prefix)
+    )
+  end
+
+  def slot_for_tag(_tag, _facts), do: nil
+
   @spec component_attr_for_tag(String.t() | nil, String.t(), [Fact.t()]) :: Fact.t() | nil
   def component_attr_for_tag(tag, prefix, facts) do
     with %Fact{} = component <- component_for_tag(tag, facts) do
       Enum.find(
         facts_by_kind(facts, :component_attr),
         &(&1.data.component == component.id and String.starts_with?(&1.data.name, prefix))
+      )
+    end
+  end
+
+  @spec slot_attr_for_tag(String.t() | nil, String.t(), [Fact.t()]) :: Fact.t() | nil
+  def slot_attr_for_tag(tag, prefix, facts) do
+    with %Fact{} = slot <- slot_for_tag(tag, facts) do
+      Enum.find(
+        facts_by_kind(facts, :component_slot_attr),
+        &(&1.data.slot == slot.data.name and String.starts_with?(&1.data.name, prefix))
       )
     end
   end

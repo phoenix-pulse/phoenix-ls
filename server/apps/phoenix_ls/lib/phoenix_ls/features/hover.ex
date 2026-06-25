@@ -53,6 +53,25 @@ defmodule PhoenixLS.Features.Hover do
     |> compact_join()
   end
 
+  defp markdown(%Fact{kind: :component_slot} = fact) do
+    [
+      code("slot :#{fact.data.name}"),
+      option_lines(fact.data.options),
+      fact.data.component
+    ]
+    |> compact_join()
+  end
+
+  defp markdown(%Fact{kind: :component_slot_attr} = fact) do
+    [
+      code("slot attr :#{fact.data.name}, #{inspect(fact.data.type)}"),
+      "slot :#{fact.data.slot}",
+      option_lines(fact.data.options),
+      fact.data.component
+    ]
+    |> compact_join()
+  end
+
   defp markdown(%Fact{kind: :route} = fact) do
     route =
       case fact.data.action do

@@ -35,6 +35,22 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers component slots" do
+    assert_hover("<:inner|_block />", [
+      "slot :inner_block",
+      "required: true",
+      "AppWeb.CoreComponents.button/1"
+    ])
+  end
+
+  test "hovers component slot attrs" do
+    assert_hover("<:inner_block cla|ss=\"p-2\" />", [
+      "slot attr :class, :string",
+      "slot :inner_block",
+      "AppWeb.CoreComponents.button/1"
+    ])
+  end
+
   test "hovers remote component attrs through aliases" do
     assert_hover("<CoreComponents.button lab|el=\"Save\" />", [
       "attr :label, :string",
@@ -191,6 +207,10 @@ defmodule PhoenixLS.Features.HoverTest do
       defmodule AppWeb.CoreComponents do
         attr :label, :string, required: true, doc: "Visible label"
         attr :kind, :atom, default: :primary
+
+        slot :inner_block, required: true do
+          attr :class, :string
+        end
 
         @doc "Renders a button."
         def button(assigns) do

@@ -29,6 +29,22 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "goes to component slot definitions" do
+    assert_definition(
+      "<:inner|_block />",
+      :component_slot,
+      "AppWeb.CoreComponents.button/1:slot:inner_block"
+    )
+  end
+
+  test "goes to component slot attr definitions" do
+    assert_definition(
+      "<:inner_block cla|ss=\"p-2\" />",
+      :component_slot_attr,
+      "AppWeb.CoreComponents.button/1:slot:inner_block:attr:class"
+    )
+  end
+
   test "goes to remote component attr definitions through aliases" do
     assert_definition(
       "<CoreComponents.button lab|el=\"Save\" />",
@@ -195,6 +211,10 @@ defmodule PhoenixLS.Features.DefinitionTest do
       ElixirSource.facts(@uri, """
       defmodule AppWeb.CoreComponents do
         attr :label, :string, required: true
+
+        slot :inner_block, required: true do
+          attr :class, :string
+        end
 
         def button(assigns) do
           ~H\"\"\"

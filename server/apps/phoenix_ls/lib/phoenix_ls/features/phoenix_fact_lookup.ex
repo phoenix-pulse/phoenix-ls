@@ -10,14 +10,16 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
 
   @spec cursor_fact(CursorContext.t(), [Fact.t()]) :: Fact.t() | nil
   def cursor_fact(%CursorContext{kind: :tag_name, prefix: tag}, facts) do
-    ComponentLookup.component_for_tag(tag, facts)
+    ComponentLookup.component_for_tag(tag, facts) ||
+      ComponentLookup.slot_for_tag(tag, facts)
   end
 
   def cursor_fact(
         %CursorContext{kind: :attribute_name, tag: tag, prefix: prefix},
         facts
       ) do
-    ComponentLookup.component_attr_for_tag(tag, prefix, facts)
+    ComponentLookup.component_attr_for_tag(tag, prefix, facts) ||
+      ComponentLookup.slot_attr_for_tag(tag, prefix, facts)
   end
 
   def cursor_fact(%CursorContext{kind: :expression, prefix: prefix}, facts) do
