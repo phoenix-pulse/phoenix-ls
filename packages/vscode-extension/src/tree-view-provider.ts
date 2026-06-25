@@ -791,15 +791,15 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       // Group filtered templates by file
       const fileMap = new Map<string, TemplateInfo[]>();
       for (const template of filtered) {
-        const fileName = template.filePath.split('/').pop() || template.filePath;
-        if (!fileMap.has(fileName)) {
-          fileMap.set(fileName, []);
+        if (!fileMap.has(template.filePath)) {
+          fileMap.set(template.filePath, []);
         }
-        fileMap.get(fileName)!.push(template);
+        fileMap.get(template.filePath)!.push(template);
       }
 
       // Create file nodes
-      return Array.from(fileMap.entries()).map(([fileName, fileTemplates]) => {
+      return Array.from(fileMap.entries()).map(([filePath, fileTemplates]) => {
+        const fileName = filePath.split('/').pop() || filePath;
         const item = new PhoenixTreeItem(
           fileName,
           'template-file',
@@ -808,8 +808,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           'charts.yellow'
         );
         item.description = `${fileTemplates.length} templates`;
-        item.tooltip = `${fileName}\n${fileTemplates.length} templates\n${fileTemplates[0].filePath}`;
-        item.data = fileName;
+        item.tooltip = `${fileName}\n${fileTemplates.length} templates\n${filePath}`;
+        item.data = filePath;
         return item;
       });
     } catch (error) {
@@ -818,9 +818,9 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     }
   }
 
-  private getTemplatesInFile(fileName: string): PhoenixTreeItem[] {
+  private getTemplatesInFile(filePath: string): PhoenixTreeItem[] {
     const templates = this.templatesCache.filter(t =>
-      t.filePath.split('/').pop() === fileName
+      t.filePath === filePath
     );
 
     return templates.map(template => {

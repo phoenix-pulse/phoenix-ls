@@ -1206,6 +1206,9 @@ function M.render()
 
   add_category("templates", "Templates", M.state.data.templates, "template", function(template)
     local name = template.name or template.filePath or template.file or "Unknown"
+    if template.module then
+      name = name .. " (" .. template.module .. ")"
+    end
     return string.format("%s %s", get_icon("template"), name)
   end)
 

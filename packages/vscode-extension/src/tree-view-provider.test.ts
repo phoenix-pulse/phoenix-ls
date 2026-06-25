@@ -454,4 +454,48 @@ describe('PhoenixPulseTreeProvider', () => {
       arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 48, character: 4 }]
     });
   });
+
+  it('keeps templates with matching basenames under separate file nodes', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listTemplates') {
+          return [
+            {
+              name: 'index.html',
+              format: 'heex',
+              module: 'AppWeb.PageHTML',
+              filePath: '/workspace/lib/app_web/controllers/page_html/index.html.heex',
+              location: { line: 0, character: 0 }
+            },
+            {
+              name: 'index.html',
+              format: 'heex',
+              module: 'AppWeb.Admin.PageHTML',
+              filePath: '/workspace/lib/app_web/controllers/admin/page_html/index.html.heex',
+              location: { line: 0, character: 0 }
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const templatesCategory = roots.find(item => item.label === 'Templates');
+    const files = await provider.getChildren(templatesCategory);
+
+    expect(files).toHaveLength(2);
+    expect(files.map(file => file.tooltip)).toEqual([
+      'index.html.heex\n1 templates\n/workspace/lib/app_web/controllers/page_html/index.html.heex',
+      'index.html.heex\n1 templates\n/workspace/lib/app_web/controllers/admin/page_html/index.html.heex'
+    ]);
+
+    const firstFileTemplates = await provider.getChildren(files[0]);
+    const secondFileTemplates = await provider.getChildren(files[1]);
+
+    expect(firstFileTemplates[0].description).toBe('AppWeb.PageHTML');
+    expect(secondFileTemplates[0].description).toBe('AppWeb.Admin.PageHTML');
+  });
 });

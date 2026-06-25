@@ -27,6 +27,7 @@ package.preload["phoenix-pulse.lsp"] = function()
           {
             name = "index.html",
             format = "heex",
+            module = "AppWeb.PageHTML",
             filePath = "/workspace/lib/app_web/controllers/page_html/index.html.heex",
             location = { line = 0, character = 0 },
           },
@@ -90,4 +91,4 @@ explorer.refresh()
 
 assert_contains(requests, "phoenix/listTemplates", "template request")
 assert_line_contains(rendered_lines, "Templates (1)", "template category")
-assert_line_contains(rendered_lines, "index.html", "template item")
+assert_line_contains(rendered_lines, "index.html (AppWeb.PageHTML)", "template module context")
