@@ -114,9 +114,46 @@ async function dogfoodBundledServer(options = {}) {
 }
 
 function validateExplorerContracts(results) {
+  validateSchemaPayloads(results['phoenix/listSchemas'] || []);
+  validateComponentPayloads(results['phoenix/listComponents'] || []);
   validateRoutePayloads(results['phoenix/listRoutes'] || []);
   validateTemplatePayloads(results['phoenix/listTemplates'] || []);
   validateEventPayloads(results['phoenix/listEvents'] || []);
+  validateLiveViewPayloads(results['phoenix/listLiveView'] || []);
+}
+
+function validateSchemaPayloads(schemas) {
+  schemas.forEach((schema, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(schema.module || schema.name)) missing.push('module');
+    if (!nonEmptyString(schema.table || schema.tableName)) missing.push('table');
+    if (!nonEmptyString(schema.filePath)) missing.push('filePath');
+    if (!validLocation(schema.location)) missing.push('location');
+    if (!Array.isArray(schema.fields)) missing.push('fields');
+    if (!Array.isArray(schema.associations)) missing.push('associations');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listSchemas[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateComponentPayloads(components) {
+  components.forEach((component, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(component.module)) missing.push('module');
+    if (!nonEmptyString(component.name)) missing.push('name');
+    if (!nonEmptyString(component.filePath)) missing.push('filePath');
+    if (!validLocation(component.location)) missing.push('location');
+    if (!Array.isArray(component.attributes)) missing.push('attributes');
+    if (!Array.isArray(component.slots)) missing.push('slots');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listComponents[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
 }
 
 function validateRoutePayloads(routes) {
@@ -171,6 +208,22 @@ function validateEventPayloads(events) {
 
     if (missing.length > 0) {
       throw new Error(`phoenix/listEvents[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateLiveViewPayloads(liveViews) {
+  liveViews.forEach((liveView, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(liveView.module)) missing.push('module');
+    if (!nonEmptyString(liveView.filePath)) missing.push('filePath');
+    if (!validLocation(liveView.location)) missing.push('location');
+    if (!Array.isArray(liveView.assigns)) missing.push('assigns');
+    if (!Array.isArray(liveView.functions)) missing.push('functions');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listLiveView[${index}] missing contract fields: ${missing.join(', ')}`);
     }
   });
 }

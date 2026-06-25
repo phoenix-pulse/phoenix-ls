@@ -12,7 +12,9 @@ defmodule PhoenixLS.FixturesTest do
           "phoenix_1_8_app",
           "liveview_components_app",
           "broken_syntax_app",
-          "non_compiling_app"
+          "non_compiling_app",
+          "missing_deps_app",
+          "large_stress_app"
         ] do
       root = fixture(name)
 
@@ -74,6 +76,18 @@ defmodule PhoenixLS.FixturesTest do
 
     assert File.read!(broken) |> String.contains?("def render(assigns) do")
     assert File.read!(non_compiling) |> String.contains?("MissingDependency.call()")
+  end
+
+  test "missing dependency and large stress fixtures cover project-matrix edge cases" do
+    missing_deps_mix = Path.join(fixture("missing_deps_app"), "mix.exs")
+    stress_router = Path.join(fixture("large_stress_app"), "lib/large_stress_app_web/router.ex")
+
+    stress_live =
+      Path.join(fixture("large_stress_app"), "lib/large_stress_app_web/live/dashboard_live.ex")
+
+    assert File.read!(missing_deps_mix) |> String.contains?(":missing_phoenix_dep")
+    assert File.read!(stress_router) |> String.contains?("resources(\"/orders\"")
+    assert File.read!(stress_live) |> String.contains?("def handle_event(\"refresh-9\"")
   end
 
   defp fixture(name), do: Path.join(@fixtures, name)

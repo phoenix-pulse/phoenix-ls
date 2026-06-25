@@ -81,6 +81,46 @@ describe('dogfoodBundledServer', () => {
     );
   });
 
+  test('fails when listSchemas omits schema contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listSchemas'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listSchemas[0] missing contract fields: module, table, filePath, location, fields, associations'
+    );
+  });
+
+  test('fails when listComponents omits component contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listComponents'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listComponents[0] missing contract fields: module, name, filePath, location, attributes, slots'
+    );
+  });
+
   test('fails when listTemplates omits template contract fields', async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
     const serverPath = path.join(rootDir, 'phoenix_ls');
@@ -120,12 +160,50 @@ describe('dogfoodBundledServer', () => {
       'phoenix/listEvents[0] missing contract fields: name, type, handler, arity, module, source, filePath, location'
     );
   });
+
+  test('fails when listLiveView omits LiveView contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listLiveView'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listLiveView[0] missing contract fields: module, filePath, location, assigns, functions'
+    );
+  });
 });
 
 function completeExplorerResults() {
   return {
-    'phoenix/listSchemas': [{ method: 'phoenix/listSchemas' }],
-    'phoenix/listComponents': [{ method: 'phoenix/listComponents' }],
+    'phoenix/listSchemas': [
+      {
+        module: 'App.Catalog.Product',
+        table: 'products',
+        filePath: '/workspace/lib/app/catalog/product.ex',
+        location: { line: 3, character: 2 },
+        fields: [],
+        associations: []
+      }
+    ],
+    'phoenix/listComponents': [
+      {
+        module: 'AppWeb.CoreComponents',
+        name: 'button',
+        filePath: '/workspace/lib/app_web/components/core_components.ex',
+        location: { line: 8, character: 2 },
+        attributes: [],
+        slots: []
+      }
+    ],
     'phoenix/listRoutes': [
       {
         verb: 'GET',
@@ -166,7 +244,15 @@ function completeExplorerResults() {
         location: { line: 48, character: 4 }
       }
     ],
-    'phoenix/listLiveView': [{ method: 'phoenix/listLiveView' }]
+    'phoenix/listLiveView': [
+      {
+        module: 'AppWeb.ProductLive.Index',
+        filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+        location: { line: 1, character: 2 },
+        assigns: [],
+        functions: []
+      }
+    ]
   };
 }
 
