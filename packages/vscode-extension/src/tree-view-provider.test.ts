@@ -239,4 +239,43 @@ describe('PhoenixPulseTreeProvider', () => {
       arguments: ['/workspace/lib/app_web/components/core_components.ex', { line: 15, character: 2 }]
     });
   });
+
+  it('shows LiveView assigns and navigates to assign source locations', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listLiveView') {
+          return [
+            {
+              module: 'AppWeb.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              location: { line: 5, character: 2 },
+              assigns: [
+                {
+                  name: 'selected_id',
+                  filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+                  location: { line: 28, character: 14 }
+                }
+              ],
+              functions: []
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const liveViewCategory = roots.find(item => item.label === 'LiveView');
+    const folders = await provider.getChildren(liveViewCategory);
+    const modules = await provider.getChildren(folders[0]);
+    const children = await provider.getChildren(modules[0]);
+
+    expect(children[0].label).toBe('@selected_id');
+    expect(children[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 28, character: 14 }]
+    });
+  });
 });

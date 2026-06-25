@@ -160,6 +160,18 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "module" => "AppWeb.ProductLive",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _module_line, "character" => 2},
+               "assigns" => [
+                 %{
+                   "name" => "selected_id",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _selected_assign_line, "character" => _selected_char}
+                 },
+                 %{
+                   "name" => "tick_id",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _tick_assign_line, "character" => _tick_char}
+                 }
+               ],
                "functions" => [
                  %{
                    "name" => "mount",

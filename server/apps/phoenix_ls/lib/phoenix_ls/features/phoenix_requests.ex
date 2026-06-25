@@ -152,16 +152,23 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       |> facts_by_kind(:live_view_function)
       |> Enum.group_by(& &1.data.module)
 
+    assigns_by_module =
+      facts
+      |> facts_by_kind(:assign)
+      |> Enum.group_by(& &1.data.module)
+
     facts
     |> facts_by_kind(:live_view)
     |> Enum.map(fn fact ->
       events = Map.get(events_by_module, fact.data.module, [])
       functions = Map.get(functions_by_module, fact.data.module, [])
+      assigns = Map.get(assigns_by_module, fact.data.module, [])
 
       %{
         "module" => fact.data.module,
         "filePath" => file_path(fact.uri),
         "location" => location(fact),
+        "assigns" => live_view_assign_payloads(assigns),
         "functions" => live_view_function_payloads(functions, events)
       }
     end)
@@ -333,6 +340,25 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     (Enum.map(functions, &live_view_function_payload/1) ++
        Enum.map(events, &live_event_function_payload/1))
     |> Enum.sort_by(&live_view_function_sort_key/1)
+  end
+
+  defp live_view_assign_payloads(assigns) do
+    assigns
+    |> Enum.map(&live_view_assign_payload/1)
+    |> Enum.sort_by(&live_view_assign_sort_key/1)
+  end
+
+  defp live_view_assign_payload(fact) do
+    %{
+      "name" => fact.data.name,
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact)
+    }
+  end
+
+  defp live_view_assign_sort_key(payload) do
+    location = payload["location"] || %{}
+    {location["line"] || 0, location["character"] || 0, payload["name"] || ""}
   end
 
   defp live_view_function_payload(fact) do

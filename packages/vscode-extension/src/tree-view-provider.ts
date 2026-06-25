@@ -104,6 +104,12 @@ interface EventInfo {
 interface LiveViewInfo {
   module: string;
   filePath: string;
+  location: { line: number; character: number };
+  assigns?: Array<{
+    name: string;
+    filePath?: string;
+    location?: { line: number; character: number };
+  }>;
   functions: Array<{
     name: string;
     type: 'mount' | 'handle_event' | 'handle_info' | 'handle_params' | 'render';
@@ -857,6 +863,9 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       const filtered = liveViewModules.filter(module =>
         this.matchesSearch(module.module) ||
         this.matchesSearch(module.filePath) ||
+        (module.assigns || []).some(assign =>
+          this.matchesSearch(assign.name)
+        ) ||
         module.functions.some(fn =>
           this.matchesSearch(fn.name) ||
           this.matchesSearch(fn.type) ||
@@ -926,15 +935,18 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     return modules.map(module => {
       const parts = module.module.split('.');
       const fileName = parts[parts.length - 1]; // Last segment is the file name
+      const assignsCount = module.assigns?.length || 0;
+      const childrenCount = module.functions.length + assignsCount;
+
       const item = new PhoenixTreeItem(
         fileName,
         'liveview-module',
-        this.getCollapsibleState(),
+        childrenCount > 0 ? this.getCollapsibleState() : vscode.TreeItemCollapsibleState.None,
         '$(file-code)',
         'charts.red'
       );
-      item.description = `${module.functions.length} functions`;
-      item.tooltip = `${module.module}\n${module.functions.length} lifecycle functions\n${module.filePath}`;
+      item.description = liveViewModuleDescription(module.functions.length, assignsCount);
+      item.tooltip = `${module.module}\n${item.description}\n${module.filePath}`;
       item.data = module.module;
       return item;
     });
@@ -960,6 +972,24 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     }
 
     const items: PhoenixTreeItem[] = [];
+
+    for (const assign of module.assigns || []) {
+      const item = new PhoenixTreeItem(
+        `@${assign.name}`,
+        'liveview-assign',
+        vscode.TreeItemCollapsibleState.None,
+        '$(symbol-variable)',
+        'charts.orange'
+      );
+      item.description = 'assign';
+      item.tooltip = `@${assign.name}\n${module.filePath}`;
+      item.command = {
+        command: 'phoenixPulse.goToItem',
+        title: 'Go to Assign',
+        arguments: [assign.filePath || module.filePath, assign.location || module.location]
+      };
+      items.push(item);
+    }
 
     // Helper to get icon for function type
     const getIconForType = (type: string): string => {
@@ -1279,6 +1309,20 @@ function associationTooltip(assoc: SchemaInfo['associations'][number]): string {
   }
 
   return lines.join('\n');
+}
+
+function liveViewModuleDescription(functionsCount: number, assignsCount: number): string {
+  const parts: string[] = [];
+
+  if (functionsCount > 0) {
+    parts.push(`${functionsCount} functions`);
+  }
+
+  if (assignsCount > 0) {
+    parts.push(`${assignsCount} assigns`);
+  }
+
+  return parts.join(', ');
 }
 
 class PhoenixTreeItem extends vscode.TreeItem {
