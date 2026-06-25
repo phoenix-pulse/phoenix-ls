@@ -2,9 +2,12 @@ import fs from 'fs';
 import path from 'path';
 
 const dogfoodMethods = [
+  'phoenix/listSchemas',
+  'phoenix/listComponents',
   'phoenix/listRoutes',
   'phoenix/listTemplates',
-  'phoenix/listEvents'
+  'phoenix/listEvents',
+  'phoenix/listLiveView'
 ];
 
 interface DogfoodClient {

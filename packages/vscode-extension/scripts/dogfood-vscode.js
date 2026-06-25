@@ -346,11 +346,16 @@ async function waitForRequestSnapshot(snapshotPath, timeoutMs, pollIntervalMs) {
 }
 
 function validateRequestSnapshot(snapshot) {
+  const schemas = snapshot.results?.['phoenix/listSchemas'] || [];
+  const components = snapshot.results?.['phoenix/listComponents'] || [];
   const routes = snapshot.results?.['phoenix/listRoutes'] || [];
   const templates = snapshot.results?.['phoenix/listTemplates'] || [];
   const events = snapshot.results?.['phoenix/listEvents'] || [];
+  const liveViews = snapshot.results?.['phoenix/listLiveView'] || [];
 
   const checks = {
+    schemaPayloads: schemas.length > 0 && schemas.every(validSchemaPayload),
+    componentPayloads: components.length > 0 && components.every(validComponentPayload),
     routePayloads: routes.length > 0 && routes.every(validRoutePayload),
     resourceRoutes: routes.some(route => route.path === '/products' || route.path === '/products/:id'),
     forwardRoutes: routes.some(route => route.verb === 'forward' && route.path === '/mailbox'),
@@ -360,7 +365,8 @@ function validateRequestSnapshot(snapshot) {
       templates.some(template => template.kind === kind)
     ),
     eventPayloads: events.length > 0 && events.every(validEventPayload),
-    eventHandlers: events.every(event => event.handler === 'handle_event/3' && event.arity === 3)
+    eventHandlers: events.every(event => event.handler === 'handle_event/3' && event.arity === 3),
+    liveViewPayloads: liveViews.length > 0 && liveViews.every(validLiveViewPayload)
   };
 
   const missing = Object.entries(checks)
@@ -372,6 +378,28 @@ function validateRequestSnapshot(snapshot) {
   }
 
   return checks;
+}
+
+function validSchemaPayload(schema) {
+  return (
+    nonEmptyString(schema.module || schema.name) &&
+    nonEmptyString(schema.table || schema.tableName) &&
+    nonEmptyString(schema.filePath) &&
+    validLocation(schema.location) &&
+    Array.isArray(schema.fields) &&
+    Array.isArray(schema.associations)
+  );
+}
+
+function validComponentPayload(component) {
+  return (
+    nonEmptyString(component.module) &&
+    nonEmptyString(component.name) &&
+    nonEmptyString(component.filePath) &&
+    validLocation(component.location) &&
+    Array.isArray(component.attributes) &&
+    Array.isArray(component.slots)
+  );
 }
 
 function validRoutePayload(route) {
@@ -410,6 +438,16 @@ function validEventPayload(event) {
     nonEmptyString(event.source) &&
     nonEmptyString(event.filePath) &&
     validLocation(event.location)
+  );
+}
+
+function validLiveViewPayload(liveView) {
+  return (
+    nonEmptyString(liveView.module) &&
+    nonEmptyString(liveView.filePath) &&
+    validLocation(liveView.location) &&
+    Array.isArray(liveView.assigns) &&
+    Array.isArray(liveView.functions)
   );
 }
 

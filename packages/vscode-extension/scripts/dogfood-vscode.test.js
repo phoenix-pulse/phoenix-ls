@@ -79,11 +79,16 @@ describe('dogfoodVSCode', () => {
       bundledProcess: true
     });
     expect(summary.requestCounts).toEqual({
+      'phoenix/listSchemas': 1,
+      'phoenix/listComponents': 1,
       'phoenix/listRoutes': 3,
       'phoenix/listTemplates': 4,
-      'phoenix/listEvents': 2
+      'phoenix/listEvents': 2,
+      'phoenix/listLiveView': 1
     });
     expect(summary.requestChecks).toEqual({
+      schemaPayloads: true,
+      componentPayloads: true,
       routePayloads: true,
       resourceRoutes: true,
       forwardRoutes: true,
@@ -91,7 +96,8 @@ describe('dogfoodVSCode', () => {
       templatePayloads: true,
       templateKinds: true,
       eventPayloads: true,
-      eventHandlers: true
+      eventHandlers: true,
+      liveViewPayloads: true
     });
     expect(calls.map(call => call.command)).toEqual([
       'npm',
@@ -275,11 +281,36 @@ function writeVSCodeLogs(root, extraLines = []) {
 function writeRequestSnapshot(snapshotPath, overrides = {}) {
   const snapshot = {
     counts: {
+      'phoenix/listSchemas': 1,
+      'phoenix/listComponents': 1,
       'phoenix/listRoutes': 3,
       'phoenix/listTemplates': 4,
-      'phoenix/listEvents': 2
+      'phoenix/listEvents': 2,
+      'phoenix/listLiveView': 1
     },
     results: {
+      'phoenix/listSchemas': [
+        {
+          module: 'LiveviewComponentsApp.Catalog.Product',
+          name: 'LiveviewComponentsApp.Catalog.Product',
+          table: 'products',
+          tableName: 'products',
+          filePath: '/workspace/lib/liveview_components_app/catalog/product.ex',
+          location: { line: 3, character: 2 },
+          fields: [],
+          associations: []
+        }
+      ],
+      'phoenix/listComponents': [
+        {
+          module: 'LiveviewComponentsAppWeb.CoreComponents',
+          name: 'button',
+          filePath: '/workspace/lib/liveview_components_app_web/components/core_components.ex',
+          location: { line: 10, character: 2 },
+          attributes: [],
+          slots: []
+        }
+      ],
       'phoenix/listRoutes': [
         {
           verb: 'get',
@@ -337,6 +368,15 @@ function writeRequestSnapshot(snapshotPath, overrides = {}) {
       'phoenix/listEvents': [
         event('select-product'),
         event('archive-product')
+      ],
+      'phoenix/listLiveView': [
+        {
+          module: 'LiveviewComponentsAppWeb.PageLive',
+          filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
+          location: { line: 1, character: 2 },
+          assigns: [],
+          functions: []
+        }
       ]
     },
     ...overrides
