@@ -251,6 +251,10 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown verified route "/missing")
   end
 
+  test "accepts dynamic verified routes" do
+    assert diagnostics(~s(<.link navigate={~p"/products/123"} />)) == []
+  end
+
   test "reports unknown controller render templates" do
     [diagnostic] = Diagnostics.diagnostics(@controller_uri, controller_facts(:missing))
 
@@ -391,6 +395,7 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
         scope "/", AppWeb do
           live "/products", ProductLive.Index, :index
+          live "/products/:id", ProductLive.Show, :show
         end
       end
 

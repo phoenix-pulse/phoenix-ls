@@ -271,7 +271,7 @@ defmodule PhoenixLS.Features.Diagnostics do
     |> Enum.flat_map(fn attr ->
       case verified_route_path(attr) do
         {:ok, path} ->
-          if MapSet.member?(indexes.routes, path) do
+          if known_route_path?(indexes.routes, path) do
             []
           else
             [
@@ -688,6 +688,32 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   defp route_helper_action_arity(nil), do: 0
   defp route_helper_action_arity(_action), do: 1
+
+  defp known_route_path?(route_paths, path) do
+    Enum.any?(route_paths, &route_path_match?(&1, path))
+  end
+
+  defp route_path_match?(route_path, path) do
+    match_route_segments(path_segments(route_path), path_segments(path))
+  end
+
+  defp match_route_segments([], []), do: true
+  defp match_route_segments(["*" <> _name], _segments), do: true
+
+  defp match_route_segments([":" <> _name | route_rest], [_segment | path_rest]) do
+    match_route_segments(route_rest, path_rest)
+  end
+
+  defp match_route_segments([segment | route_rest], [segment | path_rest]) do
+    match_route_segments(route_rest, path_rest)
+  end
+
+  defp match_route_segments(_route_segments, _path_segments), do: false
+
+  defp path_segments(path) when is_binary(path) do
+    path
+    |> String.split("/", trim: true)
+  end
 
   defp unknown_route_helper_diagnostic(%Fact{range: range, data: data}) do
     diagnostic(
