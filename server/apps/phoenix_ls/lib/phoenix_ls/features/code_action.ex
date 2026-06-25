@@ -95,7 +95,7 @@ defmodule PhoenixLS.Features.CodeAction do
          %Diagnostic{
            source: @source,
            code: code,
-           data: %{"kind" => kind, "attr" => attr_name, "values" => values}
+           data: %{"kind" => kind, "attr" => attr_name, "values" => values} = data
          } = diagnostic,
          _source,
          uri,
@@ -104,7 +104,11 @@ defmodule PhoenixLS.Features.CodeAction do
        )
        when code in ["phoenix.invalid_attr_value", "phoenix.invalid_phx_attr_value"] and
               kind in ["invalid_attr_value", "invalid_phx_attr_value"] and is_list(values) do
-    Enum.map(values, fn value ->
+    replacement_values = Map.get(data, "replacementValues", values)
+
+    values
+    |> Enum.zip(replacement_values)
+    |> Enum.map(fn {value, replacement_value} ->
       %CodeAction{
         title: ~s(Change #{attr_name} to "#{value}"),
         kind: CodeActionKind.quick_fix(),
@@ -114,7 +118,7 @@ defmodule PhoenixLS.Features.CodeAction do
             uri => [
               %TextEdit{
                 range: diagnostic.range,
-                new_text: value
+                new_text: replacement_value
               }
             ]
           }

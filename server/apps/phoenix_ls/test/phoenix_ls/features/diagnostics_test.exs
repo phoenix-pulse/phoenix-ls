@@ -83,6 +83,41 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Invalid value "danger" for CoreComponents.button kind)
   end
 
+  test "reports invalid atom expression attr values" do
+    [diagnostic] = diagnostics(~s(<.button label="Save" kind={:danger} />))
+
+    assert diagnostic.code == "phoenix.invalid_attr_value"
+    assert diagnostic.message == ~s(Invalid value "danger" for .button kind)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_attr_value",
+             "tag" => ".button",
+             "attr" => "kind",
+             "value" => "danger",
+             "values" => ["primary", "secondary"],
+             "replacementValues" => [":primary", ":secondary"]
+           }
+  end
+
+  test "does not report valid atom expression attr values" do
+    assert diagnostics(~s(<.button label="Save" kind={:primary} />)) == []
+  end
+
+  test "reports invalid boolean expression attr values with boolean replacements" do
+    [diagnostic] = diagnostics(~s(<.toggle enabled={:maybe} />))
+
+    assert diagnostic.code == "phoenix.invalid_attr_value"
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_attr_value",
+             "tag" => ".toggle",
+             "attr" => "enabled",
+             "value" => "maybe",
+             "values" => ["true", "false"],
+             "replacementValues" => ["true", "false"]
+           }
+  end
+
   test "reports missing LiveComponent id and module attrs" do
     diagnostics = diagnostics("<.live_component />")
 
@@ -377,7 +412,7 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
       ElixirSource.facts(@uri, """
       defmodule AppWeb.CoreComponents do
         attr :label, :string, required: true
-        attr :kind, :string, values: ["primary", "secondary"]
+        attr :kind, :atom, values: [:primary, :secondary]
 
         slot :inner_block do
           attr :class, :string
@@ -386,6 +421,14 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
         def button(assigns) do
           ~H\"\"\"
           <button><%= @label %></button>
+          \"\"\"
+        end
+
+        attr :enabled, :boolean, values: [true, false]
+
+        def toggle(assigns) do
+          ~H\"\"\"
+          <button><%= @enabled %></button>
           \"\"\"
         end
       end

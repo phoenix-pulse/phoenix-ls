@@ -65,6 +65,25 @@ defmodule PhoenixLS.Features.CodeActionTest do
            end) == ["primary", "secondary"]
   end
 
+  test "replaces invalid expression attr values with expression literals" do
+    source = ~s(<.button label="Save" kind={:danger} />)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, atom_value_facts())
+
+    actions = CodeActionFeature.actions(source, @uri, [diagnostic], atom_value_facts())
+
+    assert Enum.map(actions, & &1.title) == [
+             ~s(Change kind to "primary"),
+             ~s(Change kind to "secondary")
+           ]
+
+    assert Enum.map(actions, fn action ->
+             [%TextEdit{range: range, new_text: new_text}] = action.edit.changes[@uri]
+             assert range == diagnostic.range
+             new_text
+           end) == [":primary", ":secondary"]
+  end
+
   test "replaces invalid phx attr values with each allowed value" do
     source = ~s(<div phx-update="morph" />)
     {:ok, document} = Parser.parse(source)
@@ -649,6 +668,24 @@ defmodule PhoenixLS.Features.CodeActionTest do
       defmodule AppWeb.CoreComponents do
         attr :label, :string, required: true
         attr :kind, :string, values: ["primary", "secondary"]
+
+        def button(assigns) do
+          ~H\"\"\"
+          <button><%= @label %></button>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp atom_value_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
+      defmodule AppWeb.CoreComponents do
+        attr :label, :string, required: true
+        attr :kind, :atom, values: [:primary, :secondary]
 
         def button(assigns) do
           ~H\"\"\"

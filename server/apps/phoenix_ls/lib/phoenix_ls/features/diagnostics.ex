@@ -228,24 +228,68 @@ defmodule PhoenixLS.Features.Diagnostics do
     if MapSet.member?(allowed_values, value) do
       []
     else
-      [
-        diagnostic(
-          attr.value_range || attr.name_range,
-          "phoenix.invalid_attr_value",
-          ~s(Invalid value "#{value}" for #{tag.name} #{attr.name}),
-          %{
-            "kind" => "invalid_attr_value",
-            "tag" => tag.name,
-            "attr" => attr.name,
-            "value" => value,
-            "values" => value_strings
-          }
-        )
-      ]
+      [invalid_attr_value_diagnostic(tag, attr, value, value_strings)]
+    end
+  end
+
+  defp validate_attr_value(
+         %Tag{} = tag,
+         %Attribute{value: value, value_kind: :expression} = attr,
+         values
+       )
+       when is_binary(value) do
+    with {:ok, literal_value} <- literal_expression_value(value) do
+      allowed_values = MapSet.new(values, &value_to_string/1)
+      value_string = value_to_string(literal_value)
+
+      if MapSet.member?(allowed_values, value_string) do
+        []
+      else
+        [
+          invalid_attr_value_diagnostic(
+            tag,
+            attr,
+            value_string,
+            Enum.map(values, &value_to_string/1),
+            Enum.map(values, &expression_literal_source/1)
+          )
+        ]
+      end
+    else
+      _dynamic_expression -> []
     end
   end
 
   defp validate_attr_value(_tag, _attr, _values), do: []
+
+  defp invalid_attr_value_diagnostic(tag, attr, value, values, replacement_values \\ nil) do
+    data =
+      %{
+        "kind" => "invalid_attr_value",
+        "tag" => tag.name,
+        "attr" => attr.name,
+        "value" => value,
+        "values" => values
+      }
+      |> maybe_put("replacementValues", replacement_values)
+
+    diagnostic(
+      attr.value_range || attr.name_range,
+      "phoenix.invalid_attr_value",
+      ~s(Invalid value "#{value}" for #{tag.name} #{attr.name}),
+      data
+    )
+  end
+
+  defp literal_expression_value(value) do
+    case Code.string_to_quoted(value) do
+      {:ok, literal} when is_atom(literal) or is_binary(literal) or is_number(literal) ->
+        {:ok, literal}
+
+      _dynamic_or_invalid ->
+        :error
+    end
+  end
 
   defp live_component_diagnostics(%Tag{} = tag) do
     present_attr_names = MapSet.new(tag.attrs, & &1.name)
@@ -857,8 +901,17 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp value_to_string(value) when is_atom(value), do: Atom.to_string(value)
   defp value_to_string(value), do: inspect(value)
 
+  defp expression_literal_source(true), do: "true"
+  defp expression_literal_source(false), do: "false"
+  defp expression_literal_source(nil), do: "nil"
+  defp expression_literal_source(value) when is_atom(value), do: ":" <> Atom.to_string(value)
+  defp expression_literal_source(value), do: inspect(value)
+
   defp trim_leading(value, prefix), do: String.trim_leading(value, prefix)
   defp trim_trailing(value, suffix), do: String.trim_trailing(value, suffix)
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp blank?(nil), do: true
   defp blank?(""), do: true
