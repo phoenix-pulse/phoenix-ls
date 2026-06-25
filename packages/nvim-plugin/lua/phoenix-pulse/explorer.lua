@@ -28,6 +28,7 @@ M.state = {
     components = {},
     routes = {},
     events = {},
+    templates = {},
     liveviews = {},  -- LiveView modules with functions
     statistics = nil,  -- Computed statistics
   },
@@ -393,6 +394,7 @@ local function compute_statistics()
   local components = M.state.data.components or {}
   local routes = M.state.data.routes or {}
   local events = M.state.data.events or {}
+  local templates = M.state.data.templates or {}
   local liveviews = M.state.data.liveviews or {}
 
   -- Count top schemas by field + association count
@@ -418,6 +420,7 @@ local function compute_statistics()
     total_components = #components,
     total_routes = #routes,
     total_events = #events,
+    total_templates = #templates,
     total_liveviews = #liveviews,
     top_schemas = top_schemas
   }
@@ -432,10 +435,11 @@ local function render_statistics()
 
   -- Totals
   local totals_line = get_indentation(1) .. string.format(
-    "📈 %d Schemas, %d Components, %d Routes, %d Events, %d LiveViews",
+    "📈 %d Schemas, %d Components, %d Routes, %d Templates, %d Events, %d LiveViews",
     stats.total_schemas,
     stats.total_components,
     stats.total_routes,
+    stats.total_templates,
     stats.total_events,
     stats.total_liveviews
   )
@@ -633,6 +637,23 @@ local function copy_menu()
       label = "Copy Name",
       action = function()
         copy_to_clipboard(item.name or "Unknown", "event name")
+      end
+    })
+
+    if item.filePath or item.file then
+      table.insert(options, {
+        label = "Copy File Path",
+        action = function()
+          copy_to_clipboard(item.filePath or item.file, "file path")
+        end
+      })
+    end
+
+  elseif item_type == "template" then
+    table.insert(options, {
+      label = "Copy Name",
+      action = function()
+        copy_to_clipboard(item.name or "Unknown", "template name")
       end
     })
 
@@ -1078,6 +1099,11 @@ function M.render()
     return string.format("%s %s", get_icon("event"), event.name or "Unknown")
   end)
 
+  add_category("templates", "Templates", M.state.data.templates, "template", function(template)
+    local name = template.name or template.filePath or template.file or "Unknown"
+    return string.format("%s %s", get_icon("template"), name)
+  end)
+
   -- LiveViews category (3-level hierarchy: folders → modules → functions)
   do
     local name = "liveviews"
@@ -1159,6 +1185,12 @@ function M.refresh()
   -- Fetch events
   lsp.call_lsp_command("phoenix/listEvents", {}, function(result)
     M.state.data.events = result or {}
+    M.render()
+  end)
+
+  -- Fetch templates
+  lsp.call_lsp_command("phoenix/listTemplates", {}, function(result)
+    M.state.data.templates = result or {}
     M.render()
   end)
 
