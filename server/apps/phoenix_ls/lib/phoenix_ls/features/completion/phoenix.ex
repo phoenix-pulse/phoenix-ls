@@ -6,6 +6,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   alias PhoenixLS.Features.Completion.{
     Assets,
     ElixirFallback,
+    HTMLAttributes,
     LiveView,
     LiveViewJS,
     Routes,
@@ -23,6 +24,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
       Routes.complete(context, facts),
       Assets.complete(context, facts),
       Schemas.complete(context, facts),
+      HTMLAttributes.complete(context, facts),
       LiveView.complete(context, facts),
       LiveViewJS.complete(context, facts),
       Snippets.complete(context, facts),

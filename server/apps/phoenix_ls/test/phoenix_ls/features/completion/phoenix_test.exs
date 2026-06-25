@@ -186,6 +186,42 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
            ]
   end
 
+  test "completes element-specific HTML attributes" do
+    items = complete("<img s|>")
+    labels = Enum.map(items, & &1.label)
+
+    assert "src" in labels
+    assert "srcset" in labels
+    assert "sizes" in labels
+
+    src = Enum.find(items, &(&1.label == "src"))
+
+    assert src.kind == CompletionItemKind.property()
+    assert src.detail == "Image URL"
+    assert src.insert_text == "src=\"${1:value}\""
+    assert src.insert_text_format == 2
+    assert src.data == %{"kind" => "html_attr", "tag" => "img", "name" => "src"}
+  end
+
+  test "completes predefined HTML attribute values" do
+    items = complete(~s(<input type="em|">))
+
+    assert Enum.map(items, & &1.label) == ["email"]
+
+    email = hd(items)
+
+    assert email.kind == CompletionItemKind.value()
+    assert email.detail == "type value for <input>"
+    assert email.insert_text == "email"
+
+    assert email.data == %{
+             "kind" => "html_attr_value",
+             "tag" => "input",
+             "attribute" => "type",
+             "value" => "email"
+           }
+  end
+
   test "falls back to a narrow generic Elixir completion list" do
     items = complete("<p>{to_s|}</p>")
 
