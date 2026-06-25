@@ -264,6 +264,7 @@
   "scripts": {
     "bundle:server": "node scripts/bundle-elixir-server.js",
     "dogfood:server": "npm run bundle:server && node scripts/dogfood-bundled-server.js",
+    "dogfood:vscode": "node scripts/dogfood-vscode.js",
     "vscode:prepublish": "npm run bundle:server && node esbuild.js --production",
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
