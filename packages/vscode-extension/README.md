@@ -372,7 +372,10 @@ Phoenix Pulse includes configurable settings. Access them via:
   "phoenixPulse.logLevel": "info",
 
   // Enable project indexing
-  "phoenixPulse.indexing.enabled": true
+  "phoenixPulse.indexing.enabled": true,
+
+  // Enable compilation-aware project checks
+  "phoenixPulse.compilation.enabled": false
 }
 ```
 
@@ -426,7 +429,8 @@ Ctrl+Shift+P → "Developer: Reload Window"
 {
   "phoenixPulse.logLevel": "debug",
   "phoenixPulse.sourceOnlyMode": true,
-  "phoenixPulse.indexing.enabled": true
+  "phoenixPulse.indexing.enabled": true,
+  "phoenixPulse.compilation.enabled": false
 }
 ```
 

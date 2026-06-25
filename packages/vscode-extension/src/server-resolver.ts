@@ -59,6 +59,7 @@ export function resolveServer(
   const sourceOnlyMode = config.get<boolean>('sourceOnlyMode', true);
   const logLevel = config.get<string>('logLevel', 'info');
   const indexingEnabled = config.get<boolean>('indexing.enabled', true);
+  const compilationEnabled = config.get<boolean>('compilation.enabled', false);
 
   return {
     command,
@@ -67,7 +68,8 @@ export function resolveServer(
       ...process.env,
       PHOENIX_LS_SOURCE_ONLY: sourceOnlyMode ? '1' : '0',
       PHOENIX_LS_LOG_LEVEL: logLevel,
-      PHOENIX_LS_INDEXING: indexingEnabled ? '1' : '0'
+      PHOENIX_LS_INDEXING: indexingEnabled ? '1' : '0',
+      PHOENIX_LS_COMPILATION: compilationEnabled ? '1' : '0'
     }
   };
 }

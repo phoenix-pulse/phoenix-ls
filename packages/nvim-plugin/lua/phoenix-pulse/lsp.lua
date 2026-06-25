@@ -24,6 +24,7 @@ function M.setup(config)
           PHOENIX_LS_SOURCE_ONLY = config.source_only_mode and "1" or "0",
           PHOENIX_LS_LOG_LEVEL = config.log_level or "info",
           PHOENIX_LS_INDEXING = config.indexing_enabled and "1" or "0",
+          PHOENIX_LS_COMPILATION = config.compilation_enabled and "1" or "0",
         },
         filetypes = { "elixir", "heex", "eelixir" },
         root_dir = function(fname)

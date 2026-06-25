@@ -252,6 +252,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable project indexing in the Phoenix LS Elixir server."
+        },
+        "phoenixPulse.compilation.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable compilation-aware project checks in the Phoenix LS Elixir server."
         }
       }
     }

@@ -99,6 +99,7 @@ Configure Phoenix Pulse with setup(): >lua
       source_only_mode = true,
       log_level = "info",
       indexing_enabled = true,
+      compilation_enabled = false,
     })
 <
 

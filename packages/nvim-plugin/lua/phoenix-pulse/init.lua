@@ -25,6 +25,7 @@ local default_config = {
   source_only_mode = true,
   log_level = "info",
   indexing_enabled = true,
+  compilation_enabled = false,
 }
 
 -- Merged user config

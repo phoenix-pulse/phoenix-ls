@@ -112,6 +112,7 @@ require("phoenix-pulse").setup({
   source_only_mode = true,
   log_level = "info",
   indexing_enabled = true,
+  compilation_enabled = false,
 
   -- Float window configuration (if explorer_mode = "float")
   float_config = {
@@ -346,6 +347,7 @@ ls mix.exs
 require("phoenix-pulse").setup({
   source_only_mode = true,
   indexing_enabled = true,
+  compilation_enabled = false,
   log_level = "debug",
 })
 ```
