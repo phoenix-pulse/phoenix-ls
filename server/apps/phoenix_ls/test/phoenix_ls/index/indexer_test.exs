@@ -149,6 +149,9 @@ defmodule PhoenixLS.Index.IndexerTest do
     """)
 
     File.write!(template_path, "<section><.button /></section>\n")
+    asset_path = Path.join([root, "priv", "static", "images", "logo.svg"])
+    File.mkdir_p!(Path.dirname(asset_path))
+    File.write!(asset_path, "<svg></svg>")
 
     assert Indexer.schedule_project(@indexer, SupportURI.path_to_file_uri!(root)) == :ok
 
@@ -160,6 +163,14 @@ defmodule PhoenixLS.Index.IndexerTest do
 
       assert [template] = Store.by_kind(@store, :template)
       assert template.uri == SupportURI.path_to_file_uri!(template_path)
+
+      assert [asset] = Store.by_kind(@store, :asset)
+      assert asset.id == "/images/logo.svg"
+      assert asset.uri == SupportURI.path_to_file_uri!(asset_path)
+      assert asset.provenance == %{source: :static_asset}
+      assert asset.data.public_path == "/images/logo.svg"
+      assert asset.data.type == :image
+      assert asset.data.size == 11
     end)
   end
 

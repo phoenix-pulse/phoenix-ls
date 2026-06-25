@@ -1,0 +1,126 @@
+defmodule PhoenixLS.Introspection.Asset do
+  @moduledoc """
+  Source-only extraction helpers for Phoenix static asset facts.
+  """
+
+  alias GenLSP.Structures.{Position, Range}
+  alias PhoenixLS.Index.Fact
+
+  defmodule Asset do
+    @moduledoc """
+    Typed static asset fact payload.
+    """
+
+    @enforce_keys [:public_path, :file_path, :type, :size]
+    defstruct [:public_path, :file_path, :type, :size]
+  end
+
+  @image_extensions [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".bmp"]
+  @style_extensions [".css", ".scss", ".sass", ".less"]
+  @script_extensions [".js", ".mjs", ".jsx", ".ts", ".tsx"]
+  @font_extensions [".woff", ".woff2", ".ttf", ".otf", ".eot"]
+  @asset_extensions @image_extensions ++
+                      @style_extensions ++ @script_extensions ++ @font_extensions
+
+  @spec supported_path?(String.t()) :: boolean()
+  def supported_path?(path) when is_binary(path) do
+    path
+    |> Path.extname()
+    |> String.downcase()
+    |> then(&(&1 in @asset_extensions))
+  end
+
+  @spec static_asset_path?(String.t(), String.t()) :: boolean()
+  def static_asset_path?(path, root_path) when is_binary(path) and is_binary(root_path) do
+    static_root = static_root(root_path)
+    expanded_path = Path.expand(path)
+
+    supported_path?(expanded_path) and under_path?(expanded_path, static_root)
+  end
+
+  @spec facts(String.t(), String.t(), String.t(), keyword()) :: [Fact.t()]
+  def facts(uri, path, root_path, opts \\ [])
+      when is_binary(uri) and is_binary(path) and is_binary(root_path) do
+    with true <- static_asset_path?(path, root_path),
+         {:ok, public_path} <- public_path(path, root_path),
+         {:ok, stat} <- File.stat(path) do
+      [
+        Fact.new!(
+          kind: :asset,
+          id: public_path,
+          uri: uri,
+          range: zero_range(),
+          provenance: provenance(opts),
+          data: %Asset{
+            public_path: public_path,
+            file_path: path,
+            type: asset_type(path),
+            size: stat.size
+          }
+        )
+      ]
+    else
+      _ignored -> []
+    end
+  end
+
+  defp public_path(path, root_path) do
+    static_root = static_root(root_path)
+    expanded_path = Path.expand(path)
+
+    if under_path?(expanded_path, static_root) do
+      public_path =
+        expanded_path
+        |> Path.relative_to(static_root)
+        |> Path.split()
+        |> Enum.join("/")
+
+      {:ok, "/" <> public_path}
+    else
+      :error
+    end
+  end
+
+  defp static_root(root_path) do
+    root_path
+    |> Path.expand()
+    |> Path.join("priv/static")
+  end
+
+  defp under_path?(path, root) do
+    path_segments = Path.split(path)
+    root_segments = Path.split(root)
+
+    Enum.take(path_segments, length(root_segments)) == root_segments
+  end
+
+  defp asset_type(path) do
+    extension =
+      path
+      |> Path.extname()
+      |> String.downcase()
+
+    cond do
+      extension in @image_extensions -> :image
+      extension in @style_extensions -> :style
+      extension in @script_extensions -> :script
+      extension in @font_extensions -> :font
+    end
+  end
+
+  defp zero_range do
+    %Range{
+      start: %Position{line: 0, character: 0},
+      end: %Position{line: 0, character: 0}
+    }
+  end
+
+  defp provenance(opts) do
+    provenance = %{source: :static_asset}
+
+    case Keyword.fetch(opts, :version) do
+      {:ok, version} -> Map.put(provenance, :document_version, version)
+      :error -> provenance
+    end
+  end
+end

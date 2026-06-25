@@ -6,6 +6,7 @@ defmodule PhoenixLS.Index.Indexer do
   use GenServer
 
   alias PhoenixLS.Index.{DependencyGraph, DocumentIndexer, Invalidation, ProjectScan, Store}
+  alias PhoenixLS.Introspection.Asset
   alias PhoenixLS.LSP.Status
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Support.Telemetry
@@ -119,7 +120,7 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     before_facts = Store.by_uri(state.index_store, uri)
-    result = index_uri(state.index_store, uri)
+    result = index_uri(state.index_store, uri, state.root_uri)
     after_facts = Store.by_uri(state.index_store, uri)
     changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
 
@@ -189,13 +190,10 @@ defmodule PhoenixLS.Index.Indexer do
     {:noreply, state}
   end
 
-  defp index_uri(index_store, uri) do
+  defp index_uri(index_store, uri, root_uri) do
     with {:ok, path} <- SupportURI.file_uri_to_path(uri),
-         {:ok, language_id} <- language_id(path),
-         {:ok, text} <- File.read(path) do
-      document = Document.new(uri, language_id, 0, text)
-      _result = DocumentIndexer.index(index_store, document)
-      :ok
+         {:ok, index_target} <- index_target(path, root_uri) do
+      index_path(index_store, uri, path, index_target)
     else
       _ignored -> :ok
     end
@@ -215,7 +213,7 @@ defmodule PhoenixLS.Index.Indexer do
   defp index_project(index_store, root_uri) do
     case ProjectScan.uris(root_uri) do
       {:ok, uris} ->
-        Enum.each(uris, &index_uri(index_store, &1))
+        Enum.each(uris, &index_uri(index_store, &1, root_uri))
 
         {:ok, length(uris)}
 
@@ -247,11 +245,47 @@ defmodule PhoenixLS.Index.Indexer do
     end
   end
 
-  defp language_id(path) do
+  defp index_target(path, root_uri) do
     case Path.extname(path) do
-      ".ex" -> {:ok, "elixir"}
-      ".heex" -> {:ok, "phoenix-heex"}
-      _other -> :error
+      ".ex" ->
+        {:ok, {:document, "elixir"}}
+
+      ".heex" ->
+        {:ok, {:document, "phoenix-heex"}}
+
+      _other ->
+        asset_target(path, root_uri)
     end
+  end
+
+  defp asset_target(path, root_uri) when is_binary(root_uri) do
+    with {:ok, root_path} <- SupportURI.file_uri_to_path(root_uri),
+         true <- Asset.static_asset_path?(path, root_path) do
+      {:ok, {:asset, root_path}}
+    else
+      _ignored -> :error
+    end
+  end
+
+  defp asset_target(_path, _root_uri), do: :error
+
+  defp index_path(index_store, uri, path, {:document, language_id}) do
+    with {:ok, text} <- File.read(path) do
+      document = Document.new(uri, language_id, 0, text)
+      _result = DocumentIndexer.index(index_store, document)
+      :ok
+    else
+      _ignored -> :ok
+    end
+  end
+
+  defp index_path(index_store, uri, path, {:asset, root_path}) do
+    :ok = Store.delete_uri(index_store, uri)
+
+    uri
+    |> Asset.facts(path, root_path)
+    |> Enum.each(&Store.put(index_store, &1))
+
+    :ok
   end
 end

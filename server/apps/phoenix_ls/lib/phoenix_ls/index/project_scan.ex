@@ -4,10 +4,12 @@ defmodule PhoenixLS.Index.ProjectScan do
   """
 
   alias PhoenixLS.Support.URI, as: SupportURI
+  alias PhoenixLS.Introspection.Asset
 
   @source_globs [
     "lib/**/*.ex",
-    "lib/**/*.heex"
+    "lib/**/*.heex",
+    "priv/static/**/*"
   ]
 
   @spec uris(String.t()) :: {:ok, [String.t()]} | {:error, :not_file_uri}
@@ -16,6 +18,8 @@ defmodule PhoenixLS.Index.ProjectScan do
       uris =
         @source_globs
         |> Enum.flat_map(&Path.wildcard(Path.join(root_path, &1)))
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.filter(&indexable_path?(&1, root_path))
         |> Enum.sort()
         |> Enum.map(&SupportURI.path_to_file_uri!/1)
 
@@ -23,5 +27,9 @@ defmodule PhoenixLS.Index.ProjectScan do
     else
       {:error, _reason} -> {:error, :not_file_uri}
     end
+  end
+
+  defp indexable_path?(path, root_path) do
+    Path.extname(path) in [".ex", ".heex"] or Asset.static_asset_path?(path, root_path)
   end
 end

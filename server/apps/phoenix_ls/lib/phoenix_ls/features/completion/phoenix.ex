@@ -3,7 +3,15 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   Aggregates source-only Phoenix completion providers.
   """
 
-  alias PhoenixLS.Features.Completion.{ElixirFallback, LiveView, Routes, Schemas, Snippets}
+  alias PhoenixLS.Features.Completion.{
+    Assets,
+    ElixirFallback,
+    LiveView,
+    Routes,
+    Schemas,
+    Snippets
+  }
+
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
@@ -12,6 +20,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   def complete(%CursorContext{} = context, facts) when is_list(facts) do
     [
       Routes.complete(context, facts),
+      Assets.complete(context, facts),
       Schemas.complete(context, facts),
       LiveView.complete(context, facts),
       Snippets.complete(context, facts),

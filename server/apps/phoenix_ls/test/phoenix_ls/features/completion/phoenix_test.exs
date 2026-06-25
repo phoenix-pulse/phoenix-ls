@@ -25,6 +25,18 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
            }
   end
 
+  test "completes static asset paths inside ~p sigils" do
+    items = complete(~s(<img src={~p"/images/log|"} />))
+
+    assert Enum.map(items, & &1.label) == ["/images/logo.svg"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.file()
+    assert item.detail == "image asset - 0.0 KB"
+    assert item.insert_text == "/images/logo.svg"
+    assert item.data == %{"kind" => "asset", "id" => "/images/logo.svg"}
+  end
+
   test "completes route helpers in HEEx expressions" do
     items = complete("<p>{Routes.us|}</p>")
 
@@ -159,7 +171,25 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
       end
       """)
 
-    facts
+    facts ++
+      [
+        PhoenixLS.Index.Fact.new!(
+          kind: :asset,
+          id: "/images/logo.svg",
+          uri: "file:///tmp/app/priv/static/images/logo.svg",
+          range: %GenLSP.Structures.Range{
+            start: %GenLSP.Structures.Position{line: 0, character: 0},
+            end: %GenLSP.Structures.Position{line: 0, character: 0}
+          },
+          provenance: %{source: :static_asset},
+          data: %PhoenixLS.Introspection.Asset.Asset{
+            public_path: "/images/logo.svg",
+            file_path: "/tmp/app/priv/static/images/logo.svg",
+            type: :image,
+            size: 11
+          }
+        )
+      ]
   end
 
   defp source_and_position(marked_source) do

@@ -18,6 +18,9 @@ defmodule PhoenixLS.Index.ProjectScanTest do
     )
 
     write!(Path.join(root, "lib/app_web/controllers/page_html/index.html.heex"), "<section />")
+    write!(Path.join(root, "priv/static/images/logo.svg"), "<svg></svg>")
+    write!(Path.join(root, "priv/static/assets/app.css"), "body {}")
+    write!(Path.join(root, "priv/static/cache_manifest.json"), "{}")
     write!(Path.join(root, "lib/app_web/controllers/page_html/README.md"), "# ignored\n")
     write!(Path.join(root, "test/support/fixture.ex"), "defmodule TestSupport do\nend\n")
     write!(Path.join(root, "deps/example/lib/dependency.ex"), "defmodule Dependency do\nend\n")
@@ -32,7 +35,9 @@ defmodule PhoenixLS.Index.ProjectScanTest do
                 SupportURI.path_to_file_uri!(
                   Path.join(root, "lib/app_web/controllers/page_html/index.html.heex")
                 ),
-                SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex"))
+                SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex")),
+                SupportURI.path_to_file_uri!(Path.join(root, "priv/static/assets/app.css")),
+                SupportURI.path_to_file_uri!(Path.join(root, "priv/static/images/logo.svg"))
               ]}
   end
 
