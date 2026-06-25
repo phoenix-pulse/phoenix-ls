@@ -132,6 +132,31 @@ defmodule PhoenixLS.Features.DefinitionTest do
              Definition.definition(@controller_uri, position, controller_facts ++ router_facts)
   end
 
+  test "goes from source route helpers to definitions matching the helper action" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_pa|th(conn, :show, 1)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    router_facts = route_helper_collision_facts()
+
+    show_route =
+      Enum.find(
+        router_facts,
+        &(&1.kind == :route and
+            &1.id ==
+              "AppWeb.Router:get:/products/:id:AppWeb.ProductController:show")
+      )
+
+    assert %Location{uri: @uri, range: show_route.range} ==
+             Definition.definition(@controller_uri, position, controller_facts ++ router_facts)
+  end
+
   test "returns nil outside supported definition contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)
@@ -188,6 +213,22 @@ defmodule PhoenixLS.Features.DefinitionTest do
 
       defmodule AppWeb.PageLive do
         alias AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp route_helper_collision_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          get "/products", ProductController, :index
+          get "/products/:id", ProductController, :show
+        end
       end
       """)
 

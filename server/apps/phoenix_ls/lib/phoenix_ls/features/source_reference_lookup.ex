@@ -20,7 +20,9 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
   end
 
   defp target(%Fact{kind: :route_helper_reference, data: reference}, facts) do
-    Enum.find(facts, &route_helper_match?(&1, reference))
+    facts
+    |> Enum.filter(&route_helper_match?(&1, reference))
+    |> route_helper_target(reference)
   end
 
   defp target(_reference, _facts), do: nil
@@ -50,6 +52,14 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
        do: true
 
   defp route_helper_match?(_fact, _reference), do: false
+
+  defp route_helper_target([], _reference), do: nil
+
+  defp route_helper_target(routes, %{action: action}) when is_atom(action) do
+    Enum.find(routes, &(&1.data.action == action)) || List.first(routes)
+  end
+
+  defp route_helper_target(routes, _reference), do: List.first(routes)
 
   defp contains_position?(%{start: start, end: finish}, position) do
     compare_position(start, position) != :gt and compare_position(position, finish) == :lt

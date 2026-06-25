@@ -103,6 +103,30 @@ defmodule PhoenixLS.Features.HoverTest do
     assert String.contains?(value, "router AppWeb.Router")
   end
 
+  test "hovers source route helpers matching the helper action" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_pa|th(conn, :show, 1)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    markdown = MarkupKind.markdown()
+
+    assert %Hover{contents: %{kind: ^markdown, value: value}} =
+             HoverFeature.hover(
+               @controller_uri,
+               position,
+               controller_facts ++ route_helper_collision_facts()
+             )
+
+    assert String.contains?(value, ~s(get "/products/:id", AppWeb.ProductController, :show))
+    refute String.contains?(value, ~s(get "/products", AppWeb.ProductController, :index))
+  end
+
   test "returns nil outside supported hover contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)
@@ -165,6 +189,22 @@ defmodule PhoenixLS.Features.HoverTest do
 
       defmodule AppWeb.PageLive do
         alias AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp route_helper_collision_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          get "/products", ProductController, :index
+          get "/products/:id", ProductController, :show
+        end
       end
       """)
 
