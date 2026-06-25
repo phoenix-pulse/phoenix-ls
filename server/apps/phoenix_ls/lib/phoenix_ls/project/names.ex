@@ -17,6 +17,9 @@ defmodule PhoenixLS.Project.Names do
   @spec compile_env(String.t()) :: GenServer.server()
   def compile_env(root_uri), do: via({:compile_env, root_uri})
 
+  @spec compile_runner(String.t()) :: GenServer.server()
+  def compile_runner(root_uri), do: via({:compile_runner, root_uri})
+
   @spec index_store(String.t()) :: GenServer.server()
   def index_store(root_uri), do: via({:index_store, root_uri})
 

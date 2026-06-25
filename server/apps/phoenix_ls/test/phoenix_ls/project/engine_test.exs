@@ -3,7 +3,7 @@ defmodule PhoenixLS.Project.EngineTest do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.{Fact, Store}
-  alias PhoenixLS.Project.{CompileEnv, Engine, Metadata, Names}
+  alias PhoenixLS.Project.{CompileEnv, CompileRunner, Engine, Metadata, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -118,6 +118,15 @@ defmodule PhoenixLS.Project.EngineTest do
            } = CompileEnv.fetch(Names.compile_env(root_uri))
   end
 
+  test "starts engine-owned compile runner", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    assert {:ok, _pid} = Engine.start_link(root_uri: root_uri)
+
+    assert {:error, :source_only} = CompileRunner.run(Names.compile_runner(root_uri), ["compile"])
+  end
+
   test "builds a handle with the engine pid and project-owned process names" do
     pid = self()
 
@@ -126,12 +135,14 @@ defmodule PhoenixLS.Project.EngineTest do
              pid: ^pid,
              document_store: document_store,
              compile_env: compile_env,
+             compile_runner: compile_runner,
              index_store: index_store,
              metadata: metadata
            } = Engine.handle(@root_uri, pid)
 
     assert document_store == Names.document_store(@root_uri)
     assert compile_env == Names.compile_env(@root_uri)
+    assert compile_runner == Names.compile_runner(@root_uri)
     assert index_store == Names.index_store(@root_uri)
     assert metadata == Names.metadata(@root_uri)
   end

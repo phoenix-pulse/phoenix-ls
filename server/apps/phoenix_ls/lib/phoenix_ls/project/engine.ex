@@ -8,6 +8,7 @@ defmodule PhoenixLS.Project.Engine do
   alias PhoenixLS.Index.Indexer
   alias PhoenixLS.Index.Store, as: IndexStore
   alias PhoenixLS.Project.CompileEnv
+  alias PhoenixLS.Project.CompileRunner
   alias PhoenixLS.Project.Metadata
   alias PhoenixLS.Project.Names
   alias PhoenixLS.Workspace.DocumentStore
@@ -18,6 +19,7 @@ defmodule PhoenixLS.Project.Engine do
     :document_store,
     :metadata,
     :compile_env,
+    :compile_runner,
     :index_store,
     :indexer,
     :source_only?
@@ -28,6 +30,7 @@ defmodule PhoenixLS.Project.Engine do
     :document_store,
     :metadata,
     :compile_env,
+    :compile_runner,
     :index_store,
     :indexer,
     source_only?: true
@@ -39,6 +42,7 @@ defmodule PhoenixLS.Project.Engine do
           document_store: GenServer.server(),
           metadata: GenServer.server(),
           compile_env: GenServer.server(),
+          compile_runner: GenServer.server(),
           index_store: GenServer.server(),
           indexer: GenServer.server(),
           source_only?: boolean()
@@ -60,6 +64,7 @@ defmodule PhoenixLS.Project.Engine do
       document_store: Names.document_store(root_uri),
       metadata: Names.metadata(root_uri),
       compile_env: Names.compile_env(root_uri),
+      compile_runner: Names.compile_runner(root_uri),
       index_store: Names.index_store(root_uri),
       indexer: Names.indexer(root_uri),
       source_only?: Keyword.get(opts, :source_only?, true)
@@ -72,6 +77,7 @@ defmodule PhoenixLS.Project.Engine do
     document_store = Keyword.get(opts, :document_store, Names.document_store(root_uri))
     metadata = Keyword.get(opts, :metadata, Names.metadata(root_uri))
     compile_env = Keyword.get(opts, :compile_env, Names.compile_env(root_uri))
+    compile_runner = Keyword.get(opts, :compile_runner, Names.compile_runner(root_uri))
     index_store = Keyword.get(opts, :index_store, Names.index_store(root_uri))
     indexer = Keyword.get(opts, :indexer, Names.indexer(root_uri))
     status_target = Keyword.get(opts, :status_target)
@@ -91,6 +97,7 @@ defmodule PhoenixLS.Project.Engine do
          compile_timeout_ms,
          compile_cache_root
        )},
+      {CompileRunner, name: compile_runner, compile_env: compile_env},
       {IndexStore, name: index_store},
       {Indexer,
        name: indexer,
