@@ -29,7 +29,18 @@ defmodule PhoenixLS.LSP.ServerConfigTest do
 
     assert ServerConfig.project_manager_opts(config, self()) == [
              status_target: self(),
+             source_only?: true,
              project_indexing_enabled: false
+           ]
+  end
+
+  test "passes compilation-aware mode through project manager options" do
+    config = %ServerConfig{source_only?: false, project_indexing_enabled?: true, log_level: :info}
+
+    assert ServerConfig.project_manager_opts(config, self()) == [
+             status_target: self(),
+             source_only?: false,
+             project_indexing_enabled: true
            ]
   end
 end

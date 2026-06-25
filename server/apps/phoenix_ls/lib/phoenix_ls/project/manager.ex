@@ -66,7 +66,8 @@ defmodule PhoenixLS.Project.Manager do
       unregister_timeout_ms:
         Keyword.get(opts, :unregister_timeout_ms, @default_unregister_timeout_ms),
       degraded: %{},
-      backoff_until: %{}
+      backoff_until: %{},
+      source_only: %{}
     }
 
     {:ok, state}
@@ -105,17 +106,17 @@ defmodule PhoenixLS.Project.Manager do
   end
 
   def handle_call({:fetch_engine, root_uri}, _from, state) do
-    {:reply, fetch_engine_handle(root_uri), state}
+    {:reply, fetch_engine_handle(state, root_uri), state}
   end
 
   def handle_call({:status, root_uri}, _from, state) do
     status =
       case Map.fetch(state.degraded, root_uri) do
         {:ok, reason} ->
-          EngineStatus.degraded(root_uri, reason)
+          EngineStatus.degraded(root_uri, reason, source_only?: source_only_mode(state, root_uri))
 
         :error ->
-          case fetch_engine_handle(root_uri) do
+          case fetch_engine_handle(state, root_uri) do
             {:ok, engine} -> EngineStatus.running(engine)
             :error -> EngineStatus.missing(root_uri)
           end
@@ -126,7 +127,7 @@ defmodule PhoenixLS.Project.Manager do
 
   def handle_call({:document_store, root_uri}, _from, state) do
     reply =
-      case fetch_engine_handle(root_uri) do
+      case fetch_engine_handle(state, root_uri) do
         {:ok, engine} -> {:ok, engine.document_store}
         :error -> :error
       end
@@ -135,14 +136,20 @@ defmodule PhoenixLS.Project.Manager do
   end
 
   defp ensure_engine_started(state, root_uri, opts) do
-    case fetch_engine_handle(root_uri) do
+    case fetch_engine_handle(state, root_uri) do
       {:ok, engine} ->
         {{:ok, engine}, clear_degraded(state, root_uri)}
 
       :error ->
         case backoff_reason(state, root_uri) do
           {:ok, reason} ->
-            notify_status(opts, Status.project_degraded(root_uri, reason))
+            notify_status(
+              opts,
+              Status.project_degraded(root_uri, reason,
+                source_only?: source_only_mode(state, root_uri)
+              )
+            )
+
             {{:error, {:backoff, reason}}, state}
 
           :error ->
@@ -154,7 +161,12 @@ defmodule PhoenixLS.Project.Manager do
   defp start_engine_with_state(state, root_uri, opts) do
     case start_engine(state.engine_supervisor, root_uri, opts) do
       {:ok, engine} ->
-        {{:ok, engine}, clear_degraded(state, root_uri)}
+        state =
+          state
+          |> clear_degraded(root_uri)
+          |> put_source_only(root_uri, source_only_mode(opts))
+
+        {{:ok, engine}, state}
 
       {:error, reason} ->
         {{:error, reason}, mark_degraded(state, root_uri, reason, opts)}
@@ -168,8 +180,8 @@ defmodule PhoenixLS.Project.Manager do
 
     try do
       case DynamicSupervisor.start_child(engine_supervisor, {Engine, engine_opts}) do
-        {:ok, pid} -> {:ok, Engine.handle(root_uri, pid)}
-        {:error, {:already_started, pid}} -> {:ok, Engine.handle(root_uri, pid)}
+        {:ok, pid} -> {:ok, Engine.handle(root_uri, pid, engine_opts)}
+        {:error, {:already_started, pid}} -> {:ok, Engine.handle(root_uri, pid, engine_opts)}
         {:error, reason} -> {:error, reason}
       end
     catch
@@ -178,7 +190,7 @@ defmodule PhoenixLS.Project.Manager do
   end
 
   defp terminate_engine(state, root_uri) do
-    case fetch_engine_handle(root_uri) do
+    case fetch_engine_handle(state, root_uri) do
       {:ok, engine} ->
         DynamicSupervisor.terminate_child(state.engine_supervisor, engine.pid)
         wait_until_unregistered(root_uri, state.unregister_timeout_ms)
@@ -215,7 +227,9 @@ defmodule PhoenixLS.Project.Manager do
       reason: reason
     })
 
-    notify_status(opts, Status.project_degraded(root_uri, reason))
+    source_only? = source_only_mode(opts)
+
+    notify_status(opts, Status.project_degraded(root_uri, reason, source_only?: source_only?))
 
     %{
       state
@@ -225,7 +239,8 @@ defmodule PhoenixLS.Project.Manager do
             state.backoff_until,
             root_uri,
             System.monotonic_time(:millisecond) + state.restart_backoff_ms
-          )
+          ),
+        source_only: Map.put(state.source_only, root_uri, source_only?)
     }
   end
 
@@ -247,16 +262,20 @@ defmodule PhoenixLS.Project.Manager do
     end
   end
 
-  defp fetch_engine_handle(root_uri) do
+  defp fetch_engine_handle(state, root_uri) do
     case Registry.lookup(@registry, {:engine, root_uri}) do
-      [{pid, _value}] -> {:ok, Engine.handle(root_uri, pid)}
-      [] -> :error
+      [{pid, _value}] ->
+        {:ok, Engine.handle(root_uri, pid, source_only?: source_only_mode(state, root_uri))}
+
+      [] ->
+        :error
     end
   end
 
   defp engine_start_opts(opts) do
     []
     |> maybe_put_status_target(opts)
+    |> maybe_put_source_only(opts)
     |> maybe_put_project_indexing_enabled(opts)
   end
 
@@ -275,6 +294,26 @@ defmodule PhoenixLS.Project.Manager do
       _missing_or_invalid ->
         engine_opts
     end
+  end
+
+  defp maybe_put_source_only(engine_opts, opts) do
+    case Keyword.fetch(opts, :source_only?) do
+      {:ok, source_only?} when is_boolean(source_only?) ->
+        Keyword.put(engine_opts, :source_only?, source_only?)
+
+      _missing_or_invalid ->
+        engine_opts
+    end
+  end
+
+  defp put_source_only(state, root_uri, source_only?) do
+    %{state | source_only: Map.put(state.source_only, root_uri, source_only?)}
+  end
+
+  defp source_only_mode(opts) when is_list(opts), do: Keyword.get(opts, :source_only?, true)
+
+  defp source_only_mode(state, root_uri) do
+    Map.get(state.source_only, root_uri, true)
   end
 
   defp notify_status(opts, payload) do

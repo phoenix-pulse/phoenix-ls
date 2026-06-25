@@ -31,13 +31,13 @@ defmodule PhoenixLS.LSP.Status do
     |> put_optional("count", Keyword.get(opts, :count))
   end
 
-  @spec project_degraded(String.t(), term()) :: map()
-  def project_degraded(root_uri, reason) when is_binary(root_uri) do
+  @spec project_degraded(String.t(), term(), keyword()) :: map()
+  def project_degraded(root_uri, reason, opts \\ []) when is_binary(root_uri) do
     %{
       "kind" => "project",
       "state" => "degraded",
       "rootUri" => root_uri,
-      "sourceOnly" => true,
+      "sourceOnly" => Keyword.get(opts, :source_only?, true),
       "reason" => inspect(reason)
     }
   end

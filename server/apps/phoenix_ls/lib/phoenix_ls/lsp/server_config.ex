@@ -70,8 +70,11 @@ defmodule PhoenixLS.LSP.ServerConfig do
   defp log_level(_value, default), do: default
 
   @spec project_manager_opts(t(), pid()) :: keyword()
-  def project_manager_opts(%__MODULE__{project_indexing_enabled?: enabled}, status_target)
+  def project_manager_opts(
+        %__MODULE__{source_only?: source_only?, project_indexing_enabled?: enabled},
+        status_target
+      )
       when is_pid(status_target) do
-    [status_target: status_target, project_indexing_enabled: enabled]
+    [status_target: status_target, source_only?: source_only?, project_indexing_enabled: enabled]
   end
 end

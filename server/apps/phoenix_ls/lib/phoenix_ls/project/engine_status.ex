@@ -43,7 +43,7 @@ defmodule PhoenixLS.Project.EngineStatus do
     %__MODULE__{
       root_uri: engine.root_uri,
       state: :running,
-      source_only?: true,
+      source_only?: engine.source_only?,
       pid: engine.pid,
       document_store: engine.document_store,
       index_store: engine.index_store,
@@ -51,12 +51,12 @@ defmodule PhoenixLS.Project.EngineStatus do
     }
   end
 
-  @spec degraded(String.t(), term()) :: t()
-  def degraded(root_uri, reason) do
+  @spec degraded(String.t(), term(), keyword()) :: t()
+  def degraded(root_uri, reason, opts \\ []) do
     %__MODULE__{
       root_uri: root_uri,
       state: :degraded,
-      source_only?: true,
+      source_only?: Keyword.get(opts, :source_only?, true),
       reason: reason
     }
   end

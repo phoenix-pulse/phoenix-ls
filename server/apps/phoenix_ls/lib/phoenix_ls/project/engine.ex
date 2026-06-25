@@ -10,15 +10,16 @@ defmodule PhoenixLS.Project.Engine do
   alias PhoenixLS.Project.Names
   alias PhoenixLS.Workspace.DocumentStore
 
-  @enforce_keys [:root_uri, :pid, :document_store, :index_store, :indexer]
-  defstruct [:root_uri, :pid, :document_store, :index_store, :indexer]
+  @enforce_keys [:root_uri, :pid, :document_store, :index_store, :indexer, :source_only?]
+  defstruct [:root_uri, :pid, :document_store, :index_store, :indexer, source_only?: true]
 
   @type t :: %__MODULE__{
           root_uri: String.t(),
           pid: pid(),
           document_store: GenServer.server(),
           index_store: GenServer.server(),
-          indexer: GenServer.server()
+          indexer: GenServer.server(),
+          source_only?: boolean()
         }
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -29,14 +30,15 @@ defmodule PhoenixLS.Project.Engine do
     Supervisor.start_link(__MODULE__, opts, name: name)
   end
 
-  @spec handle(String.t(), pid()) :: t()
-  def handle(root_uri, pid) do
+  @spec handle(String.t(), pid(), keyword()) :: t()
+  def handle(root_uri, pid, opts \\ []) do
     %__MODULE__{
       root_uri: root_uri,
       pid: pid,
       document_store: Names.document_store(root_uri),
       index_store: Names.index_store(root_uri),
-      indexer: Names.indexer(root_uri)
+      indexer: Names.indexer(root_uri),
+      source_only?: Keyword.get(opts, :source_only?, true)
     }
   end
 

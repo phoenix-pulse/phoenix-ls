@@ -36,6 +36,25 @@ defmodule PhoenixLS.Project.EngineStatusTest do
            }
   end
 
+  test "reports ensured engines with configured compilation-aware mode" do
+    %{manager: manager} =
+      start_manager(__MODULE__.CompilationAwareSupervisor, __MODULE__.CompilationAwareManager)
+
+    root_uri = "file:///tmp/phoenix-ls-status-compilation-aware"
+
+    assert {:ok, engine} = Manager.ensure_engine(manager, root_uri, source_only?: false)
+
+    assert Manager.status(manager, root_uri) == %EngineStatus{
+             root_uri: root_uri,
+             state: :running,
+             source_only?: false,
+             pid: engine.pid,
+             document_store: engine.document_store,
+             index_store: engine.index_store,
+             indexer: engine.indexer
+           }
+  end
+
   test "dynamic supervisor contains engine crashes and restarts the engine" do
     %{manager: manager} = start_manager(__MODULE__.CrashSupervisor, __MODULE__.CrashManager)
     root_uri = "file:///tmp/phoenix-ls-status-crash"
@@ -108,14 +127,15 @@ defmodule PhoenixLS.Project.EngineStatusTest do
          restart_backoff_ms: 500}
       )
 
-    assert {:error, reason} = Manager.ensure_engine(manager, root_uri, status_target: self())
+    assert {:error, reason} =
+             Manager.ensure_engine(manager, root_uri, status_target: self(), source_only?: false)
 
     assert_receive {:phoenix_ls_status,
                     %{
                       "kind" => "project",
                       "state" => "degraded",
                       "rootUri" => ^root_uri,
-                      "sourceOnly" => true,
+                      "sourceOnly" => false,
                       "reason" => reason_text
                     }},
                    500
