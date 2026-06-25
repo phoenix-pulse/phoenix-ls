@@ -269,11 +269,16 @@ defmodule PhoenixLS.Features.CodeAction do
          tags,
          _facts
        ) do
-    if diagnostic.source == @source and
-         diagnostic.code in ["phoenix.unknown_attr", "phoenix.unknown_phx_attr"] do
-      unknown_attr_action(diagnostic, source, uri, tags)
-    else
-      []
+    cond do
+      diagnostic.source == @source and diagnostic.code == "phoenix.unknown_slot" ->
+        unknown_slot_action(diagnostic, uri, tags)
+
+      diagnostic.source == @source and
+          diagnostic.code in ["phoenix.unknown_attr", "phoenix.unknown_phx_attr"] ->
+        unknown_attr_action(diagnostic, source, uri, tags)
+
+      true ->
+        []
     end
   end
 
@@ -340,6 +345,15 @@ defmodule PhoenixLS.Features.CodeAction do
     end
   end
 
+  defp unknown_slot_action(diagnostic, uri, tags) do
+    with %Tag{kind: :slot} = tag <- find_tag_by_name_range(tags, diagnostic.range),
+         %Range{} = range <- tag_removal_range(tag) do
+      [text_edit_action(~s(Remove unknown slot "#{tag.name}"), diagnostic, uri, range, "")]
+    else
+      _missing_context -> []
+    end
+  end
+
   defp find_tag(tags, tag_name, range) do
     Enum.find(tags, &(&1.name == tag_name and &1.name_range == range))
   end
@@ -387,6 +401,12 @@ defmodule PhoenixLS.Features.CodeAction do
       _error -> :error
     end
   end
+
+  defp tag_removal_range(%Tag{range: %{start: start}, closing_range: %{end: end_position}}) do
+    %Range{start: start, end: end_position}
+  end
+
+  defp tag_removal_range(%Tag{range: %Range{} = range}), do: range
 
   defp insert_offset(_source, gt_offset, false), do: {:ok, gt_offset}
 

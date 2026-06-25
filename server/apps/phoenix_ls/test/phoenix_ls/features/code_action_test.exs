@@ -143,6 +143,64 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "removes self-closing unknown slots" do
+    source = "<:footer />"
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: ~s(Remove unknown slot ":footer"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 0},
+                         end: %Position{line: 0, character: 11}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "removes unknown slot blocks" do
+    source = "<:footer>Body</:footer>"
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: ~s(Remove unknown slot ":footer"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 0},
+                         end: %Position{line: 0, character: 23}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "adds missing LiveComponent attrs" do
     source = "<.live_component />"
     {:ok, document} = Parser.parse(source)
