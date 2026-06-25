@@ -121,6 +121,19 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostics(~S|<button phx-click={JS.show(to: "#modal")} />|) == []
   end
 
+  test "reports unknown phx attribute names" do
+    [diagnostic] = diagnostics(~s(<button phx-clik="save">))
+
+    assert diagnostic.code == "phoenix.unknown_phx_attr"
+    assert diagnostic.message == ~s(Unknown Phoenix attr "phx-clik")
+  end
+
+  test "does not report known non-event phx attrs as unknown events" do
+    assert diagnostics(
+             ~s(<div phx-hook="Map" phx-debounce="300" phx-throttle="1000" phx-feedback-for="user[email]" />)
+           ) == []
+  end
+
   test "reports HTML :for loops without DOM tracking" do
     [diagnostic] = diagnostics(~s(<div :for={item <- @items}>{item.name}</div>))
 

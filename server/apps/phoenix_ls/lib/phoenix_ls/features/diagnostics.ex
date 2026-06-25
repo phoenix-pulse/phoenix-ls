@@ -14,7 +14,46 @@ defmodule PhoenixLS.Features.Diagnostics do
   @live_component_required_attrs ["id", "module"]
   @global_component_attrs ["id", "class", "style", "title"]
   @global_slot_attrs [":let"]
-  @non_event_phx_attrs ["phx-target", "phx-disable-with", "phx-update"]
+  @event_phx_attrs [
+    "phx-click",
+    "phx-submit",
+    "phx-change",
+    "phx-blur",
+    "phx-focus",
+    "phx-keydown",
+    "phx-keyup",
+    "phx-window-keydown",
+    "phx-window-keyup",
+    "phx-window-focus",
+    "phx-window-blur",
+    "phx-click-away",
+    "phx-capture-click",
+    "phx-viewport-top",
+    "phx-viewport-bottom",
+    "phx-auto-recover"
+  ]
+  @non_event_phx_attrs [
+    "phx-target",
+    "phx-disable-with",
+    "phx-update",
+    "phx-debounce",
+    "phx-throttle",
+    "phx-hook",
+    "phx-mounted",
+    "phx-remove",
+    "phx-connected",
+    "phx-disconnected",
+    "phx-trigger-action",
+    "phx-feedback-for",
+    "phx-track-static",
+    "phx-drop-target",
+    "phx-no-curly-interpolation",
+    "phx-page-loading",
+    "phx-link",
+    "phx-key"
+  ]
+  @known_phx_attrs @event_phx_attrs ++ @non_event_phx_attrs
+  @dynamic_phx_attr_prefixes ["phx-value-"]
   @global_prefix_attrs ["aria-", "data-"]
 
   @spec diagnostics(Document.t(), [Fact.t()]) :: [Diagnostic.t()]
@@ -51,9 +90,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   defp tag_diagnostics(%Tag{kind: :component, name: ".live_component"} = tag, indexes, tags) do
     live_component_diagnostics(tag) ++
-      route_diagnostics(tag, indexes) ++
-      event_diagnostics(tag, indexes) ++
-      stream_diagnostics(tag, tags)
+      shared_tag_diagnostics(tag, indexes, tags)
   end
 
   defp tag_diagnostics(%Tag{kind: kind} = tag, indexes, tags)
@@ -65,9 +102,7 @@ defmodule PhoenixLS.Features.Diagnostics do
       end
 
     component_diagnostics ++
-      route_diagnostics(tag, indexes) ++
-      event_diagnostics(tag, indexes) ++
-      stream_diagnostics(tag, tags)
+      shared_tag_diagnostics(tag, indexes, tags)
   end
 
   defp tag_diagnostics(%Tag{kind: :slot} = tag, indexes, tags) do
@@ -87,13 +122,16 @@ defmodule PhoenixLS.Features.Diagnostics do
       end
 
     diagnostics ++
-      route_diagnostics(tag, indexes) ++
-      event_diagnostics(tag, indexes) ++
-      stream_diagnostics(tag, tags)
+      shared_tag_diagnostics(tag, indexes, tags)
   end
 
   defp tag_diagnostics(%Tag{} = tag, indexes, tags) do
     for_tracking_diagnostics(tag) ++
+      shared_tag_diagnostics(tag, indexes, tags)
+  end
+
+  defp shared_tag_diagnostics(%Tag{} = tag, indexes, tags) do
+    phx_attr_name_diagnostics(tag) ++
       route_diagnostics(tag, indexes) ++
       event_diagnostics(tag, indexes) ++
       stream_diagnostics(tag, tags)
@@ -259,6 +297,24 @@ defmodule PhoenixLS.Features.Diagnostics do
         attr.value_range || attr.name_range,
         "phoenix.unknown_event",
         ~s(Unknown LiveView event "#{attr.value}")
+      )
+    end)
+  end
+
+  defp phx_attr_name_diagnostics(%Tag{} = tag) do
+    tag.attrs
+    |> Enum.filter(&phx_attr?/1)
+    |> Enum.reject(&known_phx_attr?/1)
+    |> Enum.map(fn attr ->
+      diagnostic(
+        attr.name_range,
+        "phoenix.unknown_phx_attr",
+        ~s(Unknown Phoenix attr "#{attr.name}"),
+        %{
+          "kind" => "unknown_phx_attr",
+          "tag" => tag.name,
+          "attr" => attr.name
+        }
       )
     end)
   end
@@ -550,15 +606,21 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp verified_route_path(_attr), do: :error
 
   defp event_attr?(%Attribute{name: name}) do
-    String.starts_with?(name, "phx-") and
-      name not in @non_event_phx_attrs and
-      not String.starts_with?(name, "phx-value-")
+    name in @event_phx_attrs
   end
 
   defp literal_event_attr?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
     do: true
 
   defp literal_event_attr?(_attr), do: false
+
+  defp phx_attr?(%Attribute{name: "phx-" <> _suffix}), do: true
+  defp phx_attr?(_attr), do: false
+
+  defp known_phx_attr?(%Attribute{name: name}) do
+    name in @known_phx_attrs or
+      Enum.any?(@dynamic_phx_attr_prefixes, &String.starts_with?(name, &1))
+  end
 
   defp global_component_attr?(%Attribute{name: name}) do
     name in @global_component_attrs or
