@@ -4,6 +4,7 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
   alias GenLSP.Enumerations.TextDocumentSyncKind
 
   alias GenLSP.Structures.{
+    CodeActionOptions,
     CompletionOptions,
     ServerCapabilities,
     SignatureHelpOptions,
@@ -62,5 +63,12 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     assert %SignatureHelpOptions{} = signature_help = capabilities.signature_help_provider
     assert signature_help.trigger_characters == ["<", " "]
     assert signature_help.retrigger_characters == [" "]
+  end
+
+  test "advertises code action support" do
+    capabilities = Capabilities.build()
+
+    assert %CodeActionOptions{} = code_actions = capabilities.code_action_provider
+    assert code_actions.code_action_kinds == ["quickfix"]
   end
 end

@@ -104,7 +104,12 @@ defmodule PhoenixLS.Features.Diagnostics do
       diagnostic(
         tag.name_range,
         "phoenix.missing_required_attr",
-        ~s(Missing required attr "#{attr.data.name}" for #{tag.name})
+        ~s(Missing required attr "#{attr.data.name}" for #{tag.name}),
+        %{
+          "kind" => "missing_required_attr",
+          "tag" => tag.name,
+          "attr" => attr.data.name
+        }
       )
     end)
   end
@@ -304,13 +309,14 @@ defmodule PhoenixLS.Features.Diagnostics do
     Enum.filter(facts, &(&1.kind == kind))
   end
 
-  defp diagnostic(range, code, message) do
+  defp diagnostic(range, code, message, data \\ nil) do
     %Diagnostic{
       range: range,
       severity: DiagnosticSeverity.error(),
       code: code,
       source: @source,
-      message: message
+      message: message,
+      data: data
     }
   end
 

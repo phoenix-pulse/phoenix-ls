@@ -18,6 +18,12 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.code == "phoenix.missing_required_attr"
     assert diagnostic.severity == DiagnosticSeverity.error()
     assert diagnostic.message == ~s(Missing required attr "label" for .button)
+
+    assert diagnostic.data == %{
+             "kind" => "missing_required_attr",
+             "tag" => ".button",
+             "attr" => "label"
+           }
   end
 
   test "reports missing required attrs on remote component tags" do

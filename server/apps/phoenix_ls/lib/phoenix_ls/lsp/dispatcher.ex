@@ -18,6 +18,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     CompletionItemResolve,
     Initialize,
     Shutdown,
+    TextDocumentCodeAction,
     TextDocumentCompletion,
     TextDocumentDefinition,
     TextDocumentSignatureHelp,
@@ -29,6 +30,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   alias PhoenixLS.LSP.{
     Capabilities,
+    CodeAction,
     Completion,
     CustomRequest,
     Definition,
@@ -66,6 +68,10 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_request(%TextDocumentCompletion{} = request, lsp) do
     Completion.handle(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(%TextDocumentCodeAction{} = request, lsp) do
+    CodeAction.handle(request, RequestContext.new(lsp))
   end
 
   def handle_request(%CompletionItemResolve{} = request, lsp) do

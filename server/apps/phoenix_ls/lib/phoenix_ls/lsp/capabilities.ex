@@ -10,6 +10,7 @@ defmodule PhoenixLS.LSP.Capabilities do
   alias GenLSP.Enumerations.TextDocumentSyncKind
 
   alias GenLSP.Structures.{
+    CodeActionOptions,
     CompletionOptions,
     ServerCapabilities,
     SignatureHelpOptions,
@@ -30,6 +31,9 @@ defmodule PhoenixLS.LSP.Capabilities do
       signature_help_provider: %SignatureHelpOptions{
         trigger_characters: ["<", " "],
         retrigger_characters: [" "]
+      },
+      code_action_provider: %CodeActionOptions{
+        code_action_kinds: ["quickfix"]
       },
       hover_provider: true,
       definition_provider: true,
