@@ -26,6 +26,17 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
     end)
   end
 
+  @spec schema_for_assign_prefix(String.t(), [Fact.t()]) :: Fact.t() | nil
+  def schema_for_assign_prefix(assign_prefix, facts)
+      when is_binary(assign_prefix) and is_list(facts) do
+    candidates = candidate_schema_prefixes(assign_prefix)
+
+    Enum.find(
+      facts,
+      &(&1.kind == :schema and schema_prefix_match?(&1, candidates))
+    )
+  end
+
   @spec schema_id_for_association_path(String.t(), [String.t()], [Fact.t()]) ::
           {:ok, String.t()} | :error
   def schema_id_for_association_path(schema_id, path, facts)
@@ -117,6 +128,28 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
 
   defp schema_match?(%Fact{data: %{module: module}}, candidate) do
     module == candidate or String.ends_with?(module, "." <> candidate)
+  end
+
+  defp schema_prefix_match?(_fact, []), do: false
+
+  defp schema_prefix_match?(%Fact{data: %{module: module}}, candidates) do
+    local_name =
+      module
+      |> String.split(".")
+      |> List.last()
+
+    Enum.any?(candidates, &String.starts_with?(local_name, &1))
+  end
+
+  defp candidate_schema_prefixes(assign_prefix) do
+    assign_prefix
+    |> candidate_names()
+    |> Enum.flat_map(fn name ->
+      case camelized_candidate(name) do
+        {:ok, candidate} -> [candidate]
+        :error -> []
+      end
+    end)
   end
 
   defp candidate_names(name) do

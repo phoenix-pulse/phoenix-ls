@@ -61,6 +61,14 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "goes to schema definitions from assigns" do
+    assert_definition(
+      "<p>{@prod|uct}</p>",
+      :schema,
+      "App.Catalog.Product:schema:products"
+    )
+  end
+
   test "goes to schema field definitions through assign property access" do
     assert_definition(
       "<p>{@product.na|me}</p>",

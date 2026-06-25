@@ -35,7 +35,7 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
         assign_property
 
       String.starts_with?(prefix, "@") ->
-        find_assign(facts, String.trim_leading(prefix, "@"))
+        find_assign_or_schema(facts, String.trim_leading(prefix, "@"))
 
       true ->
         nil
@@ -76,6 +76,11 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
 
   defp find_assign(facts, assign_prefix) do
     Enum.find(facts, &(&1.kind == :assign and String.starts_with?(&1.data.name, assign_prefix)))
+  end
+
+  defp find_assign_or_schema(facts, assign_prefix) do
+    SchemaFacts.schema_for_assign_prefix(assign_prefix, facts) ||
+      find_assign(facts, assign_prefix)
   end
 
   defp find_assign_schema_property(facts, prefix) do

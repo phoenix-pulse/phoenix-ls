@@ -64,6 +64,13 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers schema assigns" do
+    assert_hover("<p>{@prod|uct}</p>", [
+      ~s(schema "products"),
+      "module App.Catalog.Product"
+    ])
+  end
+
   test "hovers schema fields through assign property access" do
     assert_hover("<p>{@product.na|me}</p>", [
       "field :name, :string",

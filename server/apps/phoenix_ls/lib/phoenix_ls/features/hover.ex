@@ -75,6 +75,16 @@ defmodule PhoenixLS.Features.Hover do
     |> compact_join()
   end
 
+  defp markdown(%Fact{kind: :schema} = fact) do
+    [
+      code(schema_declaration(fact.data)),
+      "module #{fact.data.module}",
+      primary_key_line(fact.data.primary_key),
+      "foreign key type #{inspect(fact.data.foreign_key_type)}"
+    ]
+    |> compact_join()
+  end
+
   defp markdown(%Fact{kind: :schema_field} = fact) do
     [
       code("field :#{fact.data.name}, #{inspect(fact.data.type)}"),
@@ -127,6 +137,12 @@ defmodule PhoenixLS.Features.Hover do
       {:error, _reason} -> uri
     end
   end
+
+  defp schema_declaration(%{source: nil}), do: "embedded_schema"
+  defp schema_declaration(%{source: source}), do: ~s(schema "#{source}")
+
+  defp primary_key_line(false), do: "primary key false"
+  defp primary_key_line(%{name: name, type: type}), do: "primary key :#{name}, #{inspect(type)}"
 
   defp compact_join(values) do
     values
