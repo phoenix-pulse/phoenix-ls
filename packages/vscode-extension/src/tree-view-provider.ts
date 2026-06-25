@@ -389,8 +389,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       item.tooltip = `Field: ${field.name}\nType: ${field.type}${field.elixirType ? `\nElixir Type: ${field.elixirType}` : ''}`;
       item.command = {
         command: 'phoenixPulse.goToItem',
-        title: 'Go to Schema',
-        arguments: [schema.filePath, schema.location]
+        title: 'Go to Field',
+        arguments: [field.filePath || schema.filePath, field.location || schema.location]
       };
       return item;
     });
