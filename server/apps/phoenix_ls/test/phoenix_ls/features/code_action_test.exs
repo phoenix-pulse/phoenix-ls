@@ -144,6 +144,112 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "adds missing stream item DOM id" do
+    source = """
+    <table phx-update="stream">
+      <tr :for={{dom_id, user} <- @streams.users}>
+        <td>{user.name}</td>
+      </tr>
+    </table>
+    """
+
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: "Add id={dom_id}",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 1, character: 45},
+                         end: %Position{line: 1, character: 45}
+                       },
+                       new_text: " id={dom_id}"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "adds missing phx-update stream attribute" do
+    source = """
+    <tr :for={{dom_id, user} <- @streams.users} id={dom_id}>
+      <td>{user.name}</td>
+    </tr>
+    """
+
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: ~s(Add phx-update="stream"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 55},
+                         end: %Position{line: 0, character: 55}
+                       },
+                       new_text: ~s( phx-update="stream")
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "removes unnecessary stream :key" do
+    source = """
+    <table phx-update="stream">
+      <tr :for={{dom_id, user} <- @streams.users} :key={user.id} id={dom_id}>
+        <td>{user.name}</td>
+      </tr>
+    </table>
+    """
+
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: "Remove unnecessary stream :key",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 1, character: 45},
+                         end: %Position{line: 1, character: 60}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """

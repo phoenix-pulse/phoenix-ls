@@ -146,6 +146,79 @@ defmodule PhoenixLS.Features.CodeAction do
   end
 
   defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.stream_missing_id",
+           data: %{"kind" => "stream_missing_id", "dom_id" => dom_id}
+         } = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    with %Tag{} = tag <- find_tag_by_name_range(tags, diagnostic.range),
+         {:ok, range} <- insert_range(source, tag) do
+      [
+        text_edit_action(
+          "Add id={#{dom_id}}",
+          diagnostic,
+          uri,
+          range,
+          " id={#{dom_id}}"
+        )
+      ]
+    else
+      _missing_context -> []
+    end
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.stream_missing_phx_update",
+           data: %{"kind" => "stream_missing_phx_update"}
+         } = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    with %Tag{} = tag <- find_tag_by_name_range(tags, diagnostic.range),
+         {:ok, range} <- insert_range(source, tag) do
+      [
+        text_edit_action(
+          ~s(Add phx-update="stream"),
+          diagnostic,
+          uri,
+          range,
+          ~s( phx-update="stream")
+        )
+      ]
+    else
+      _missing_context -> []
+    end
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.stream_unnecessary_key",
+           data: %{"kind" => "stream_unnecessary_key"}
+         } = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    with %Attribute{} = attr <- find_attr(tags, diagnostic.range),
+         {:ok, range} <- attr_removal_range(source, attr) do
+      [text_edit_action("Remove unnecessary stream :key", diagnostic, uri, range, "")]
+    else
+      _missing_context -> []
+    end
+  end
+
+  defp action_for_diagnostic(
          %Diagnostic{} = diagnostic,
          source,
          uri,
@@ -172,6 +245,24 @@ defmodule PhoenixLS.Features.CodeAction do
             %TextEdit{
               range: range,
               new_text: " #{attr_name}=#{value}"
+            }
+          ]
+        }
+      }
+    }
+  end
+
+  defp text_edit_action(title, diagnostic, uri, range, new_text) do
+    %CodeAction{
+      title: title,
+      kind: CodeActionKind.quick_fix(),
+      diagnostics: [diagnostic],
+      edit: %WorkspaceEdit{
+        changes: %{
+          uri => [
+            %TextEdit{
+              range: range,
+              new_text: new_text
             }
           ]
         }
@@ -208,10 +299,14 @@ defmodule PhoenixLS.Features.CodeAction do
     Enum.find(tags, &(&1.name == tag_name and &1.name_range == range))
   end
 
+  defp find_tag_by_name_range(tags, range) do
+    Enum.find(tags, &(&1.name_range == range))
+  end
+
   defp find_attr(tags, range) do
     tags
     |> Enum.flat_map(& &1.attrs)
-    |> Enum.find(&(&1.name_range == range))
+    |> Enum.find(&(&1.name_range == range or &1.range == range))
   end
 
   defp attr_fact(facts, tag_name, attr_name) do
