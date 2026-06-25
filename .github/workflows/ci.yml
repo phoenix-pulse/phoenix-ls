@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  elixir-server:
+    name: Elixir server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Restore Mix cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            server/deps
+            server/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('server/mix.lock') }}-${{ hashFiles('server/**/*.ex', 'server/**/*.exs') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ hashFiles('server/mix.lock') }}-
+
+      - name: Install Elixir dependencies
+        working-directory: server
+        run: mix deps.get
+
+      - name: Check Elixir formatting
+        working-directory: server
+        run: mix format --check-formatted
+
+      - name: Run Elixir tests
+        working-directory: server
+        run: mix test
+
+      - name: Build and smoke test escript
+        working-directory: server/apps/phoenix_ls
+        run: |
+          MIX_ENV=prod mix escript.build
+          ./phoenix_ls --help
+
+  vscode-extension:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Install Elixir dependencies
+        working-directory: server
+        run: mix deps.get
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Compile VS Code extension
+        run: npm run compile:vscode
+
+      - name: Test VS Code packaging helpers
+        run: npm test --workspace phoenix-pulse
+
+      - name: Package VS Code extension
+        run: npm run package:vscode
+
+      - name: Verify VSIX contents
+        run: |
+          set -euo pipefail
+          vsix="$(ls packages/vscode-extension/*.vsix)"
+          unzip -l "$vsix" | tee /tmp/phoenix-pulse-vsix.txt
+          grep -Fq "extension/server/phoenix_ls" /tmp/phoenix-pulse-vsix.txt
+          if grep -Fq "extension/scripts/" /tmp/phoenix-pulse-vsix.txt; then
+            echo "VSIX must not include packaging helper scripts" >&2
+            exit 1
+          fi
+          test -x packages/vscode-extension/server/phoenix_ls
+          packages/vscode-extension/server/phoenix_ls --help
+
+  neovim-plugin:
+    name: Neovim plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Install Elixir dependencies
+        working-directory: server
+        run: mix deps.get
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Test Neovim install/update flow
+        run: npm test --workspace phoenix-pulse-nvim
+
+      - name: Check shell scripts
+        run: bash -n packages/nvim-plugin/install-lsp.sh packages/nvim-plugin/test-install-lsp.sh packages/nvim-plugin/test-plugin.sh
+
+      - name: Check Lua syntax
+        run: luac5.4 -p packages/nvim-plugin/lua/phoenix-pulse/*.lua packages/nvim-plugin/plugin/phoenix-pulse.lua
+
+      - name: Build and smoke test Neovim server executable
+        run: |
+          npm run update-lsp --workspace phoenix-pulse-nvim
+          packages/nvim-plugin/server/phoenix_ls --help
