@@ -20,15 +20,27 @@ defmodule PhoenixLS.LSP.SignatureHelp do
       with uri when is_binary(uri) <- text_document.uri,
            {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
            {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
-           {:ok, document} <- DocumentStore.fetch(engine.document_store, uri),
-           {:ok, cursor_context} <- CursorContext.at(document.text, position) do
+           {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         snapshot
         |> Snapshot.all()
-        |> then(&SignatureHelpFeature.signature_help(cursor_context, &1))
+        |> signature_help(document.text, position)
       else
         _missing_or_invalid -> nil
       end
 
     {:reply, result, context.lsp}
+  end
+
+  defp signature_help(facts, source, position) do
+    SignatureHelpFeature.signature_help(source, position, facts) ||
+      component_signature_help(source, position, facts)
+  end
+
+  defp component_signature_help(source, position, facts) do
+    with {:ok, cursor_context} <- CursorContext.at(source, position) do
+      SignatureHelpFeature.signature_help(cursor_context, facts)
+    else
+      _invalid_context -> nil
+    end
   end
 end

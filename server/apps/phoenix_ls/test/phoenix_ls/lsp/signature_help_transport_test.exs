@@ -82,6 +82,83 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
     assert String.contains?(label_documentation, "Visible label")
   end
 
+  test "GenLSP transport returns route helper signature help from indexed router facts",
+       context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "route_signature_help_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+
+    controller_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/controllers/user_controller.ex"))
+
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.UserController do
+        def show(conn, _params) do
+          Routes.user_path(conn, :show, |id)
+        end
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", router_source())
+    open_document(test_client, controller_uri, "elixir", controller_source)
+    assert_indexed(router_uri, 3)
+    assert_indexed(controller_uri, 3)
+
+    GenLSP.Test.request(test_client, %{
+      id: 3,
+      jsonrpc: "2.0",
+      method: "textDocument/signatureHelp",
+      params: %{
+        textDocument: %{uri: controller_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 3,
+                     "result" => %{
+                       "activeParameter" => 2,
+                       "activeSignature" => 0,
+                       "signatures" => [
+                         %{
+                           "documentation" => %{
+                             "kind" => "markdown",
+                             "value" => documentation
+                           },
+                           "label" => "Routes.user_path(conn_or_socket, action, id)",
+                           "parameters" => [
+                             %{"label" => "conn_or_socket"},
+                             %{"label" => "action"},
+                             %{"label" => "id"}
+                           ]
+                         }
+                       ]
+                     }
+                   },
+                   500
+
+    assert String.contains?(documentation, "GET /users")
+    assert String.contains?(documentation, "GET /users/:id")
+  end
+
   def handle_indexer_event(event, measurements, metadata, parent) do
     send(parent, {:indexer_event, event, measurements, metadata})
   end
@@ -118,8 +195,8 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
           "experimental" => nil,
           "hoverProvider" => true,
           "signatureHelpProvider" => %{
-            "triggerCharacters" => ["<", " "],
-            "retriggerCharacters" => [" "]
+            "triggerCharacters" => ["<", " ", "(", ","],
+            "retriggerCharacters" => [" ", ","]
           },
           "textDocumentSync" => %{
             "openClose" => true,
@@ -166,6 +243,19 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
         ~H\"\"\"
         <button><%= @label %></button>
         \"\"\"
+      end
+    end
+    """
+  end
+
+  defp router_source do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        get "/users", UserController, :index
+        get "/users/:id", UserController, :show
       end
     end
     """

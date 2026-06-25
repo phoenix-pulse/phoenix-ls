@@ -5,6 +5,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Features.RouteHelpers
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
@@ -37,7 +38,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   @spec complete(String.t(), Positions.lsp_position(), [Fact.t()]) :: [CompletionItem.t()]
   def complete(source, position, facts) when is_binary(source) and is_list(facts) do
-    case elixir_route_helper_prefix(source, position) do
+    case RouteHelpers.prefix(source, position) do
       {:ok, helper_prefix} -> route_helper_items(facts, helper_prefix)
       :error -> []
     end
@@ -49,48 +50,6 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   defp route_helper_prefix("Routes." <> prefix), do: {:ok, prefix}
   defp route_helper_prefix(_prefix), do: :error
-
-  defp elixir_route_helper_prefix(source, position) do
-    with {:ok, offset} <- Positions.lsp_position_to_offset(source, position),
-         {:ok, source_before_cursor} <- source_before_cursor(source, offset),
-         {:ok, tokens} <- tokenize(source_before_cursor) do
-      route_helper_prefix_from_tokens(tokens)
-    end
-  end
-
-  defp source_before_cursor(source, offset) when offset <= byte_size(source) do
-    {:ok, binary_part(source, 0, offset)}
-  end
-
-  defp source_before_cursor(_source, _offset), do: :error
-
-  defp tokenize(source) do
-    case :elixir_tokenizer.tokenize(String.to_charlist(source), 1, []) do
-      {:ok, _line, _column, _warnings, tokens, _comments} -> {:ok, tokens}
-      {:error, _reason, _line, _column, _warnings, _tokens} -> :error
-      {:error, _reason, _rest, _warnings, _tokens} -> :error
-      _unexpected -> :error
-    end
-  end
-
-  defp route_helper_prefix_from_tokens([
-         {:identifier, _identifier_meta, helper_prefix},
-         {:., _dot_meta},
-         {:alias, _alias_meta, :Routes}
-         | _rest
-       ]) do
-    {:ok, Atom.to_string(helper_prefix)}
-  end
-
-  defp route_helper_prefix_from_tokens([
-         {:., _dot_meta},
-         {:alias, _alias_meta, :Routes}
-         | _rest
-       ]) do
-    {:ok, ""}
-  end
-
-  defp route_helper_prefix_from_tokens(_tokens), do: :error
 
   defp route_item(fact) do
     path = fact.data.path

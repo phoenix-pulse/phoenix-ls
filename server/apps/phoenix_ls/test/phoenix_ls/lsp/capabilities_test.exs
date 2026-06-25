@@ -61,8 +61,8 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     capabilities = Capabilities.build()
 
     assert %SignatureHelpOptions{} = signature_help = capabilities.signature_help_provider
-    assert signature_help.trigger_characters == ["<", " "]
-    assert signature_help.retrigger_characters == [" "]
+    assert signature_help.trigger_characters == ["<", " ", "(", ","]
+    assert signature_help.retrigger_characters == [" ", ","]
   end
 
   test "advertises code action support" do

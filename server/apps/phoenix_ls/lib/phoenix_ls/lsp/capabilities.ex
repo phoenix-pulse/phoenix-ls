@@ -29,8 +29,8 @@ defmodule PhoenixLS.LSP.Capabilities do
         resolve_provider: true
       },
       signature_help_provider: %SignatureHelpOptions{
-        trigger_characters: ["<", " "],
-        retrigger_characters: [" "]
+        trigger_characters: ["<", " ", "(", ","],
+        retrigger_characters: [" ", ","]
       },
       code_action_provider: %CodeActionOptions{
         code_action_kinds: ["quickfix"]

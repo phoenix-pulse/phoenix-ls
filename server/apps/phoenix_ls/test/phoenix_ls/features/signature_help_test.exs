@@ -76,6 +76,21 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
     assert signature.label == "<.button label kind disabled>"
   end
 
+  test "returns route helper signature help for Elixir calls" do
+    {source, position} = source_and_position("Routes.user_path(conn, :show, |)")
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 2
+           } = SignatureHelpFeature.signature_help(source, position, route_facts())
+
+    assert signature.label == "Routes.user_path(conn_or_socket, action, id)"
+    assert Enum.map(signature.parameters, & &1.label) == ["conn_or_socket", "action", "id"]
+    assert String.contains?(signature.documentation.value, "GET /users")
+    assert String.contains?(signature.documentation.value, "GET /users/:id")
+  end
+
   test "returns nil outside component attribute contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)
@@ -101,6 +116,22 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
 
       defmodule AppWeb.PageLive do
         alias AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp route_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          get "/users", UserController, :index
+          get "/users/:id", UserController, :show
+        end
       end
       """)
 
