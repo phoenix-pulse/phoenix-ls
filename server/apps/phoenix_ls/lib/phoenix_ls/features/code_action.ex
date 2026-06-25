@@ -226,7 +226,8 @@ defmodule PhoenixLS.Features.CodeAction do
          tags,
          _facts
        ) do
-    if diagnostic.source == @source and diagnostic.code == "phoenix.unknown_attr" do
+    if diagnostic.source == @source and
+         diagnostic.code in ["phoenix.unknown_attr", "phoenix.unknown_phx_attr"] do
       unknown_attr_action(diagnostic, source, uri, tags)
     else
       []
