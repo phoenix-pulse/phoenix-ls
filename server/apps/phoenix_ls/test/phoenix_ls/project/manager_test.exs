@@ -1,7 +1,7 @@
 defmodule PhoenixLS.Project.ManagerTest do
   use ExUnit.Case, async: false
 
-  alias PhoenixLS.Project.{Engine, Manager}
+  alias PhoenixLS.Project.{CompileEnv, Engine, Manager}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -45,6 +45,29 @@ defmodule PhoenixLS.Project.ManagerTest do
     assert {:ok, second_doc} = DocumentStore.fetch(second.document_store, @document_uri)
     assert first_doc.text == "one"
     assert second_doc.text == "two"
+  end
+
+  test "forwards compile environment options to started engines", context do
+    %{manager: manager} =
+      start_manager(__MODULE__.CompileEnvSupervisor, __MODULE__.CompileEnvManager)
+
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    cache_root = tmp_dir(context)
+
+    assert {:ok, engine} =
+             Manager.ensure_engine(manager, root_uri,
+               source_only?: false,
+               compile_timeout_ms: 12_000,
+               compile_cache_root: cache_root
+             )
+
+    assert %CompileEnv{
+             root_uri: ^root_uri,
+             cache_root: ^cache_root,
+             source_only?: false,
+             timeout_ms: 12_000
+           } = CompileEnv.fetch(engine.compile_env)
   end
 
   test "fetch_engine and document_store report missing roots without starting engines" do

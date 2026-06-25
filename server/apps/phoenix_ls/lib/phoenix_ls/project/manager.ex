@@ -277,6 +277,8 @@ defmodule PhoenixLS.Project.Manager do
     |> maybe_put_status_target(opts)
     |> maybe_put_source_only(opts)
     |> maybe_put_project_indexing_enabled(opts)
+    |> maybe_put_compile_timeout(opts)
+    |> maybe_put_compile_cache_root(opts)
   end
 
   defp maybe_put_status_target(engine_opts, opts) do
@@ -300,6 +302,26 @@ defmodule PhoenixLS.Project.Manager do
     case Keyword.fetch(opts, :source_only?) do
       {:ok, source_only?} when is_boolean(source_only?) ->
         Keyword.put(engine_opts, :source_only?, source_only?)
+
+      _missing_or_invalid ->
+        engine_opts
+    end
+  end
+
+  defp maybe_put_compile_timeout(engine_opts, opts) do
+    case Keyword.fetch(opts, :compile_timeout_ms) do
+      {:ok, timeout_ms} when is_integer(timeout_ms) and timeout_ms > 0 ->
+        Keyword.put(engine_opts, :compile_timeout_ms, timeout_ms)
+
+      _missing_or_invalid ->
+        engine_opts
+    end
+  end
+
+  defp maybe_put_compile_cache_root(engine_opts, opts) do
+    case Keyword.fetch(opts, :compile_cache_root) do
+      {:ok, cache_root} when is_binary(cache_root) ->
+        Keyword.put(engine_opts, :compile_cache_root, cache_root)
 
       _missing_or_invalid ->
         engine_opts
