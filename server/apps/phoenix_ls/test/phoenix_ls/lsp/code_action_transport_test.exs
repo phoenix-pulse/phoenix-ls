@@ -31,7 +31,7 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
-    assert_indexed(component_uri, 4)
+    assert_indexed(component_uri, 5)
     open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
     assert_indexed(heex_uri, 1)
 
@@ -92,6 +92,100 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
                    500
   end
 
+  test "GenLSP transport returns invalid attr value quick fixes", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "invalid_attr_code_action_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    assert_indexed(component_uri, 5)
+
+    open_document(
+      test_client,
+      heex_uri,
+      "phoenix-heex",
+      ~s(<.button label="Save" kind="danger" />)
+    )
+
+    assert_indexed(heex_uri, 1)
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "method" => "textDocument/publishDiagnostics",
+                     "params" => %{
+                       "uri" => ^heex_uri,
+                       "diagnostics" => [
+                         %{
+                           "code" => "phoenix.invalid_attr_value",
+                           "data" => %{
+                             "kind" => "invalid_attr_value",
+                             "attr" => "kind",
+                             "values" => ["primary", "secondary"]
+                           },
+                           "range" => diagnostic_range
+                         } = diagnostic
+                       ]
+                     }
+                   },
+                   500
+
+    GenLSP.Test.request(test_client, %{
+      id: 2,
+      jsonrpc: "2.0",
+      method: "textDocument/codeAction",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        range: diagnostic_range,
+        context: %{diagnostics: [diagnostic]}
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 2,
+                     "result" => [
+                       %{
+                         "title" => "Change kind to \"primary\"",
+                         "kind" => "quickfix",
+                         "edit" => %{
+                           "changes" => %{
+                             ^heex_uri => [%{"newText" => "primary"}]
+                           }
+                         }
+                       },
+                       %{
+                         "title" => "Change kind to \"secondary\"",
+                         "kind" => "quickfix",
+                         "edit" => %{
+                           "changes" => %{
+                             ^heex_uri => [%{"newText" => "secondary"}]
+                           }
+                         }
+                       }
+                     ]
+                   },
+                   500
+  end
+
   def handle_indexer_event(event, measurements, metadata, parent) do
     send(parent, {:indexer_event, event, measurements, metadata})
   end
@@ -132,6 +226,7 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
     """
     defmodule AppWeb.CoreComponents do
       attr :label, :string, required: true
+      attr :kind, :string, values: ["primary", "secondary"]
 
       def button(assigns) do
         ~H\"\"\"

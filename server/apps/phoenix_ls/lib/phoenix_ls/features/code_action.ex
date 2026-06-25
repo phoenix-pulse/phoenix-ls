@@ -69,6 +69,37 @@ defmodule PhoenixLS.Features.CodeAction do
     end
   end
 
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.invalid_attr_value",
+           data: %{"kind" => "invalid_attr_value", "attr" => attr_name, "values" => values}
+         } = diagnostic,
+         _source,
+         uri,
+         _tags,
+         _facts
+       )
+       when is_list(values) do
+    Enum.map(values, fn value ->
+      %CodeAction{
+        title: ~s(Change #{attr_name} to "#{value}"),
+        kind: CodeActionKind.quick_fix(),
+        diagnostics: [diagnostic],
+        edit: %WorkspaceEdit{
+          changes: %{
+            uri => [
+              %TextEdit{
+                range: diagnostic.range,
+                new_text: value
+              }
+            ]
+          }
+        }
+      }
+    end)
+  end
+
   defp action_for_diagnostic(_diagnostic, _source, _uri, _tags, _facts), do: []
 
   defp find_tag(tags, tag_name, range) do

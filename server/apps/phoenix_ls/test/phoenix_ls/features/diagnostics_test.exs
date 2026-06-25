@@ -66,6 +66,14 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
     assert diagnostic.code == "phoenix.invalid_attr_value"
     assert diagnostic.message == ~s(Invalid value "danger" for .button kind)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_attr_value",
+             "tag" => ".button",
+             "attr" => "kind",
+             "value" => "danger",
+             "values" => ["primary", "secondary"]
+           }
   end
 
   test "reports invalid attr values on remote component tags" do

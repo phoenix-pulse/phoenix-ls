@@ -161,6 +161,7 @@ defmodule PhoenixLS.Features.Diagnostics do
        )
        when kind in [:quoted, :unquoted] and is_binary(value) do
     allowed_values = MapSet.new(values, &value_to_string/1)
+    value_strings = Enum.map(values, &value_to_string/1)
 
     if MapSet.member?(allowed_values, value) do
       []
@@ -169,7 +170,14 @@ defmodule PhoenixLS.Features.Diagnostics do
         diagnostic(
           attr.value_range || attr.name_range,
           "phoenix.invalid_attr_value",
-          ~s(Invalid value "#{value}" for #{tag.name} #{attr.name})
+          ~s(Invalid value "#{value}" for #{tag.name} #{attr.name}),
+          %{
+            "kind" => "invalid_attr_value",
+            "tag" => tag.name,
+            "attr" => attr.name,
+            "value" => value,
+            "values" => value_strings
+          }
         )
       ]
     end
