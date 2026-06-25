@@ -61,6 +61,20 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown attr "unknown" for :inner_block)
   end
 
+  test "reports missing required slot attrs" do
+    [diagnostic] = diagnostics("<:item />", required_slot_attr_facts())
+
+    assert diagnostic.code == "phoenix.missing_required_attr"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Missing required attr "label" for :item)
+
+    assert diagnostic.data == %{
+             "kind" => "missing_required_attr",
+             "tag" => ":item",
+             "attr" => "label"
+           }
+  end
+
   test "reports invalid attr values" do
     [diagnostic] = diagnostics(~s(<.button label="Save" kind="danger" />))
 
@@ -398,9 +412,13 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   end
 
   defp diagnostics(source) do
+    diagnostics(source, facts())
+  end
+
+  defp diagnostics(source, facts) do
     {:ok, document} = Parser.parse(source)
 
-    result = Diagnostics.diagnostics(document, facts())
+    result = Diagnostics.diagnostics(document, facts)
 
     assert Enum.all?(result, &match?(%Diagnostic{source: "PhoenixLS"}, &1))
 
@@ -464,6 +482,25 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
       defmodule AppWeb.PageController do
         def index(conn, _params) do
           render(conn, :#{template})
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp required_slot_attr_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.CoreComponents do
+        slot :item do
+          attr :label, :string, required: true
+        end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <div><%= render_slot(@item) %></div>
+          \"\"\"
         end
       end
       """)

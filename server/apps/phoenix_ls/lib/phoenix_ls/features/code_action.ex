@@ -407,6 +407,12 @@ defmodule PhoenixLS.Features.CodeAction do
     |> Enum.find(&(&1.name_range == range or &1.value_range == range or &1.range == range))
   end
 
+  defp attr_fact(facts, ":" <> slot_name, attr_name) do
+    facts
+    |> facts_by_kind(:component_slot_attr)
+    |> Enum.find(&(&1.data.slot == slot_name and &1.data.name == attr_name))
+  end
+
   defp attr_fact(facts, tag_name, attr_name) do
     with %Fact{} = component <- ComponentLookup.component_for_tag(tag_name, facts) do
       facts

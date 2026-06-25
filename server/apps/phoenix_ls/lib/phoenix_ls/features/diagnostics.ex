@@ -153,8 +153,10 @@ defmodule PhoenixLS.Features.Diagnostics do
   defp known_slot_diagnostics(%Tag{} = tag, slot_name, indexes) do
     attrs = Map.get(indexes.attrs_by_slot, slot_name, [])
     declared_attr_names = MapSet.new(attrs, & &1.data.name)
+    present_attr_names = MapSet.new(tag.attrs, & &1.name)
 
-    unknown_slot_attr_diagnostics(tag, declared_attr_names) ++
+    missing_required_attr_diagnostics(tag, attrs, present_attr_names) ++
+      unknown_slot_attr_diagnostics(tag, declared_attr_names) ++
       invalid_value_diagnostics(tag, attrs)
   end
 

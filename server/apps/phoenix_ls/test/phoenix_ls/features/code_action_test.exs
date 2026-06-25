@@ -305,6 +305,36 @@ defmodule PhoenixLS.Features.CodeActionTest do
            end) == [~s( id=""), " module={Module}"]
   end
 
+  test "adds missing required attrs on slot tags" do
+    source = "<:item />"
+    facts = required_slot_attr_facts()
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Add required attr "label"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 6},
+                         end: %Position{line: 0, character: 6}
+                       },
+                       new_text: ~s( label="")
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "adds :key for HTML :for loops without DOM tracking" do
     source = ~s(<div :for={item <- @items}>{item.name}</div>)
     {:ok, document} = Parser.parse(source)
@@ -672,6 +702,25 @@ defmodule PhoenixLS.Features.CodeActionTest do
         def button(assigns) do
           ~H\"\"\"
           <button><%= @label %></button>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp required_slot_attr_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
+      defmodule AppWeb.CoreComponents do
+        slot :item do
+          attr :label, :string, required: true
+        end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <div><%= render_slot(@item) %></div>
           \"\"\"
         end
       end
