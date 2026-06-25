@@ -188,6 +188,22 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.insert_text == "name"
   end
 
+  test "completes schema associations for assign property access" do
+    items = complete("<p>{@product.acc|}</p>")
+
+    assert Enum.map(items, & &1.label) == ["account"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.reference()
+    assert item.detail == "belongs_to :account, App.Accounts.Account"
+    assert item.insert_text == "account"
+
+    assert item.data == %{
+             "kind" => "schema_association",
+             "id" => "App.Catalog.Product:schema:products:association:account"
+           }
+  end
+
   test "completes schema fields for assigns map property access" do
     items = complete("<p>{assigns.product.na|}</p>")
 
@@ -411,8 +427,18 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
 
       defmodule App.Catalog.Product do
         use Ecto.Schema
+        alias App.Accounts.Account
 
         schema "products" do
+          field :name, :string
+          belongs_to :account, Account
+        end
+      end
+
+      defmodule App.Accounts.Account do
+        use Ecto.Schema
+
+        schema "accounts" do
           field :name, :string
         end
       end

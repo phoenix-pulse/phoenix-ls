@@ -14,7 +14,7 @@ defmodule PhoenixLS.Features.Completion.AssignFields do
     with {:ok, assign, path, field_prefix} <- AssignAccess.field_access(prefix),
          {:ok, base_schema_id} <- SchemaFacts.schema_id_for_assign(assign, facts),
          {:ok, schema_id} <- schema_id_for_path(base_schema_id, path, facts) do
-      Schemas.field_items(facts, field_prefix, schema_id)
+      Schemas.property_items(facts, field_prefix, schema_id)
     else
       _not_assign_field -> []
     end

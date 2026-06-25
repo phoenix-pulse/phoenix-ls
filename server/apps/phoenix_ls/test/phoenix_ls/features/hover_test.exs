@@ -71,6 +71,13 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers schema associations through assign property access" do
+    assert_hover("<p>{@product.acc|ount.name}</p>", [
+      "belongs_to :account, App.Accounts.Account",
+      "schema App.Catalog.Product"
+    ])
+  end
+
   test "hovers LiveView assigns" do
     assert_hover("<p>{@selected|_id}</p>", [
       "assign @selected_id",
@@ -196,8 +203,18 @@ defmodule PhoenixLS.Features.HoverTest do
 
       defmodule App.Catalog.Product do
         use Ecto.Schema
+        alias App.Accounts.Account
 
         schema "products" do
+          field :name, :string
+          belongs_to :account, Account
+        end
+      end
+
+      defmodule App.Accounts.Account do
+        use Ecto.Schema
+
+        schema "accounts" do
           field :name, :string
         end
       end

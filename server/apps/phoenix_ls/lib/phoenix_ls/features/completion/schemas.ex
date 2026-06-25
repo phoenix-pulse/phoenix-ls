@@ -5,6 +5,7 @@ defmodule PhoenixLS.Features.Completion.Schemas do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Index.Fact
   alias PhoenixLS.HEEx.CursorContext
 
   @spec complete(CursorContext.t(), [PhoenixLS.Index.Fact.t()]) :: [CompletionItem.t()]
@@ -31,6 +32,18 @@ defmodule PhoenixLS.Features.Completion.Schemas do
     |> prefixed_items(typed_field)
   end
 
+  @spec property_items([PhoenixLS.Index.Fact.t()], String.t(), String.t() | nil) :: [
+          CompletionItem.t()
+        ]
+  def property_items(facts, typed_property, schema_id \\ nil) when is_list(facts) do
+    facts
+    |> facts_by_kind(:schema_field)
+    |> Kernel.++(facts_by_kind(facts, :schema_association))
+    |> filter_schema(schema_id)
+    |> Enum.map(&property_item/1)
+    |> prefixed_items(typed_property)
+  end
+
   defp form_field_prefix("@form[:" <> field), do: {:ok, field}
   defp form_field_prefix(_prefix), do: :error
 
@@ -48,6 +61,22 @@ defmodule PhoenixLS.Features.Completion.Schemas do
        insert_text: name,
        insert_text_format: InsertTextFormat.plain_text(),
        data: %{"kind" => "schema_field", "id" => fact.id}
+     }}
+  end
+
+  defp property_item(%Fact{kind: :schema_field} = fact), do: field_item(fact)
+
+  defp property_item(%Fact{kind: :schema_association} = fact) do
+    name = fact.data.name
+
+    {name,
+     %CompletionItem{
+       label: name,
+       kind: CompletionItemKind.reference(),
+       detail: "#{fact.data.association} :#{name}, #{fact.data.related}",
+       insert_text: name,
+       insert_text_format: InsertTextFormat.plain_text(),
+       data: %{"kind" => "schema_association", "id" => fact.id}
      }}
   end
 

@@ -43,6 +43,25 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
     Enum.filter(facts, &schema_field?(&1, schema_id))
   end
 
+  @spec schema_associations(String.t(), [Fact.t()]) :: [Fact.t()]
+  def schema_associations(schema_id, facts) when is_binary(schema_id) and is_list(facts) do
+    Enum.filter(facts, &schema_association?(&1, schema_id))
+  end
+
+  @spec schema_properties(String.t(), [Fact.t()]) :: [Fact.t()]
+  def schema_properties(schema_id, facts) when is_binary(schema_id) and is_list(facts) do
+    schema_fields(schema_id, facts) ++ schema_associations(schema_id, facts)
+  end
+
+  @spec schema_property(String.t(), String.t(), [Fact.t()]) :: Fact.t() | nil
+  def schema_property(schema_id, prefix, facts)
+      when is_binary(schema_id) and is_binary(prefix) and is_list(facts) do
+    properties = schema_properties(schema_id, facts)
+
+    Enum.find(properties, &(fact_name(&1) == prefix)) ||
+      Enum.find(properties, &String.starts_with?(fact_name(&1), prefix))
+  end
+
   @spec identifier?(String.t()) :: boolean()
   def identifier?(<<first::utf8, rest::binary>>) do
     identifier_start?(first) and rest_identifier?(rest)
@@ -76,6 +95,13 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
     do: data.schema == schema_id
 
   defp schema_field?(_fact, _schema_id), do: false
+
+  defp schema_association?(%Fact{kind: :schema_association, data: data}, schema_id),
+    do: data.schema == schema_id
+
+  defp schema_association?(_fact, _schema_id), do: false
+
+  defp fact_name(%Fact{data: %{name: name}}), do: name
 
   defp association_fact?(%Fact{kind: :schema_association, data: data}, schema_id, name) do
     data.schema == schema_id and data.name == name

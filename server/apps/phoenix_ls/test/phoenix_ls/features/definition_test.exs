@@ -69,6 +69,14 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "goes to schema association definitions through assign property access" do
+    assert_definition(
+      "<p>{@product.acc|ount.name}</p>",
+      :schema_association,
+      "App.Catalog.Product:schema:products:association:account"
+    )
+  end
+
   test "goes to LiveView event definitions from phx attributes" do
     assert_definition(
       "<button phx-click=\"select-|product\">",
@@ -197,8 +205,18 @@ defmodule PhoenixLS.Features.DefinitionTest do
 
       defmodule App.Catalog.Product do
         use Ecto.Schema
+        alias App.Accounts.Account
 
         schema "products" do
+          field :name, :string
+          belongs_to :account, Account
+        end
+      end
+
+      defmodule App.Accounts.Account do
+        use Ecto.Schema
+
+        schema "accounts" do
           field :name, :string
         end
       end

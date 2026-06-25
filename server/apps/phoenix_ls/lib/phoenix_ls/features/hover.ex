@@ -83,6 +83,14 @@ defmodule PhoenixLS.Features.Hover do
     |> compact_join()
   end
 
+  defp markdown(%Fact{kind: :schema_association} = fact) do
+    [
+      code("#{fact.data.association} :#{fact.data.name}, #{fact.data.related}"),
+      "schema #{fact.data.module}"
+    ]
+    |> compact_join()
+  end
+
   defp markdown(%Fact{kind: :assign} = fact) do
     [
       code("assign @#{fact.data.name}"),
