@@ -1,8 +1,8 @@
 {
   "name": "phoenix-pulse",
   "displayName": "Phoenix Pulse",
-  "description": "The complete IDE companion for Phoenix LiveView development.",
-  "version": "1.3.0",
+  "description": "Phoenix-aware IDE tooling for Phoenix LiveView development.",
+  "version": "1.4.0",
   "publisher": "onsever",
   "license": "MIT",
   "icon": "images/logo.png",
@@ -165,12 +165,12 @@
       "view/item/context": [
         {
           "command": "phoenixPulse.copyName",
-          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component|route|template|event)$/",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|schema-field|schema-association|component|component-attribute|component-slot|component-slot-attribute|route|template|event|controller|controller-action|controller-route|controller-render|controller-assign|controller-plug-assign|controller-layout|liveview-module|liveview-assign|liveview-function)$/",
           "group": "copy@1"
         },
         {
           "command": "phoenixPulse.copyModuleName",
-          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component)$/",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component|controller|controller-action|liveview-module|liveview-assign|liveview-function)$/",
           "group": "copy@2"
         },
         {
@@ -180,7 +180,7 @@
         },
         {
           "command": "phoenixPulse.copyComponentTag",
-          "when": "view == phoenixPulseExplorer && viewItem =~ /^component/",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(component|component-attribute|component-slot|component-slot-attribute)$/",
           "group": "copy@3"
         },
         {
@@ -190,7 +190,7 @@
         },
         {
           "command": "phoenixPulse.copyFilePath",
-          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|component|route|template|event|component-file|template-file|event-file)$/",
+          "when": "view == phoenixPulseExplorer && viewItem =~ /^(schema|schema-field|schema-association|component|component-attribute|component-slot|component-slot-attribute|route|template|event|component-file|template-file|event-file|controller|controller-action|controller-route|controller-render|controller-assign|controller-plug-assign|controller-layout|liveview-module|liveview-assign|liveview-function)$/",
           "group": "copy@4"
         }
       ]
@@ -222,6 +222,14 @@
         ]
       }
     ],
+    "configurationDefaults": {
+      "emmet.includeLanguages": {
+        "phoenix-heex": "html"
+      },
+      "tailwindCSS.includeLanguages": {
+        "phoenix-heex": "html"
+      }
+    },
     "configuration": {
       "title": "Phoenix Pulse",
       "properties": {
@@ -244,7 +252,12 @@
         },
         "phoenixPulse.logLevel": {
           "type": "string",
-          "enum": ["error", "warn", "info", "debug"],
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
           "default": "info",
           "description": "Log level passed to the Phoenix LS Elixir server."
         },
@@ -257,6 +270,26 @@
           "type": "boolean",
           "default": false,
           "description": "Enable compilation-aware project checks in the Phoenix LS Elixir server."
+        },
+        "phoenixLS.mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "companion",
+            "full"
+          ],
+          "default": "auto",
+          "description": "Phoenix LS runtime mode. Auto uses companion mode when another Elixir language server is detected."
+        },
+        "phoenixLS.companion.detectExpert": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect compatible Elixir language server extensions and automatically run Phoenix LS as a Phoenix-specific companion."
+        },
+        "phoenixLS.companion.disableGenericElixir": {
+          "type": "boolean",
+          "default": true,
+          "description": "Tell Phoenix LS to suppress generic Elixir features when running as a companion server."
         }
       }
     }

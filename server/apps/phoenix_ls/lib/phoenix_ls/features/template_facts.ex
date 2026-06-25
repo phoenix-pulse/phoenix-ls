@@ -33,12 +33,52 @@ defmodule PhoenixLS.Features.TemplateFacts do
 
   @spec module_for_uri([Fact.t()], String.t()) :: {:ok, String.t()} | :error
   def module_for_uri(facts, uri) when is_list(facts) and is_binary(uri) do
-    facts
-    |> Enum.find(&(&1.kind == :template and &1.uri == uri))
-    |> case do
+    case template_fact_for_uri(facts, uri) || live_view_fact_for_uri(facts, uri) do
       %Fact{data: %{module: module}} when is_binary(module) -> {:ok, module}
       _missing_template -> :error
     end
+  end
+
+  @spec action_for_uri([Fact.t()], String.t()) :: {:ok, String.t()} | :error
+  def action_for_uri(facts, uri) when is_list(facts) and is_binary(uri) do
+    with %Fact{data: %{kind: :live_view, module: module, name: name}}
+         when is_binary(module) and is_binary(name) <- template_fact_for_uri(facts, uri),
+         {:ok, stem} <- template_stem(name),
+         false <- stem == module_stem(module),
+         true <- live_route_action?(facts, module, stem) do
+      {:ok, stem}
+    else
+      _unknown_action -> :error
+    end
+  end
+
+  @spec live_view_template?([Fact.t()], String.t()) :: boolean()
+  def live_view_template?(facts, uri) when is_list(facts) and is_binary(uri) do
+    match?(%Fact{data: %{kind: :live_view}}, template_fact_for_uri(facts, uri))
+  end
+
+  defp live_route_action?(facts, module, action) do
+    Enum.any?(facts, fn
+      %Fact{kind: :route, data: %{verb: :live, plug: ^module, action: route_action}} ->
+        route_action_name(route_action) == action
+
+      _fact ->
+        false
+    end)
+  end
+
+  defp route_action_name(action) when is_atom(action), do: Atom.to_string(action)
+  defp route_action_name(action) when is_binary(action), do: action
+  defp route_action_name(_action), do: nil
+
+  defp template_fact_for_uri(facts, uri) do
+    facts
+    |> Enum.find(&(&1.kind == :template and &1.uri == uri))
+  end
+
+  defp live_view_fact_for_uri(facts, uri) do
+    facts
+    |> Enum.find(&(&1.kind == :live_view and &1.uri == uri))
   end
 
   defp entry(%Fact{uri: uri}) do
@@ -56,6 +96,20 @@ defmodule PhoenixLS.Features.TemplateFacts do
       [name, "heex"] when name != "" -> {:ok, name, "html"}
       _other -> :error
     end
+  end
+
+  defp template_stem(name) do
+    case String.split(name, ".", parts: 2) do
+      [stem | _rest] when stem != "" -> {:ok, stem}
+      _invalid_name -> :error
+    end
+  end
+
+  defp module_stem(module) do
+    module
+    |> String.split(".")
+    |> List.last()
+    |> Macro.underscore()
   end
 
   defp candidate_template?(uri, entry) do

@@ -1,0 +1,8 @@
+<main id="root-layout">
+  <Phoenix18ComplexAppWeb.CoreComponents.header title={@page_title || "Phoenix 1.8 Complex"}>
+    <:actions>
+      <.link navigate={~p"/products"}>Products</.link>
+    </:actions>
+  </Phoenix18ComplexAppWeb.CoreComponents.header>
+  <%= @inner_content %>
+</main>

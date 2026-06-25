@@ -9,27 +9,14 @@ defmodule PhoenixLS.Introspection.Template do
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
   alias PhoenixLS.Support.URI, as: SupportURI
+  alias PhoenixLS.Introspection.Template.ColocatedAssets
   alias PhoenixLS.Introspection.Template.RenderReferences
+  alias PhoenixLS.Introspection.Template.Hooks, as: TemplateHooks
+  alias PhoenixLS.Introspection.Template.Uploads
+  alias PhoenixLS.Introspection.Source
+  alias PhoenixLS.LiveView.Attributes
 
   @parse_options [columns: true, token_metadata: true]
-  @event_phx_attrs [
-    "phx-click",
-    "phx-submit",
-    "phx-change",
-    "phx-blur",
-    "phx-focus",
-    "phx-keydown",
-    "phx-keyup",
-    "phx-window-keydown",
-    "phx-window-keyup",
-    "phx-window-focus",
-    "phx-window-blur",
-    "phx-click-away",
-    "phx-capture-click",
-    "phx-viewport-top",
-    "phx-viewport-bottom",
-    "phx-auto-recover"
-  ]
 
   defmodule Template do
     @moduledoc """
@@ -52,22 +39,28 @@ defmodule PhoenixLS.Introspection.Template do
   @spec facts(String.t(), String.t(), keyword()) :: [Fact.t()]
   def facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
     metadata = template_metadata(uri)
+    provenance = provenance(opts)
 
-    [
-      Fact.new!(
-        kind: :template,
-        id: uri,
-        uri: uri,
-        range: document_range(source),
-        provenance: provenance(opts),
-        data: %Template{
-          format: :heex,
-          name: metadata.name,
-          module: metadata.module,
-          kind: metadata.kind
-        }
-      )
-    ]
+    [template_fact(uri, source, metadata, provenance)]
+  end
+
+  @spec index_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def index_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
+    metadata = template_metadata(uri)
+    provenance = provenance(opts)
+    template_facts = [template_fact(uri, source, metadata, provenance)]
+
+    case Parser.parse(source) do
+      {:ok, document} ->
+        template_facts ++
+          event_usage_facts(document, uri, metadata.module, provenance) ++
+          Uploads.facts(uri, document, metadata, provenance) ++
+          TemplateHooks.facts(uri, document, metadata, provenance) ++
+          ColocatedAssets.facts(uri, document, metadata, provenance)
+
+      {:error, _reason} ->
+        template_facts
+    end
   end
 
   @spec event_usage_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
@@ -76,12 +69,7 @@ defmodule PhoenixLS.Introspection.Template do
 
     case Parser.parse(source) do
       {:ok, document} ->
-        document.tags
-        |> Enum.flat_map(& &1.attrs)
-        |> Enum.filter(&event_attr?/1)
-        |> Enum.filter(&literal_attr_value?/1)
-        |> Enum.reject(&blank?(&1.value))
-        |> Enum.map(&event_usage_fact(&1, uri, metadata.module, provenance(opts)))
+        event_usage_facts(document, uri, metadata.module, provenance(opts))
 
       {:error, _reason} ->
         []
@@ -91,6 +79,46 @@ defmodule PhoenixLS.Introspection.Template do
   @spec render_reference_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
   def render_reference_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
     RenderReferences.facts(uri, source, opts)
+  end
+
+  @spec upload_usage_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def upload_usage_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
+    metadata = template_metadata(uri)
+
+    case Parser.parse(source) do
+      {:ok, document} ->
+        Uploads.facts(uri, document, metadata, provenance(opts))
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  @spec hook_usage_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def hook_usage_facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
+    metadata = template_metadata(uri)
+
+    case Parser.parse(source) do
+      {:ok, document} ->
+        TemplateHooks.facts(uri, document, metadata, provenance(opts))
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  @spec colocated_asset_facts(String.t(), String.t(), keyword()) :: [Fact.t()]
+  def colocated_asset_facts(uri, source, opts \\ [])
+      when is_binary(uri) and is_binary(source) do
+    metadata = template_metadata(uri)
+
+    case Parser.parse(source) do
+      {:ok, document} ->
+        ColocatedAssets.facts(uri, document, metadata, provenance(opts))
+
+      {:error, _reason} ->
+        []
+    end
   end
 
   defp document_range(source) do
@@ -104,6 +132,31 @@ defmodule PhoenixLS.Introspection.Template do
 
   defp position(%{line: line, character: character}) do
     %Position{line: line, character: character}
+  end
+
+  defp template_fact(uri, source, metadata, provenance) do
+    Fact.new!(
+      kind: :template,
+      id: uri,
+      uri: uri,
+      range: document_range(source),
+      provenance: provenance,
+      data: %Template{
+        format: :heex,
+        name: metadata.name,
+        module: metadata.module,
+        kind: metadata.kind
+      }
+    )
+  end
+
+  defp event_usage_facts(document, uri, module, provenance) do
+    document.tags
+    |> Enum.flat_map(& &1.attrs)
+    |> Enum.filter(&event_attr?/1)
+    |> Enum.filter(&literal_attr_value?/1)
+    |> Enum.reject(&blank?(&1.value))
+    |> Enum.map(&event_usage_fact(&1, uri, module, provenance))
   end
 
   defp provenance(opts) do
@@ -157,7 +210,7 @@ defmodule PhoenixLS.Introspection.Template do
     "#{uri}:event_usage:#{attr.name}:#{attr.value}:#{position.line}:#{position.character}"
   end
 
-  defp event_attr?(%Attribute{name: name}), do: name in @event_phx_attrs
+  defp event_attr?(%Attribute{name: name}), do: Attributes.event_attr?(name)
 
   defp literal_attr_value?(%Attribute{value_kind: kind}) when kind in [:quoted, :unquoted],
     do: true
@@ -289,7 +342,7 @@ defmodule PhoenixLS.Introspection.Template do
       Macro.prewalk(quoted, [], fn
         {:defmodule, _meta, [module_ast, [do: body]]} = node, acc ->
           owner =
-            with {:ok, module} <- alias_to_string(module_ast),
+            with {:ok, module} <- Source.alias_to_string(module_ast),
                  true <- module_embeds_template?(body, module_path, template_path) do
               module
             else
@@ -366,16 +419,6 @@ defmodule PhoenixLS.Introspection.Template do
         :template
     end
   end
-
-  defp alias_to_string({:__aliases__, _meta, parts}) do
-    if Enum.all?(parts, &is_atom/1) do
-      {:ok, Enum.map_join(parts, ".", &Atom.to_string/1)}
-    else
-      :error
-    end
-  end
-
-  defp alias_to_string(_module_ast), do: :error
 
   defp template_stem(name) do
     name

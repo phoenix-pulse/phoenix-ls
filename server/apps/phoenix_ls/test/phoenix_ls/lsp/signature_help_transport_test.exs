@@ -1,7 +1,8 @@
 defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0]
 
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Support.Positions
@@ -80,6 +81,83 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
     assert String.contains?(documentation, "AppWeb.CoreComponents.button/1")
     assert String.contains?(label_documentation, "Required")
     assert String.contains?(label_documentation, "Visible label")
+  end
+
+  test "GenLSP transport keeps component signature help in companion mode", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "companion_signature_help_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.button la| />")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri, 5)
+    assert_indexed(heex_uri, 1)
+
+    GenLSP.Test.request(test_client, %{
+      id: 5,
+      jsonrpc: "2.0",
+      method: "textDocument/signatureHelp",
+      params: %{textDocument: %{uri: heex_uri}, position: position}
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 5,
+                     "result" => %{
+                       "activeParameter" => 0,
+                       "signatures" => [%{"label" => "<.button label kind>"}]
+                     }
+                   },
+                   500
+  end
+
+  test "GenLSP transport omits ordinary Elixir signature help in companion mode", context do
+    root = fixture_project(context, "companion_generic_signature_help_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app/example.ex"))
+
+    {source, position} =
+      source_and_position("""
+      defmodule App.Example do
+        def label(value), do: String.trim(|value)
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 6,
+      jsonrpc: "2.0",
+      method: "textDocument/signatureHelp",
+      params: %{textDocument: %{uri: elixir_uri}, position: position}
+    })
+
+    assert_result(6, nil, 500)
   end
 
   test "GenLSP transport does not return global slot signature help outside component scope",
@@ -239,7 +317,7 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
         "capabilities" => %{
           "completionProvider" => %{
             "resolveProvider" => true,
-            "triggerCharacters" => [".", ":"]
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
           },
           "definitionProvider" => true,
           "experimental" => nil,

@@ -13,6 +13,7 @@ defmodule PhoenixLS.Features.CodeAction.Routes do
   }
 
   alias PhoenixLS.HEEx.Document.Attribute
+  alias PhoenixLS.Features.Facts
   alias PhoenixLS.Index.Fact
 
   @source "PhoenixLS"
@@ -55,7 +56,7 @@ defmodule PhoenixLS.Features.CodeAction.Routes do
 
   defp static_route_paths(facts) do
     facts
-    |> facts_by_kind(:route)
+    |> Facts.by_kind(:route)
     |> Enum.filter(&match?(%{path_params: []}, &1.data))
     |> Enum.map(& &1.data.path)
     |> Enum.uniq()
@@ -73,9 +74,5 @@ defmodule PhoenixLS.Features.CodeAction.Routes do
     tags
     |> Enum.flat_map(& &1.attrs)
     |> Enum.find(&(&1.value_range == range or &1.range == range))
-  end
-
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
   end
 end

@@ -1,9 +1,12 @@
 defmodule PhoenixLS.LSP.DefinitionTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0]
 
+  alias PhoenixLS.Index.Store, as: IndexStore
   alias PhoenixLS.LSP.Server
+  alias PhoenixLS.Project.Names
   alias PhoenixLS.Support.Positions
   alias PhoenixLS.Support.URI, as: SupportURI
 
@@ -35,8 +38,10 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
     assert_indexed(component_uri, 3)
+    assert_indexed(page_uri, 2)
     assert_indexed(heex_uri, 1)
 
     GenLSP.Test.request(test_client, %{
@@ -60,6 +65,112 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
       },
       500
     )
+  end
+
+  test "GenLSP transport keeps component definition locations in companion mode", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "companion_definition_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.button| />")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri, 3)
+    assert_indexed(page_uri, 2)
+    assert_indexed(heex_uri, 1)
+
+    GenLSP.Test.request(test_client, %{
+      id: 6,
+      jsonrpc: "2.0",
+      method: "textDocument/definition",
+      params: %{textDocument: %{uri: heex_uri}, position: position}
+    })
+
+    assert_result(6, %{"uri" => ^component_uri}, 500)
+  end
+
+  test "GenLSP transport resolves definitions after single-file project discovery",
+       context do
+    root = fixture_project(context, "single_file_definition_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_path = Path.join(root, "lib/app_web/components/core_components.ex")
+    component_uri = SupportURI.path_to_file_uri!(component_path)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    File.mkdir_p!(Path.dirname(component_path))
+    File.write!(component_path, component_source())
+    write_page_module!(root)
+
+    {heex_source, position} = source_and_position("<.button| />")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize_without_root(test_client)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+
+    assert_eventually(fn ->
+      assert [_component] = IndexStore.by_kind(Names.index_store(root_uri), :component)
+    end)
+
+    GenLSP.Test.request(test_client, %{
+      id: 8,
+      jsonrpc: "2.0",
+      method: "textDocument/definition",
+      params: %{textDocument: %{uri: heex_uri}, position: position}
+    })
+
+    assert_result(8, %{"uri" => ^component_uri}, 500)
+  end
+
+  test "GenLSP transport omits ordinary Elixir definition in companion mode", context do
+    root = fixture_project(context, "companion_generic_definition_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app/example.ex"))
+
+    {source, position} =
+      source_and_position("""
+      defmodule App.Example do
+        def label(value), do: to_str|ing(value)
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 7,
+      jsonrpc: "2.0",
+      method: "textDocument/definition",
+      params: %{textDocument: %{uri: elixir_uri}, position: position}
+    })
+
+    assert_result(7, nil, 500)
   end
 
   test "GenLSP transport returns template definition locations from controller render calls",
@@ -330,7 +441,7 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
         "capabilities" => %{
           "completionProvider" => %{
             "resolveProvider" => true,
-            "triggerCharacters" => [".", ":"]
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
           },
           "definitionProvider" => true,
           "experimental" => nil,
@@ -355,6 +466,22 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
     )
   end
 
+  defp initialize_without_root(test_client) do
+    GenLSP.Test.request(test_client, %{
+      id: 1,
+      jsonrpc: "2.0",
+      method: "initialize",
+      params: %{
+        capabilities: %{},
+        processId: nil,
+        rootUri: nil,
+        workspaceFolders: nil
+      }
+    })
+
+    assert_result(1, %{"serverInfo" => %{"name" => "PhoenixLS"}}, 1_500)
+  end
+
   defp open_document(test_client, uri, language_id, text) do
     GenLSP.Test.notify(test_client, %{
       jsonrpc: "2.0",
@@ -368,6 +495,29 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
         }
       }
     })
+  end
+
+  defp open_page_module(test_client, root) do
+    page_uri = SupportURI.path_to_file_uri!(write_page_module!(root))
+
+    open_document(test_client, page_uri, "elixir", page_module_source())
+
+    page_uri
+  end
+
+  defp write_page_module!(root) do
+    path = Path.join(root, "lib/app_web/live/page.ex")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, page_module_source())
+    path
+  end
+
+  defp page_module_source do
+    """
+    defmodule AppWeb.Page do
+      import AppWeb.CoreComponents
+    end
+    """
   end
 
   defp component_source do
@@ -434,6 +584,28 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
       [] -> raise ArgumentError, "missing cursor marker"
       _matches -> raise ArgumentError, "multiple cursor markers"
     end
+  end
+
+  defp assert_eventually(fun, attempts_left \\ 20)
+
+  defp assert_eventually(fun, attempts_left) do
+    fun.()
+  rescue
+    exception in [ExUnit.AssertionError, MatchError] ->
+      if attempts_left > 0 do
+        Process.sleep(25)
+        assert_eventually(fun, attempts_left - 1)
+      else
+        reraise exception, __STACKTRACE__
+      end
+  catch
+    :exit, reason ->
+      if attempts_left > 0 do
+        Process.sleep(25)
+        assert_eventually(fun, attempts_left - 1)
+      else
+        exit(reason)
+      end
   end
 
   defp fixture_project(context, name) do

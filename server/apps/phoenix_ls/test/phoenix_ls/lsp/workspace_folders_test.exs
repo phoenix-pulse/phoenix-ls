@@ -11,9 +11,11 @@ defmodule PhoenixLS.LSP.WorkspaceFoldersTest do
     WorkspaceFoldersChangeEvent
   }
 
-  alias PhoenixLS.LSP.{Server, ServerConfig, WorkspaceFolders}
+  alias PhoenixLS.LSP.{Server, WorkspaceFolders}
   alias PhoenixLS.Project.Names
   alias PhoenixLS.Support.URI, as: SupportURI
+
+  import PhoenixLS.Support.LSPConfigHelpers, only: [server_config: 1]
 
   setup do
     {:ok, assigns} = start_supervised(GenLSP.Assigns)
@@ -60,12 +62,7 @@ defmodule PhoenixLS.LSP.WorkspaceFoldersTest do
 
     lsp =
       LSP.assign(lsp,
-        server_config: %ServerConfig{
-          source_only?: true,
-          project_indexing_enabled?: false,
-          project_compilation_enabled?: false,
-          log_level: :info
-        }
+        server_config: server_config(project_indexing_enabled?: false)
       )
 
     updated_lsp =

@@ -120,6 +120,34 @@ defmodule PhoenixLS.Introspection.RouterTest do
            ]
   end
 
+  test "extracts pipeline accepted formats" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      pipeline :browser do
+        plug :accepts, ~w(html)
+      end
+
+      pipeline :api do
+        plug :accepts, ["json"]
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert facts
+           |> Enum.filter(&(&1.kind == :pipeline))
+           |> Enum.map(&{&1.data.name, &1.data.formats}) == [
+             {"browser", ["html"]},
+             {"api", ["json"]}
+           ]
+  end
+
   test "extracts resource, forward, and live_session route facts" do
     source = """
     defmodule AppWeb.Router do
@@ -191,6 +219,38 @@ defmodule PhoenixLS.Introspection.RouterTest do
 
     assert fact.data.path == "/products/:slug"
     assert fact.data.path_params == ["slug"]
+  end
+
+  test "extracts match routes for wildcard and verb lists" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/api", AppWeb do
+        match :*, "/proxy/*path", ProxyController, :show
+        match [:get, :post], "/sessions", SessionController, :create
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert facts
+           |> Enum.map(&{&1.data.verb, &1.data.path, &1.data.plug, &1.data.action})
+           |> Enum.sort() ==
+             [
+               {:get, "/api/sessions", "AppWeb.SessionController", :create},
+               {:match, "/api/proxy/*path", "AppWeb.ProxyController", :show},
+               {:post, "/api/sessions", "AppWeb.SessionController", :create}
+             ]
+             |> Enum.sort()
+
+    wildcard = Enum.find(facts, &(&1.data.verb == :match))
+    assert wildcard.data.helper_base == "api_proxy"
+    assert wildcard.data.path_params == ["path"]
   end
 
   test "uses scope as helper prefixes independently from URL path segments" do

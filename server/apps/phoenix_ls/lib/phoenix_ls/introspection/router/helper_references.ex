@@ -4,6 +4,7 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
   """
 
   alias GenLSP.Structures.{Position, Range}
+  alias PhoenixLS.Features.RouteHelpers
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Parsing.{ElixirTokens, SourceMap}
   alias PhoenixLS.Support.Positions
@@ -56,7 +57,7 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
     helper = Atom.to_string(helper_atom)
     action = helper_action(args)
 
-    with {:ok, helper_base, variant} <- helper_parts(helper),
+    with {:ok, helper_base, variant} <- RouteHelpers.helper_parts(helper),
          {:ok, range} <- helper_range(call_meta, helper) do
       [
         Fact.new!(
@@ -271,19 +272,6 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
 
   defp token_type({type, _meta}), do: type
   defp token_type({type, _meta, _value}), do: type
-
-  defp helper_parts(helper) do
-    cond do
-      String.ends_with?(helper, "_path") ->
-        {:ok, String.replace_suffix(helper, "_path", ""), :path}
-
-      String.ends_with?(helper, "_url") ->
-        {:ok, String.replace_suffix(helper, "_url", ""), :url}
-
-      true ->
-        :error
-    end
-  end
 
   defp helper_range(meta, helper) do
     with line when is_integer(line) <- Keyword.get(meta, :line),

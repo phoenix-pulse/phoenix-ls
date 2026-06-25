@@ -26,7 +26,7 @@ Build the VS Code package:
 npm run package:vscode
 ```
 
-This runs the VS Code prepublish hook, builds `server/apps/phoenix_ls/phoenix_ls` with `MIX_ENV=prod`, copies it to `packages/vscode-extension/server/phoenix_ls`, and writes `packages/vscode-extension/phoenix-pulse-1.3.0.vsix`.
+This runs the VS Code prepublish hook, builds `server/apps/phoenix_ls/phoenix_ls` with `MIX_ENV=prod`, copies it to `packages/vscode-extension/server/phoenix_ls`, and writes `packages/vscode-extension/phoenix-pulse-1.4.0.vsix`.
 
 Build or update the Neovim executable:
 
@@ -41,7 +41,7 @@ This runs `packages/nvim-plugin/install-lsp.sh`. The script rebuilds from source
 Install a local VSIX:
 
 ```bash
-code --install-extension packages/vscode-extension/phoenix-pulse-1.3.0.vsix --force
+code --install-extension packages/vscode-extension/phoenix-pulse-1.4.0.vsix --force
 ```
 
 The extension resolves the Phoenix LS executable in this order:

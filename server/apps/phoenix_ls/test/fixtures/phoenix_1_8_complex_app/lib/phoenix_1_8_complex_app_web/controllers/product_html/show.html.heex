@@ -1,0 +1,10 @@
+<Phoenix18ComplexAppWeb.CoreComponents.header title={@product.name}>
+  <:actions>
+    <.link patch={~p"/orders"}>Orders</.link>
+  </:actions>
+</Phoenix18ComplexAppWeb.CoreComponents.header>
+
+<section id="product">
+  <p><%= @product.sku %></p>
+  <p><%= @current_user.email %></p>
+</section>

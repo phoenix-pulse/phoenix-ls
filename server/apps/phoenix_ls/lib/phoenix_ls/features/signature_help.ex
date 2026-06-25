@@ -12,10 +12,12 @@ defmodule PhoenixLS.Features.SignatureHelp do
     SignatureInformation
   }
 
-  alias PhoenixLS.Features.ComponentLookup
+  alias PhoenixLS.Features.{ComponentDocs, ComponentLookup}
+  alias PhoenixLS.Features.Facts
   alias PhoenixLS.Features.RouteHelpers
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.LiveView.JSCommands
   alias PhoenixLS.Support.Positions
 
   @spec signature_help(CursorContext.t(), [Fact.t()]) :: SignatureHelp.t() | nil
@@ -36,7 +38,8 @@ defmodule PhoenixLS.Features.SignatureHelp do
          routes when routes != [] <- route_helper_routes(facts, helper_base) do
       route_helper_signature_help(helper_name, routes, active_parameter)
     else
-      _not_route_helper -> component_signature_help(source, position, facts)
+      _not_route_helper ->
+        js_signature_help(source, position) || component_signature_help(source, position, facts)
     end
   end
 
@@ -71,7 +74,7 @@ defmodule PhoenixLS.Features.SignatureHelp do
     tag_label = tag_label(tag)
 
     %SignatureHelp{
-      signatures: [signature(component, tag_label, attrs)],
+      signatures: [signature(component, tag_label, attrs, facts)],
       active_signature: 0,
       active_parameter: active_parameter(attrs, context)
     }
@@ -82,7 +85,7 @@ defmodule PhoenixLS.Features.SignatureHelp do
     tag_label = tag_label(tag)
 
     %SignatureHelp{
-      signatures: [slot_signature(slot, tag_label, attrs)],
+      signatures: [slot_signature(slot, tag_label, attrs, facts)],
       active_signature: 0,
       active_parameter: active_parameter(attrs, context)
     }
@@ -98,9 +101,19 @@ defmodule PhoenixLS.Features.SignatureHelp do
     end
   end
 
+  defp js_signature_help(source, position) do
+    with {:ok, %CursorContext{kind: :expression, attribute: "phx-" <> _, prefix: prefix}} <-
+           CursorContext.at(source, position),
+         command when not is_nil(command) <- JSCommands.command_for_prefix(prefix) do
+      js_command_signature_help(command, prefix)
+    else
+      _not_js_context -> nil
+    end
+  end
+
   defp component_attrs(component, facts) do
     facts
-    |> facts_by_kind(:component_attr)
+    |> Facts.by_kind(:component_attr)
     |> Enum.filter(&(&1.data.component == component.id))
     |> Enum.with_index()
     |> Enum.sort_by(fn {fact, index} -> {not required?(fact), index} end)
@@ -109,26 +122,26 @@ defmodule PhoenixLS.Features.SignatureHelp do
 
   defp slot_attrs(slot, facts) do
     facts
-    |> facts_by_kind(:component_slot_attr)
+    |> Facts.by_kind(:component_slot_attr)
     |> Enum.filter(&(&1.data.component == slot.data.component and &1.data.slot == slot.data.name))
     |> Enum.with_index()
     |> Enum.sort_by(fn {fact, index} -> {not required?(fact), index} end)
     |> Enum.map(fn {fact, _index} -> fact end)
   end
 
-  defp signature(component, tag_label, attrs) do
+  defp signature(component, tag_label, attrs, facts) do
     %SignatureInformation{
       label: signature_label(tag_label, attrs),
-      documentation: component_documentation(component),
+      documentation: component_documentation(component, facts),
       parameters: Enum.map(attrs, &parameter_information/1)
     }
   end
 
-  defp slot_signature(slot, tag_label, attrs) do
+  defp slot_signature(slot, tag_label, attrs, facts) do
     %SignatureInformation{
       label: signature_label(tag_label, attrs),
-      documentation: slot_documentation(slot),
-      parameters: Enum.map(attrs, &parameter_information/1)
+      documentation: slot_documentation(slot, facts),
+      parameters: Enum.map(attrs, &slot_parameter_information/1)
     }
   end
 
@@ -154,32 +167,36 @@ defmodule PhoenixLS.Features.SignatureHelp do
     active_parameter_for_prefix(attrs, prefix || "")
   end
 
-  defp component_documentation(component) do
-    markdown([
-      "Component `#{component.id}`",
-      component.data.doc
-    ])
+  defp component_documentation(component, facts) do
+    component
+    |> ComponentDocs.component_markdown(facts)
+    |> markdown()
   end
 
-  defp slot_documentation(slot) do
-    markdown([
-      "Slot `:#{slot.data.name}`",
-      "Component `#{slot.data.component}`"
-    ])
+  defp slot_documentation(slot, facts) do
+    slot
+    |> ComponentDocs.slot_markdown(facts)
+    |> markdown()
   end
 
   defp parameter_information(attr) do
     %ParameterInformation{
       label: attr.data.name,
-      documentation: attr_documentation(attr)
+      documentation: attr |> ComponentDocs.attr_markdown() |> markdown()
+    }
+  end
+
+  defp slot_parameter_information(attr) do
+    %ParameterInformation{
+      label: attr.data.name,
+      documentation: attr |> ComponentDocs.slot_attr_markdown() |> markdown()
     }
   end
 
   defp route_helper_routes(facts, helper_base) do
     facts
-    |> facts_by_kind(:route)
-    |> Enum.filter(&(&1.data.helper_base == helper_base))
-    |> Enum.sort_by(&{&1.data.path, action_sort(&1)})
+    |> RouteHelpers.routes_for_base(helper_base)
+    |> Enum.sort_by(&{&1.data.path, RouteHelpers.action_sort(&1)})
   end
 
   defp route_helper_signature_help(helper_name, routes, active_parameter) do
@@ -199,24 +216,8 @@ defmodule PhoenixLS.Features.SignatureHelp do
   end
 
   defp route_helper_parameter_labels(routes) do
-    ["conn_or_socket"] ++ action_parameter(routes) ++ path_parameter_labels(routes)
-  end
-
-  defp action_parameter(routes) do
-    routes
-    |> Enum.map(& &1.data.action)
-    |> Enum.reject(&is_nil/1)
-    |> case do
-      [] -> []
-      _actions -> ["action"]
-    end
-  end
-
-  defp path_parameter_labels(routes) do
-    routes
-    |> Enum.flat_map(& &1.data.path_params)
-    |> Enum.uniq()
-    |> Enum.sort()
+    ["conn_or_socket"] ++
+      RouteHelpers.action_parameter_labels(routes) ++ RouteHelpers.path_parameter_labels(routes)
   end
 
   defp route_helper_parameter(label) do
@@ -248,33 +249,55 @@ defmodule PhoenixLS.Features.SignatureHelp do
             action -> " :" <> Atom.to_string(action)
           end
 
-        "#{verb(route)} #{route.data.path} -> #{route.data.plug}#{action}"
+        "#{RouteHelpers.verb(route)} #{route.data.path} -> #{route.data.plug}#{action}"
       end)
 
     markdown(["Route helper `Routes.#{helper_name}`", route_lines])
   end
 
+  defp js_command_signature_help(command, prefix) do
+    parameters = Enum.map(command.options, &js_command_parameter/1)
+
+    %SignatureHelp{
+      signatures: [
+        %SignatureInformation{
+          label: JSCommands.signature_label(command),
+          documentation: command |> JSCommands.markdown() |> markdown(),
+          parameters: parameters
+        }
+      ],
+      active_signature: 0,
+      active_parameter: active_js_parameter(command.options, prefix)
+    }
+  end
+
+  defp js_command_parameter({label, snippet}) do
+    %ParameterInformation{
+      label: label,
+      documentation: markdown(["JS option `#{label}`", "Snippet: `#{snippet}`"])
+    }
+  end
+
+  defp active_js_parameter(options, prefix) do
+    option_prefix = active_option_prefix(prefix)
+
+    options
+    |> Enum.find_index(fn {label, _snippet} -> String.starts_with?(label, option_prefix) end)
+    |> default_active_parameter()
+  end
+
+  defp active_option_prefix(prefix) do
+    prefix
+    |> String.split(",")
+    |> List.last()
+    |> String.trim_leading()
+    |> String.split(":", parts: 2)
+    |> List.first()
+    |> String.trim()
+  end
+
   defp bounded_active_parameter(active_parameter, parameter_labels) do
     min(active_parameter, length(parameter_labels) - 1)
-  end
-
-  defp attr_documentation(attr) do
-    options = attr.data.options || []
-
-    markdown([
-      if(required?(attr), do: "Required", else: "Optional"),
-      "Type: `#{inspect(attr.data.type)}`",
-      option_line(options, :default, "default"),
-      option_line(options, :values, "values"),
-      Keyword.get(options, :doc)
-    ])
-  end
-
-  defp option_line(options, key, label) do
-    case Keyword.fetch(options, key) do
-      {:ok, value} -> "#{label}: `#{inspect(value)}`"
-      :error -> nil
-    end
   end
 
   defp active_parameter_for_prefix(attrs, prefix) do
@@ -288,6 +311,13 @@ defmodule PhoenixLS.Features.SignatureHelp do
 
   defp required?(attr), do: Keyword.get(attr.data.options || [], :required, false) == true
 
+  defp markdown(value) when is_binary(value) do
+    %MarkupContent{
+      kind: MarkupKind.markdown(),
+      value: value
+    }
+  end
+
   defp markdown(values) do
     %MarkupContent{
       kind: MarkupKind.markdown(),
@@ -297,17 +327,6 @@ defmodule PhoenixLS.Features.SignatureHelp do
         |> Enum.reject(&blank?/1)
         |> Enum.join("\n\n")
     }
-  end
-
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
-  end
-
-  defp action_sort(%Fact{data: %{action: nil}}), do: ""
-  defp action_sort(%Fact{data: %{action: action}}), do: Atom.to_string(action)
-
-  defp verb(%Fact{data: %{verb: verb}}) when is_atom(verb) do
-    verb |> Atom.to_string() |> String.upcase()
   end
 
   defp blank?(nil), do: true

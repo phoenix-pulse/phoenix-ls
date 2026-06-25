@@ -5,6 +5,7 @@ defmodule PhoenixLS.Features.Completion.Schemas do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Features.Facts
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.HEEx.CursorContext
 
@@ -26,7 +27,7 @@ defmodule PhoenixLS.Features.Completion.Schemas do
         ]
   def field_items(facts, typed_field, schema_id \\ nil) when is_list(facts) do
     facts
-    |> facts_by_kind(:schema_field)
+    |> Facts.by_kind(:schema_field)
     |> filter_schema(schema_id)
     |> Enum.map(&field_item/1)
     |> prefixed_items(typed_field)
@@ -37,8 +38,8 @@ defmodule PhoenixLS.Features.Completion.Schemas do
         ]
   def property_items(facts, typed_property, schema_id \\ nil) when is_list(facts) do
     facts
-    |> facts_by_kind(:schema_field)
-    |> Kernel.++(facts_by_kind(facts, :schema_association))
+    |> Facts.by_kind(:schema_field)
+    |> Kernel.++(Facts.by_kind(facts, :schema_association))
     |> filter_schema(schema_id)
     |> Enum.map(&property_item/1)
     |> prefixed_items(typed_property)
@@ -84,9 +85,5 @@ defmodule PhoenixLS.Features.Completion.Schemas do
     items
     |> Enum.filter(fn {label, _item} -> String.starts_with?(label, prefix || "") end)
     |> Enum.map(fn {_label, item} -> item end)
-  end
-
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
   end
 end

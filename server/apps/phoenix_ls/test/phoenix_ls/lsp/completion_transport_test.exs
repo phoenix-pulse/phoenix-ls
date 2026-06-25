@@ -1,7 +1,8 @@
 defmodule PhoenixLS.LSP.CompletionTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0]
 
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Support.Positions
@@ -25,11 +26,72 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
     assert_indexed(component_uri)
+    assert_indexed(page_uri)
+
+    assert_core_button_completion(test_client, heex_uri, position, 2)
+  end
+
+  test "GenLSP transport keeps component completions after reopening a HEEx document", context do
+    attach_indexer()
+
+    root = fixture_project(context, "reopened_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.bu| />")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri)
+    assert_indexed(page_uri)
+    assert_indexed(heex_uri)
+
+    assert_core_button_completion(test_client, heex_uri, position, 31)
+
+    close_document(test_client, heex_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(heex_uri)
+
+    assert_core_button_completion(test_client, heex_uri, position, 32)
+  end
+
+  test "GenLSP transport keeps component completions in companion mode", context do
+    attach_indexer()
+
+    root = fixture_project(context, "companion_component_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.bu| />")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri)
+    assert_indexed(page_uri)
 
     GenLSP.Test.request(test_client, %{
-      id: 2,
+      id: 25,
       jsonrpc: "2.0",
       method: "textDocument/completion",
       params: %{
@@ -39,7 +101,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     })
 
     assert_result(
-      2,
+      25,
       [
         %{
           "data" => %{"id" => "AppWeb.CoreComponents.button/1", "kind" => "component"},
@@ -72,8 +134,10 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source_with_slots())
+    page_uri = open_page_module(test_client, root)
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
     assert_indexed(component_uri)
+    assert_indexed(page_uri)
 
     GenLSP.Test.request(test_client, %{
       id: 22,
@@ -134,6 +198,194 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     assert_result(2, [], 500)
   end
 
+  test "GenLSP transport completes built-in Phoenix component attrs in HEEx", context do
+    root = fixture_project(context, "builtin_link_attr_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.link |></.link>")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 26,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{"jsonrpc" => "2.0", "id" => 26, "result" => result}, 500
+
+    labels = Enum.map(result, & &1["label"])
+
+    assert "href" in labels
+    assert "navigate" in labels
+    assert "patch" in labels
+    assert "class" in labels
+    assert "phx-click" in labels
+  end
+
+  test "GenLSP transport completes built-in Phoenix component attrs in H sigils", context do
+    root = fixture_project(context, "builtin_link_attr_h_sigils_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex"))
+
+    {elixir_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageLive do
+        use Phoenix.LiveView
+
+        def render(assigns) do
+          ~H\"\"\"
+          <.link |></.link>
+          \"\"\"
+        end
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", elixir_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 27,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: elixir_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{"jsonrpc" => "2.0", "id" => 27, "result" => result}, 500
+
+    labels = Enum.map(result, & &1["label"])
+
+    assert "href" in labels
+    assert "navigate" in labels
+    assert "patch" in labels
+    assert "class" in labels
+    assert "phx-click" in labels
+  end
+
+  test "GenLSP transport completes same-module events in H sigils", context do
+    attach_indexer()
+
+    root = fixture_project(context, "h_sigils_event_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex"))
+
+    {elixir_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageLive do
+        use Phoenix.LiveView
+
+        def handle_event("close-product", _params, socket) do
+          {:noreply, socket}
+        end
+
+        def render(assigns) do
+          ~H\"\"\"
+          <button phx-click="clo|">Close</button>
+          \"\"\"
+        end
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", elixir_source)
+    assert_indexed(elixir_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 28,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: elixir_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{"jsonrpc" => "2.0", "id" => 28, "result" => result}, 500
+
+    assert Enum.map(result, & &1["label"]) == ["close-product"]
+  end
+
+  test "GenLSP transport completes component attrs and slots as assigns in H sigils", context do
+    attach_indexer()
+
+    root = fixture_project(context, "component_assign_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    elixir_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/admin_components.ex"))
+
+    {elixir_source, position} =
+      source_and_position("""
+      defmodule AppWeb.AdminComponents do
+        use Phoenix.Component
+
+        attr :title, :string, required: true
+        attr :value, :any, required: true
+        attr :tone, :string, default: "neutral"
+        slot :inner_block
+
+        def metric_card(assigns) do
+          ~H\"\"\"
+          {@|}
+          \"\"\"
+        end
+
+        attr :entries, :list, default: []
+
+        def audit_timeline(assigns) do
+          ~H\"\"\"
+          {@entries}
+          \"\"\"
+        end
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", elixir_source)
+    assert_indexed(elixir_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 30,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: elixir_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{"jsonrpc" => "2.0", "id" => 30, "result" => result}, 500
+
+    labels = Enum.map(result, & &1["label"])
+
+    assert "@inner_block" in labels
+    assert "@title" in labels
+    assert "@tone" in labels
+    assert "@value" in labels
+    refute "@entries" in labels
+  end
+
   test "GenLSP transport returns route completions from indexed router facts", context do
     attach_indexer()
 
@@ -182,7 +434,84 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  test "GenLSP transport omits generic Elixir fallback completions in companion mode",
+       context do
+    root = fixture_project(context, "companion_generic_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<p>{to_s|}</p>")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 23,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(23, [], 500)
+  end
+
+  test "GenLSP transport keeps route completions in companion mode", context do
+    attach_indexer()
+
+    root = fixture_project(context, "companion_route_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.link navigate={~p\"/prod|\"} />")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", router_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(router_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 24,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      24,
+      [
+        %{
+          "data" => %{
+            "id" => "AppWeb.Router:live:/products/:id:AppWeb.ProductLive.Show:show",
+            "kind" => "route"
+          },
+          "detail" => "live AppWeb.ProductLive.Show :show",
+          "insertText" => "/products/:id",
+          "insertTextFormat" => 1,
+          "kind" => 18,
+          "label" => "/products/:id"
+        }
+      ],
+      500
+    )
+  end
+
   test "GenLSP transport returns route helper completions in Elixir documents", context do
+    attach_indexer()
+
     root = fixture_project(context, "route_helper_completion_project")
     root_uri = SupportURI.path_to_file_uri!(root)
 
@@ -196,6 +525,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, router_uri, "elixir", router_source())
+    assert_indexed(router_uri)
     open_document(test_client, elixir_uri, "elixir", elixir_source)
 
     GenLSP.Test.request(test_client, %{
@@ -372,6 +702,62 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  test "GenLSP transport completes form fields from to_form bindings", context do
+    attach_indexer()
+
+    root = fixture_project(context, "form_field_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    schema_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app/catalog/product.ex"))
+
+    heex_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.html.heex"))
+
+    {heex_source, position} =
+      source_and_position("""
+      <.form :let={f} for={Phoenix.Component.to_form(@product)}>
+        <.input field={f[:na|]} />
+      </.form>
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, schema_uri, "elixir", product_schema_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(schema_uri)
+    assert_indexed(heex_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 29,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      29,
+      [
+        %{
+          "data" => %{
+            "id" => "App.Catalog.Product:schema:products:field:name",
+            "kind" => "schema_field"
+          },
+          "detail" => "field :name, :string",
+          "insertText" => "name",
+          "insertTextFormat" => 1,
+          "kind" => 5,
+          "label" => "name"
+        }
+      ],
+      500
+    )
+  end
+
   test "GenLSP transport resolves completion item documentation" do
     test_server = GenLSP.Test.server(Server)
     test_client = GenLSP.Test.client(test_server)
@@ -495,7 +881,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
         "capabilities" => %{
           "completionProvider" => %{
             "resolveProvider" => true,
-            "triggerCharacters" => [".", ":"]
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
           },
           "experimental" => nil,
           "textDocumentSync" => %{
@@ -531,6 +917,55 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
         }
       }
     })
+  end
+
+  defp close_document(test_client, uri) do
+    GenLSP.Test.notify(test_client, %{
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: %{
+        textDocument: %{uri: uri}
+      }
+    })
+  end
+
+  defp assert_core_button_completion(test_client, uri, position, id) do
+    GenLSP.Test.request(test_client, %{
+      id: id,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      ^id,
+      [
+        %{
+          "data" => %{"id" => "AppWeb.CoreComponents.button/1", "kind" => "component"},
+          "detail" => "AppWeb.CoreComponents.button/1",
+          "insertText" => ".button",
+          "insertTextFormat" => 1,
+          "kind" => 3,
+          "label" => ".button"
+        }
+      ],
+      500
+    )
+  end
+
+  defp open_page_module(test_client, root) do
+    page_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.ex"))
+
+    open_document(test_client, page_uri, "elixir", """
+    defmodule AppWeb.Page do
+      import AppWeb.CoreComponents
+    end
+    """)
+
+    page_uri
   end
 
   defp component_source do
@@ -602,6 +1037,18 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
 
       def mount(_params, _session, socket) do
         {:ok, assign(socket, :selected_id, "1")}
+      end
+    end
+    """
+  end
+
+  defp product_schema_source do
+    """
+    defmodule App.Catalog.Product do
+      use Ecto.Schema
+
+      schema "products" do
+        field :name, :string
       end
     end
     """

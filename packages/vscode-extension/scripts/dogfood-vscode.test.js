@@ -14,7 +14,7 @@ describe('dogfoodVSCode', () => {
     const extensionDir = path.join(root, 'packages', 'vscode-extension');
     const projectRoot = root;
     const fixtureRoot = path.join(root, 'fixture');
-    const vsixPath = path.join(extensionDir, 'phoenix-pulse-1.3.0.vsix');
+    const vsixPath = path.join(extensionDir, 'phoenix-pulse-1.4.0.vsix');
     const calls = [];
     const killed = [];
 
@@ -42,7 +42,7 @@ describe('dogfoodVSCode', () => {
         }
 
         if (command === process.execPath && args.includes('--list-extensions')) {
-          return { status: 0, stdout: 'onsever.phoenix-pulse@1.3.0\n', stderr: '' };
+          return { status: 0, stdout: 'onsever.phoenix-pulse@1.4.0\n', stderr: '' };
         }
 
         if (command === process.execPath && args.includes('--new-window')) {
@@ -54,7 +54,7 @@ describe('dogfoodVSCode', () => {
         if (command === process.execPath && args.includes('--status')) {
           return {
             status: 0,
-            stdout: '/tmp/code-extensions/onsever.phoenix-pulse-1.3.0/server/phoenix_ls --stdio\n',
+            stdout: '/tmp/code-extensions/onsever.phoenix-pulse-1.4.0/server/phoenix_ls --stdio\n',
             stderr: ''
           };
         }
@@ -66,7 +66,7 @@ describe('dogfoodVSCode', () => {
       }
     });
 
-    expect(summary.extensionId).toBe('onsever.phoenix-pulse@1.3.0');
+    expect(summary.extensionId).toBe('onsever.phoenix-pulse@1.4.0');
     if (process.platform === 'darwin') {
       expect(summary.dogfoodRoot).toMatch(/^\/tmp\/phoenix-pulse-vscode-dogfood\./);
     }
@@ -84,7 +84,11 @@ describe('dogfoodVSCode', () => {
       'phoenix/listRoutes': 3,
       'phoenix/listTemplates': 4,
       'phoenix/listEvents': 2,
-      'phoenix/listLiveView': 1
+      'phoenix/listLiveView': 1,
+      'phoenix/listUploads': 1,
+      'phoenix/listHooks': 1,
+      'phoenix/listColocatedAssets': 1,
+      'phoenix/listControllers': 1
     });
     expect(summary.requestChecks).toEqual({
       schemaPayloads: true,
@@ -97,7 +101,11 @@ describe('dogfoodVSCode', () => {
       templateKinds: true,
       eventPayloads: true,
       eventHandlers: true,
-      liveViewPayloads: true
+      liveViewPayloads: true,
+      uploadPayloads: true,
+      hookPayloads: true,
+      colocatedAssetPayloads: true,
+      controllerPayloads: true
     });
     expect(calls.map(call => call.command)).toEqual([
       'npm',
@@ -126,7 +134,7 @@ describe('dogfoodVSCode', () => {
     fs.mkdirSync(extensionDir, { recursive: true });
     fs.mkdirSync(fixtureRoot, { recursive: true });
     fs.writeFileSync(path.join(fixtureRoot, 'mix.exs'), 'defmodule Fixture.MixProject do\nend\n');
-    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.3.0.vsix'), 'vsix');
+    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.4.0.vsix'), 'vsix');
 
     await expect(
       dogfoodVSCode({
@@ -142,7 +150,7 @@ describe('dogfoodVSCode', () => {
             return { status: 0, stdout: 'installed', stderr: '' };
           }
           if (command === process.execPath && args.includes('--list-extensions')) {
-            return { status: 0, stdout: 'onsever.phoenix-pulse@1.3.0\n', stderr: '' };
+            return { status: 0, stdout: 'onsever.phoenix-pulse@1.4.0\n', stderr: '' };
           }
           if (command === process.execPath && args.includes('--new-window')) {
             return { status: 1, stdout: '', stderr: 'listen EINVAL: invalid argument socket path' };
@@ -163,7 +171,7 @@ describe('dogfoodVSCode', () => {
     fs.mkdirSync(extensionDir, { recursive: true });
     fs.mkdirSync(fixtureRoot, { recursive: true });
     fs.writeFileSync(path.join(fixtureRoot, 'mix.exs'), 'defmodule Fixture.MixProject do\nend\n');
-    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.3.0.vsix'), 'vsix');
+    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.4.0.vsix'), 'vsix');
 
     await expect(
       dogfoodVSCode({
@@ -178,7 +186,7 @@ describe('dogfoodVSCode', () => {
             return { status: 0, stdout: 'installed', stderr: '' };
           }
           if (command === 'code' && args.includes('--list-extensions')) {
-            return { status: 0, stdout: 'onsever.phoenix-pulse@1.3.0\n', stderr: '' };
+            return { status: 0, stdout: 'onsever.phoenix-pulse@1.4.0\n', stderr: '' };
           }
           if (command === 'code' && args.includes('--status')) {
             return { status: 0, stdout: '', stderr: '' };
@@ -200,7 +208,7 @@ describe('dogfoodVSCode', () => {
     fs.mkdirSync(extensionDir, { recursive: true });
     fs.mkdirSync(fixtureRoot, { recursive: true });
     fs.writeFileSync(path.join(fixtureRoot, 'mix.exs'), 'defmodule Fixture.MixProject do\nend\n');
-    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.3.0.vsix'), 'vsix');
+    fs.writeFileSync(path.join(extensionDir, 'phoenix-pulse-1.4.0.vsix'), 'vsix');
 
     await expect(
       dogfoodVSCode({
@@ -215,12 +223,12 @@ describe('dogfoodVSCode', () => {
             return { status: 0, stdout: 'installed', stderr: '' };
           }
           if (command === 'code' && args.includes('--list-extensions')) {
-            return { status: 0, stdout: 'onsever.phoenix-pulse@1.3.0\n', stderr: '' };
+            return { status: 0, stdout: 'onsever.phoenix-pulse@1.4.0\n', stderr: '' };
           }
           if (command === 'code' && args.includes('--status')) {
             return {
               status: 0,
-              stdout: '/tmp/code-extensions/onsever.phoenix-pulse-1.3.0/server/phoenix_ls --stdio\n',
+              stdout: '/tmp/code-extensions/onsever.phoenix-pulse-1.4.0/server/phoenix_ls --stdio\n',
               stderr: ''
             };
           }
@@ -269,7 +277,7 @@ function writeVSCodeLogs(root, extraLines = []) {
     [
       'Phoenix Pulse extension activating...',
       'Starting Elixir language server; project detection runs in the server.',
-      'Phoenix LS executable path: /tmp/code-extensions/onsever.phoenix-pulse-1.3.0/server/phoenix_ls',
+      'Phoenix LS executable path: /tmp/code-extensions/onsever.phoenix-pulse-1.4.0/server/phoenix_ls',
       'Starting Phoenix Pulse LSP client...',
       'Phoenix Pulse LSP client started successfully!',
       'Phoenix Pulse Explorer registered successfully!',
@@ -285,9 +293,13 @@ function writeRequestSnapshot(snapshotPath, overrides = {}) {
       'phoenix/listComponents': 1,
       'phoenix/listRoutes': 3,
       'phoenix/listTemplates': 4,
-      'phoenix/listEvents': 2,
-      'phoenix/listLiveView': 1
-    },
+	      'phoenix/listEvents': 2,
+	      'phoenix/listLiveView': 1,
+	      'phoenix/listUploads': 1,
+	      'phoenix/listHooks': 1,
+	      'phoenix/listColocatedAssets': 1,
+	      'phoenix/listControllers': 1
+	    },
     results: {
       'phoenix/listSchemas': [
         {
@@ -369,16 +381,61 @@ function writeRequestSnapshot(snapshotPath, overrides = {}) {
         event('select-product'),
         event('archive-product')
       ],
-      'phoenix/listLiveView': [
-        {
-          module: 'LiveviewComponentsAppWeb.PageLive',
-          filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
-          location: { line: 1, character: 2 },
-          assigns: [],
-          functions: []
-        }
-      ]
-    },
+	      'phoenix/listLiveView': [
+	        {
+	          module: 'LiveviewComponentsAppWeb.PageLive',
+	          filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
+	          location: { line: 1, character: 2 },
+	          assigns: [],
+	          functions: []
+	        }
+	      ],
+	      'phoenix/listUploads': [
+	        {
+	          name: 'avatar',
+	          module: 'LiveviewComponentsAppWeb.PageLive',
+	          filePath: '/workspace/lib/liveview_components_app_web/live/page_live.ex',
+	          location: { line: 12, character: 4 },
+	          options: {},
+	          usagesCount: 0,
+	          usages: []
+	        }
+	      ],
+	      'phoenix/listHooks': [
+	        {
+	          name: 'Sortable',
+	          defined: true,
+	          filePath: '/workspace/priv/static/assets/app.js',
+	          location: { line: 2, character: 6 },
+	          usagesCount: 0,
+	          usages: []
+	        }
+	      ],
+	      'phoenix/listColocatedAssets': [
+	        {
+	          ownerModule: 'LiveviewComponentsAppWeb.PageLive',
+	          assetsCount: 1,
+	          assets: [
+	            {
+	              kind: 'colocated_js',
+	              typeModule: 'Phoenix.LiveView.ColocatedJS',
+	              generatedName: 'LiveviewComponentsAppWeb.PageLive.ColocatedJS',
+	              filePath: '/workspace/lib/liveview_components_app_web/live/page_live.html.heex',
+	              location: { line: 20, character: 2 }
+	            }
+	          ]
+	        }
+	      ],
+	      'phoenix/listControllers': [
+	        {
+	          module: 'LiveviewComponentsAppWeb.ProductController',
+	          filePath: '/workspace/lib/liveview_components_app_web/controllers/product_controller.ex',
+	          location: { line: 1, character: 2 },
+	          actions: [],
+	          plugAssigns: []
+	        }
+	      ]
+	    },
     ...overrides
   };
 

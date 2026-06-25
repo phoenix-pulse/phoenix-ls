@@ -1,0 +1,33 @@
+<section id="orders" phx-hook="SortableOrders">
+  <.form for={@form} phx-change="filter-orders">
+    <.inputs_for :let={line} field={@form[:lines]}>
+      <Phoenix18ComplexAppWeb.CoreComponents.input field={line[:sku]} label="SKU" />
+    </.inputs_for>
+  </.form>
+
+  <ul>
+    <li :for={order <- @orders} :key={order.id} phx-value-id={order.id}>
+      <%= order.number %>
+    </li>
+  </ul>
+
+  <script :type={Phoenix.LiveView.ColocatedHook} name=".SortableOrders">
+    export default {
+      mounted() {
+        this.el.dataset.ready = "true"
+      }
+    }
+  </script>
+
+  <script :type={Phoenix.LiveView.ColocatedJS}>
+    export function highlight(row) {
+      row.dataset.highlighted = "true"
+    }
+  </script>
+
+  <style :type={Phoenix.LiveView.ColocatedCSS}>
+    .order-row {
+      color: red;
+    }
+  </style>
+</section>

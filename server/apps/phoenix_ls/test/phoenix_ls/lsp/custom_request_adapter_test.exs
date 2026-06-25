@@ -52,6 +52,32 @@ defmodule PhoenixLS.LSP.CustomRequestAdapterTest do
            }
   end
 
+  test "normalizes raw controller graph phoenix requests" do
+    {:ok, state} = CustomRequestAdapter.init(inner: {InnerAdapter, parent: self()})
+
+    send(self(), {
+      :inner_read,
+      Jason.encode!(%{
+        "id" => 8,
+        "jsonrpc" => "2.0",
+        "method" => "phoenix/listControllers",
+        "params" => %{}
+      })
+    })
+
+    assert {:ok, body, ""} = CustomRequestAdapter.read(state, "")
+
+    assert Jason.decode!(body) == %{
+             "id" => 8,
+             "jsonrpc" => "2.0",
+             "method" => "workspace/executeCommand",
+             "params" => %{
+               "command" => "phoenix/listControllers",
+               "arguments" => [%{}]
+             }
+           }
+  end
+
   test "passes non-phoenix requests through unchanged" do
     {:ok, state} = CustomRequestAdapter.init(inner: {InnerAdapter, parent: self()})
 

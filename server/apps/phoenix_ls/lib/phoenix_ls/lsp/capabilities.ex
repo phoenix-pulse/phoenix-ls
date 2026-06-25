@@ -25,7 +25,7 @@ defmodule PhoenixLS.LSP.Capabilities do
         change: TextDocumentSyncKind.full()
       },
       completion_provider: %CompletionOptions{
-        trigger_characters: [".", ":"],
+        trigger_characters: ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"],
         resolve_provider: true
       },
       signature_help_provider: %SignatureHelpOptions{

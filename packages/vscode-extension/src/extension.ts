@@ -7,11 +7,166 @@ import {
 } from 'vscode-languageclient/node';
 import { PhoenixPulseTreeProvider } from './tree-view-provider';
 import { ErdProvider } from './diagrams/erd-provider';
-import { resolveServer } from './server-resolver';
+import { resolveServer, type ResolvedServer } from './server-resolver';
 import { maybeWriteDogfoodSnapshot } from './dogfood';
+import { registerEmbeddedLanguageForwarding } from './embedded-language-forwarding';
 
 let client: LanguageClient;
 let clientReady: Promise<void> = Promise.resolve();
+
+const EXPERT_EXTENSION_ID = 'ExpertLSP.expert';
+const EXPERT_EXTENSION_IDS = [EXPERT_EXTENSION_ID, 'expertlsp.expert'];
+const GENERIC_ELIXIR_LS_EXTENSION_IDS = [
+  'JakeBecker.elixir-ls',
+  'elixir-lsp.elixir-ls',
+  'lexical-lsp.lexical',
+  'elixir-tools.elixir-tools'
+];
+
+type PhoenixLSConfiguredMode = 'auto' | 'companion' | 'full';
+type PhoenixLSResolvedMode = 'companion' | 'full';
+
+export interface PhoenixLSModeResolution {
+  configuredMode: PhoenixLSConfiguredMode;
+  resolvedMode: PhoenixLSResolvedMode;
+  detectedExpert: boolean;
+  detectedGenericElixirLS: boolean;
+  detectedCompanionPeer: boolean;
+  detectExpert: boolean;
+  disableGenericElixir: boolean;
+  env: Record<string, string>;
+}
+
+export function resolvePhoenixLSMode(): PhoenixLSModeResolution {
+  const config = vscode.workspace.getConfiguration('phoenixLS');
+  const configuredMode = normalizePhoenixLSMode(config.get<string>('mode', 'auto'));
+  const detectExpert = config.get<boolean>('companion.detectExpert', true);
+  const disableGenericElixir = config.get<boolean>('companion.disableGenericElixir', true);
+  const detectedExpert = detectExpert && installedPeer(EXPERT_EXTENSION_IDS, expertExtension);
+  const detectedGenericElixirLS =
+    detectExpert && installedPeer(GENERIC_ELIXIR_LS_EXTENSION_IDS, genericElixirExtension);
+  const detectedCompanionPeer = detectedExpert || detectedGenericElixirLS;
+  const resolvedMode = configuredMode === 'auto'
+    ? detectedCompanionPeer ? 'companion' : 'full'
+    : configuredMode;
+
+  return {
+    configuredMode,
+    resolvedMode,
+    detectedExpert,
+    detectedGenericElixirLS,
+    detectedCompanionPeer,
+    detectExpert,
+    disableGenericElixir,
+    env: {
+      PHOENIX_LS_MODE: configuredMode,
+      PHOENIX_LS_DETECTED_EXPERT: detectedExpert ? 'true' : 'false',
+      PHOENIX_LS_DETECTED_COMPANION_PEER: detectedCompanionPeer ? 'true' : 'false',
+      PHOENIX_LS_DISABLE_GENERIC_ELIXIR: disableGenericElixir ? 'true' : 'false'
+    }
+  };
+}
+
+export function describePhoenixLSMode(mode: PhoenixLSModeResolution): string {
+  return `Phoenix LS mode: ${mode.resolvedMode} (${describePhoenixLSExpertDetection(mode)})`;
+}
+
+export function buildPhoenixLSServerOptions(
+  resolvedServer: ResolvedServer,
+  mode: PhoenixLSModeResolution = resolvePhoenixLSMode()
+): ServerOptions {
+  const env = {
+    ...resolvedServer.env,
+    ...mode.env
+  };
+
+  return {
+    run: {
+      command: resolvedServer.command,
+      args: resolvedServer.args,
+      options: { env }
+    },
+    debug: {
+      command: resolvedServer.command,
+      args: resolvedServer.args,
+      options: { env: { ...env, PHOENIX_LS_LOG_LEVEL: 'debug' } }
+    }
+  };
+}
+
+function normalizePhoenixLSMode(value: unknown): PhoenixLSConfiguredMode {
+  if (value === 'companion' || value === 'full') {
+    return value;
+  }
+
+  return 'auto';
+}
+
+function installedPeer(
+  extensionIds: string[],
+  fallbackMatcher: (extension: vscode.Extension<unknown>) => boolean
+): boolean {
+  const normalizedIds = extensionIds.map(id => id.toLowerCase());
+
+  if (extensionIds.some(id => Boolean(vscode.extensions.getExtension(id)))) {
+    return true;
+  }
+
+  return vscode.extensions.all.some(extension => {
+    const id = extension.id.toLowerCase();
+    return normalizedIds.includes(id) || fallbackMatcher(extension);
+  });
+}
+
+function expertExtension(extension: vscode.Extension<unknown>): boolean {
+  const id = extension.id.toLowerCase();
+  if (id === EXPERT_EXTENSION_ID.toLowerCase()) {
+    return true;
+  }
+
+  const metadata = extensionMetadata(extension);
+  return metadata.includes('expert') && metadata.includes('elixir');
+}
+
+function genericElixirExtension(extension: vscode.Extension<unknown>): boolean {
+  const id = extension.id.toLowerCase();
+
+  return GENERIC_ELIXIR_LS_EXTENSION_IDS.some(peer => id === peer.toLowerCase());
+}
+
+function extensionMetadata(extension: vscode.Extension<unknown>): string {
+  const packageJSON = extension.packageJSON as Record<string, unknown> | undefined;
+
+  return [
+    extension.id,
+    stringMetadata(packageJSON?.displayName),
+    stringMetadata(packageJSON?.description),
+    stringMetadata(packageJSON?.publisher),
+    stringMetadata(packageJSON?.name)
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function stringMetadata(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function describePhoenixLSExpertDetection(mode: PhoenixLSModeResolution): string {
+  if (!mode.detectExpert) {
+    return 'companion detection disabled';
+  }
+
+  if (mode.detectedExpert) {
+    return 'Expert detected';
+  }
+
+  if (mode.detectedGenericElixirLS) {
+    return 'ElixirLS detected';
+  }
+
+  return 'no companion peer detected';
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   try {
@@ -26,6 +181,7 @@ export async function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('Phoenix Pulse extension activating...');
     console.log('Phoenix Pulse extension is now active!');
     outputChannel.appendLine('Starting Elixir language server; project detection runs in the server.');
+    registerEmbeddedLanguageForwarding(context, outputChannel);
 
     try {
       const resolvedServer = resolveServer(context, outputChannel);
@@ -37,20 +193,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
       outputChannel.appendLine(`Phoenix LS executable path: ${resolvedServer.command}`);
       console.log(`Phoenix LS executable path: ${resolvedServer.command}`);
+      const phoenixLSMode = resolvePhoenixLSMode();
+      outputChannel.appendLine(describePhoenixLSMode(phoenixLSMode));
 
       // Server options - run the Elixir LSP executable using stdio
-      const serverOptions: ServerOptions = {
-        run: {
-          command: resolvedServer.command,
-          args: resolvedServer.args,
-          options: { env: resolvedServer.env }
-        },
-        debug: {
-          command: resolvedServer.command,
-          args: resolvedServer.args,
-          options: { env: { ...resolvedServer.env, PHOENIX_LS_LOG_LEVEL: 'debug' } }
-        }
-      };
+      const serverOptions = buildPhoenixLSServerOptions(resolvedServer, phoenixLSMode);
 
     // Client options - configure which files the LSP should handle
     const clientOptions: LanguageClientOptions = {
@@ -149,9 +296,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const copyNameCommand = vscode.commands.registerCommand(
           'phoenixPulse.copyName',
           (item: any) => {
-            if (item && item.label) {
-              vscode.env.clipboard.writeText(item.label);
-              vscode.window.showInformationMessage(`Copied: ${item.label}`);
+            const name = copyNameForItem(item);
+
+            if (name) {
+              vscode.env.clipboard.writeText(name);
+              vscode.window.showInformationMessage(`Copied: ${name}`);
             }
           }
         );
@@ -162,13 +311,7 @@ export async function activate(context: vscode.ExtensionContext) {
           (item: any) => {
             if (!item || !item.data) return;
 
-            let moduleName = '';
-
-            if (item.contextValue === 'schema' || item.contextValue === 'schema-expandable') {
-              moduleName = item.data.module || item.data.name;
-            } else if (item.contextValue === 'component' || item.contextValue === 'component-expandable') {
-              moduleName = item.data.module;
-            }
+            const moduleName = copyModuleForItem(item);
 
             if (moduleName) {
               vscode.env.clipboard.writeText(moduleName);
@@ -327,6 +470,43 @@ export function deactivate(): Thenable<void> | undefined {
   }
   console.log('Stopping Phoenix Pulse LSP client');
   return client.stop();
+}
+
+function copyNameForItem(item: any): string {
+  const data = item?.data || {};
+
+  return firstString(
+    data.copyName,
+    data.name,
+    data.module,
+    data.fieldName,
+    data.path,
+    data.template,
+    data.layout,
+    item?.label
+  );
+}
+
+function copyModuleForItem(item: any): string {
+  const data = item?.data || {};
+
+  return firstString(
+    data.module,
+    data.controller?.module,
+    data.controller,
+    data.liveModule,
+    data.targetModule
+  );
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return '';
 }
 
 function sanitizeDefinition(

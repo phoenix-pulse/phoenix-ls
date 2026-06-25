@@ -3,9 +3,49 @@ defmodule PhoenixLS.HEEx.Document do
   Parsed HEEx document structure.
   """
 
-  defstruct tags: []
+  defstruct tags: [], expressions: [], structure_issues: []
 
-  @type t :: %__MODULE__{tags: [Tag.t()]}
+  @type t :: %__MODULE__{
+          tags: [Tag.t()],
+          expressions: [Expression.t()],
+          structure_issues: [StructuralIssue.t()]
+        }
+
+  defmodule StructuralIssue do
+    @moduledoc """
+    Parsed structural HEEx issue with source ranges.
+    """
+
+    @enforce_keys [:kind, :range]
+    defstruct [:kind, :range, :name, :expected_name]
+
+    @type kind :: :mismatched_closing_tag | :unclosed_tag
+
+    @type t :: %__MODULE__{
+            kind: kind(),
+            range: GenLSP.Structures.Range.t(),
+            name: String.t() | nil,
+            expected_name: String.t() | nil
+          }
+  end
+
+  defmodule Expression do
+    @moduledoc """
+    Parsed standalone HEEx expression with source ranges.
+    """
+
+    @enforce_keys [:kind, :range, :value_range, :value]
+    defstruct [:kind, :range, :value_range, :value]
+
+    @type kind :: :output | :control
+
+    @type t :: %__MODULE__{
+            kind: kind(),
+            range: GenLSP.Structures.Range.t(),
+            value_range: GenLSP.Structures.Range.t(),
+            value: String.t()
+          }
+  end
 
   defmodule Tag do
     @moduledoc """

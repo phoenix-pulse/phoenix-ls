@@ -20,9 +20,9 @@ The Elixir-native Language Server Protocol (LSP) server providing intelligent fe
 The server builds to a local `phoenix_ls` escript and is launched by the editor clients over stdio.
 
 ### [VS Code Extension](./packages/vscode-extension/)
-Full-featured VS Code extension for Phoenix LiveView development.
+VS Code extension for Phoenix LiveView development.
 
-- All LSP features
+- Phoenix LS-backed LSP features
 - 📦 Project Explorer (TreeView)
 - 📊 ERD Diagram viewer
 - 🎨 Syntax highlighting for HEEx templates
@@ -30,9 +30,9 @@ Full-featured VS Code extension for Phoenix LiveView development.
 **Install from:** [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse)
 
 ### [Neovim Plugin](./packages/nvim-plugin/)
-Complete Neovim plugin using the same LSP server as VS Code.
+Neovim plugin using the same LSP server as VS Code.
 
-- All LSP features
+- Phoenix LS-backed LSP features
 - 📦 Project Explorer (Float/Split)
 - 📊 ERD Diagram viewer
 - 🔍 Search/filter functionality
@@ -62,7 +62,7 @@ code --install-extension onsever.phoenix-pulse
 **Manual Installation (.vsix):**
 ```bash
 # Download .vsix from releases
-code --install-extension phoenix-pulse-1.3.0.vsix
+code --install-extension phoenix-pulse-1.4.0.vsix
 ```
 
 ### Neovim
@@ -105,7 +105,7 @@ See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details
 
 - **VS Code**: 1.75.0 or higher
 - **Neovim**: 0.8.0 or higher (for Neovim users)
-- **Phoenix**: 1.6+ or 1.7+ project
+- **Phoenix**: 1.7+ project
 - **Node.js**: 16+ (for workspace development tooling)
 - **Elixir/Mix**: 1.17+ when building the local Phoenix LS executable from source
 
@@ -198,7 +198,6 @@ phoenix-ls/
 │       ├── lib/                   # LSP, indexing, introspection, features
 │       └── mix.exs
 │
-├── packages/language-server/      # Legacy TypeScript server retained until final removal
 ├── package.json                   # Root workspace config
 ├── README.md                      # This file
 ├── NEOVIM.md                      # Neovim documentation
@@ -273,8 +272,8 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 | Package | Version | Status |
 |---------|---------|--------|
 | Phoenix LS Elixir Server | 0.1.0 | Elixir v2 rewrite in progress |
-| VS Code Extension | 1.3.0 | Uses bundled or configured Elixir server |
-| Neovim Plugin | 1.0.0 | Uses bundled or configured Elixir server |
+| VS Code Extension | 1.4.0 | Uses bundled or configured Elixir server |
+| Neovim Plugin | 1.4.0 | Uses bundled or configured Elixir server |
 
 ---
 

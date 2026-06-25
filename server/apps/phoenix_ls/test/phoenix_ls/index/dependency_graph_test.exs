@@ -51,8 +51,10 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
         :template,
         :live_event,
         :live_event_usage,
+        :live_navigation_reference,
         :live_view_function,
-        :live_view
+        :live_view,
+        :pipeline
       ])
 
     assert DependencyGraph.affected_read_models(changed_kinds) == [
@@ -71,7 +73,13 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
            ]
   end
 
-  test "semantic dependency changes affect open HEEx diagnostics" do
+  test "LiveView navigation reference changes affect the LiveView read model" do
+    assert DependencyGraph.affected_read_models(MapSet.new([:live_navigation_reference])) == [
+             :live_views
+           ]
+  end
+
+  test "semantic dependency changes affect open HEEx and Elixir diagnostics" do
     documents = [
       Document.new(
         "file:///tmp/app/lib/app_web/live/page_live.ex",
@@ -86,6 +94,45 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
     changed_kinds = MapSet.new([:route, :component_attr, :schema_field, :live_event])
 
     assert DependencyGraph.affected_diagnostic_uris(changed_kinds, documents) == [
+             "file:///tmp/app/lib/app_web/live/other.html.heex",
+             @template_uri,
+             "file:///tmp/app/lib/app_web/live/page_live.ex"
+           ]
+  end
+
+  test "LiveView navigation dependency changes affect open diagnostics" do
+    documents = [
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/page_live.ex",
+        "elixir",
+        1,
+        "defmodule PageLive do\nend\n"
+      ),
+      Document.new(@template_uri, "phoenix-heex", 1, "<.link patch={~p\"/products\"} />")
+    ]
+
+    assert DependencyGraph.affected_diagnostic_uris(
+             MapSet.new([:live_view_function, :live_navigation_reference]),
+             documents
+           ) == [
+             @template_uri,
+             "file:///tmp/app/lib/app_web/live/page_live.ex"
+           ]
+  end
+
+  test "colocated hook changes affect open HEEx diagnostics" do
+    documents = [
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/page_live.ex",
+        "elixir",
+        1,
+        "defmodule PageLive do\nend\n"
+      ),
+      Document.new(@template_uri, "phoenix-heex", 1, "<div />"),
+      Document.new("file:///tmp/app/lib/app_web/live/other.html.heex", "heex", 1, "<div />")
+    ]
+
+    assert DependencyGraph.affected_diagnostic_uris(MapSet.new([:colocated_hook]), documents) == [
              "file:///tmp/app/lib/app_web/live/other.html.heex",
              @template_uri
            ]
@@ -108,6 +155,21 @@ defmodule PhoenixLS.Index.DependencyGraphTest do
     ]
 
     assert DependencyGraph.affected_diagnostic_uris(MapSet.new([:template]), documents) == [
+             controller_uri
+           ]
+  end
+
+  test "pipeline changes affect route read models and open Elixir diagnostics" do
+    controller_uri = "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+
+    documents = [
+      Document.new(controller_uri, "elixir", 1, "defmodule PageController do\nend\n"),
+      Document.new(@template_uri, "phoenix-heex", 1, "<div />")
+    ]
+
+    assert DependencyGraph.affected_read_models(MapSet.new([:pipeline])) == [:routes]
+
+    assert DependencyGraph.affected_diagnostic_uris(MapSet.new([:pipeline]), documents) == [
              controller_uri
            ]
   end

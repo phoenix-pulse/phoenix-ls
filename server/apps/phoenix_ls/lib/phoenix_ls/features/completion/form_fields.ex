@@ -15,8 +15,19 @@ defmodule PhoenixLS.Features.Completion.FormFields do
           GenLSP.Structures.CompletionItem.t()
         ]
   def complete(source, position, facts) when is_binary(source) and is_list(facts) do
-    with {:ok, context} <- CursorContext.at(source, position),
-         {:ok, variable, field_prefix} <- form_field_context(context),
+    with {:ok, context} <- CursorContext.at(source, position) do
+      complete(source, position, context, facts)
+    else
+      _not_form_binding -> []
+    end
+  end
+
+  @spec complete(String.t(), Positions.lsp_position(), CursorContext.t(), [Fact.t()]) :: [
+          GenLSP.Structures.CompletionItem.t()
+        ]
+  def complete(source, position, %CursorContext{} = context, facts)
+      when is_binary(source) and is_list(facts) do
+    with {:ok, variable, field_prefix} <- form_field_context(context),
          {:ok, offset} <- Positions.lsp_position_to_offset(source, position),
          {:ok, document} <- Parser.parse(source),
          {:ok, schema_id} <- schema_for_binding(document.tags, source, offset, variable, facts) do

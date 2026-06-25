@@ -3,9 +3,19 @@ defmodule PhoenixLS.Index.ElixirSource do
   Extracts source-backed index facts from Elixir source text.
   """
 
-  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
-  alias PhoenixLS.Introspection.{Component, LiveView, Router, Schema, Template}
+
+  alias PhoenixLS.Introspection.{
+    Changeset,
+    Component,
+    Controller,
+    LiveView,
+    Router,
+    Schema,
+    Source,
+    Template
+  }
+
   alias PhoenixLS.Introspection.Router.HelperReferences
 
   @parse_options [columns: true, token_metadata: true]
@@ -33,6 +43,8 @@ defmodule PhoenixLS.Index.ElixirSource do
 
         introspection_facts =
           Component.facts_for_module_body(module, body, uri, provenance) ++
+            Changeset.facts_for_module_body(module, body, uri, provenance) ++
+            Controller.facts_for_module_body(module, body, uri, provenance) ++
             Router.facts_for_module_body(module, body, uri, provenance) ++
             Schema.facts_for_module_body(module, body, uri, provenance) ++
             LiveView.facts_for_module_body(module, body, uri, provenance)
@@ -49,7 +61,7 @@ defmodule PhoenixLS.Index.ElixirSource do
     case function_signature(head) do
       {:ok, name, arity} ->
         visibility = visibility(visibility)
-        range = source_range(meta)
+        range = Source.source_range(meta)
         provenance = provenance(opts)
 
         [function_fact(module, visibility, name, arity, range, uri, provenance)]
@@ -80,7 +92,7 @@ defmodule PhoenixLS.Index.ElixirSource do
       kind: :module,
       id: module,
       uri: uri,
-      range: source_range(meta),
+      range: Source.source_range(meta),
       provenance: provenance(opts),
       data: %{module: module}
     )
@@ -136,27 +148,6 @@ defmodule PhoenixLS.Index.ElixirSource do
   end
 
   defp function_signature(_head), do: :error
-
-  defp source_range(meta) do
-    %Range{
-      start: position(meta),
-      end: position(end_meta(meta))
-    }
-  end
-
-  defp end_meta(meta) do
-    Keyword.get(meta, :end_of_expression) || Keyword.get(meta, :end) || meta
-  end
-
-  defp position(meta) do
-    %Position{
-      line: meta |> Keyword.get(:line, 1) |> zero_based(),
-      character: meta |> Keyword.get(:column, 1) |> zero_based()
-    }
-  end
-
-  defp zero_based(value) when is_integer(value) and value > 0, do: value - 1
-  defp zero_based(_value), do: 0
 
   defp provenance(opts) do
     provenance = %{

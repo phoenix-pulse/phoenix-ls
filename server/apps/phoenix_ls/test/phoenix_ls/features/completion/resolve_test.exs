@@ -3,6 +3,9 @@ defmodule PhoenixLS.Features.Completion.ResolveTest do
 
   alias GenLSP.Structures.CompletionItem
   alias PhoenixLS.Features.Completion.Resolve
+  alias PhoenixLS.Index.ElixirSource
+
+  @uri "file:///tmp/app/lib/app_web/components/core_components.ex"
 
   test "adds documentation for route helper completion payloads" do
     item = %CompletionItem{
@@ -57,6 +60,53 @@ defmodule PhoenixLS.Features.Completion.ResolveTest do
     assert documentation =~ "Source"
     assert documentation =~ "/tmp/app/lib/app_web/components/core_components.ex:11:3"
     assert documentation =~ "AppWeb.CoreComponents"
+  end
+
+  test "resolves slot completions with parent component docs attrs and example" do
+    item = %CompletionItem{
+      label: ":item",
+      detail: "slot :item",
+      data: %{
+        "kind" => "component_slot",
+        "id" => "AppWeb.CoreComponents.list/1:slot:item"
+      }
+    }
+
+    assert %{documentation: documentation} = Resolve.resolve(item, slot_component_facts())
+
+    assert documentation =~ "slot :item"
+    assert documentation =~ "component AppWeb.CoreComponents.list/1"
+    assert documentation =~ "required: true"
+    assert documentation =~ "List row"
+    assert documentation =~ "slot attr :role, :string"
+    assert documentation =~ "Required item role"
+    assert documentation =~ "Example"
+    assert documentation =~ "<:item"
+  end
+
+  test "resolves built-in Phoenix component completions with attr docs" do
+    cases = [
+      {".link", "Phoenix.Component.link/1",
+       ["Renders a link", "attr :navigate, :string", "attr :replace, :boolean"]},
+      {".form", "Phoenix.Component.form/1",
+       ["Renders a form tag", "attr :for, :any", "attr :method, :string"]},
+      {".live_component", "Phoenix.Component.live_component/1",
+       ["Renders a stateful LiveComponent", "attr :module, :atom", "attr :id, :string"]}
+    ]
+
+    for {label, id, expected_fragments} <- cases do
+      item = %CompletionItem{
+        label: label,
+        detail: id,
+        data: %{"kind" => "phoenix_component", "id" => id}
+      }
+
+      assert %{documentation: documentation} = Resolve.resolve(item)
+
+      for expected <- expected_fragments do
+        assert documentation =~ expected
+      end
+    end
   end
 
   cases = [
@@ -138,5 +188,24 @@ defmodule PhoenixLS.Features.Completion.ResolveTest do
         assert documentation =~ expected
       end
     end
+  end
+
+  defp slot_component_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.CoreComponents do
+        slot :item, required: true, doc: "List row" do
+          attr :role, :string, required: true, doc: "Required item role"
+        end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <ul><%= render_slot(@item) %></ul>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
   end
 end

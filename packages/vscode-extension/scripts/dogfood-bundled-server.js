@@ -9,7 +9,11 @@ const defaultMethods = [
   'phoenix/listRoutes',
   'phoenix/listTemplates',
   'phoenix/listEvents',
-  'phoenix/listLiveView'
+  'phoenix/listLiveView',
+  'phoenix/listUploads',
+  'phoenix/listHooks',
+  'phoenix/listColocatedAssets',
+  'phoenix/listControllers'
 ];
 
 function defaultExtensionDir() {
@@ -21,7 +25,7 @@ function defaultProjectRoot(extensionDir) {
 }
 
 function defaultRootDir(projectRoot) {
-  return path.join(projectRoot, 'server', 'apps', 'phoenix_ls', 'test', 'fixtures', 'liveview_components_app');
+  return path.join(projectRoot, 'server', 'apps', 'phoenix_ls', 'test', 'fixtures', 'phoenix_1_8_complex_app');
 }
 
 function defaultServerPath(extensionDir) {
@@ -120,6 +124,10 @@ function validateExplorerContracts(results) {
   validateTemplatePayloads(results['phoenix/listTemplates'] || []);
   validateEventPayloads(results['phoenix/listEvents'] || []);
   validateLiveViewPayloads(results['phoenix/listLiveView'] || []);
+  validateUploadPayloads(results['phoenix/listUploads'] || []);
+  validateHookPayloads(results['phoenix/listHooks'] || []);
+  validateColocatedAssetPayloads(results['phoenix/listColocatedAssets'] || []);
+  validateControllerPayloads(results['phoenix/listControllers'] || []);
 }
 
 function validateSchemaPayloads(schemas) {
@@ -228,8 +236,101 @@ function validateLiveViewPayloads(liveViews) {
   });
 }
 
+function validateUploadPayloads(uploads) {
+  uploads.forEach((upload, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(upload.name)) missing.push('name');
+    if (!nonEmptyString(upload.module)) missing.push('module');
+    if (!nonEmptyString(upload.filePath)) missing.push('filePath');
+    if (!validLocation(upload.location)) missing.push('location');
+    if (!plainObject(upload.options)) missing.push('options');
+    if (typeof upload.usagesCount !== 'number' || !Number.isFinite(upload.usagesCount)) {
+      missing.push('usagesCount');
+    }
+    if (!Array.isArray(upload.usages)) missing.push('usages');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listUploads[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateHookPayloads(hooks) {
+  hooks.forEach((hook, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(hook.name)) missing.push('name');
+    if (typeof hook.defined !== 'boolean') missing.push('defined');
+    if (!nonEmptyString(hook.filePath)) missing.push('filePath');
+    if (!validLocation(hook.location)) missing.push('location');
+    if (typeof hook.usagesCount !== 'number' || !Number.isFinite(hook.usagesCount)) {
+      missing.push('usagesCount');
+    }
+    if (!Array.isArray(hook.usages)) missing.push('usages');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listHooks[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateColocatedAssetPayloads(groups) {
+  groups.forEach((group, groupIndex) => {
+    const missing = [];
+
+    if (!nonEmptyString(group.ownerModule)) missing.push('ownerModule');
+    if (typeof group.assetsCount !== 'number' || !Number.isFinite(group.assetsCount)) {
+      missing.push('assetsCount');
+    }
+    if (!Array.isArray(group.assets)) missing.push('assets');
+
+    if (missing.length > 0) {
+      throw new Error(
+        `phoenix/listColocatedAssets[${groupIndex}] missing contract fields: ${missing.join(', ')}`
+      );
+    }
+
+    group.assets.forEach((asset, assetIndex) => {
+      const assetMissing = [];
+
+      if (!nonEmptyString(asset.kind)) assetMissing.push('kind');
+      if (!nonEmptyString(asset.typeModule)) assetMissing.push('typeModule');
+      if (!nonEmptyString(asset.generatedName)) assetMissing.push('generatedName');
+      if (!nonEmptyString(asset.filePath)) assetMissing.push('filePath');
+      if (!validLocation(asset.location)) assetMissing.push('location');
+
+      if (assetMissing.length > 0) {
+        throw new Error(
+          `phoenix/listColocatedAssets[${groupIndex}].assets[${assetIndex}] missing contract fields: ${assetMissing.join(', ')}`
+        );
+      }
+    });
+  });
+}
+
+function validateControllerPayloads(controllers) {
+  controllers.forEach((controller, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(controller.module)) missing.push('module');
+    if (!nonEmptyString(controller.filePath)) missing.push('filePath');
+    if (!validLocation(controller.location)) missing.push('location');
+    if (!Array.isArray(controller.actions)) missing.push('actions');
+    if (!Array.isArray(controller.plugAssigns)) missing.push('plugAssigns');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listControllers[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
 function nonEmptyString(value) {
   return typeof value === 'string' && value.length > 0;
+}
+
+function plainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function validLocation(location) {

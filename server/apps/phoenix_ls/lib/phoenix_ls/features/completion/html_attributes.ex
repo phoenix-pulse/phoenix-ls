@@ -351,6 +351,36 @@ defmodule PhoenixLS.Features.Completion.HTMLAttributes do
     "video" => @video_attrs
   }
 
+  @type attribute_spec ::
+          {String.t(), String.t(), [String.t()]}
+          | {String.t(), String.t(), [String.t()], :boolean | {:snippet, String.t()}}
+
+  @spec attribute_specs_for(String.t()) :: [attribute_spec()]
+  def attribute_specs_for(tag) when is_binary(tag), do: attributes_for(tag)
+
+  @spec global_attribute_specs() :: [attribute_spec()]
+  def global_attribute_specs, do: @global_attrs
+
+  @spec attribute_name(attribute_spec()) :: String.t()
+  def attribute_name({name, _detail, _values}), do: name
+  def attribute_name({name, _detail, _values, _kind}), do: name
+
+  @spec attribute_detail(attribute_spec()) :: String.t()
+  def attribute_detail({_name, detail, _values}), do: detail
+  def attribute_detail({_name, detail, _values, _kind}), do: detail
+
+  @spec attribute_insert_text(attribute_spec()) :: String.t()
+  def attribute_insert_text({name, _detail, []}), do: ~s[#{name}="${1:value}"]
+  def attribute_insert_text({name, _detail, values}), do: choice_snippet(name, values)
+  def attribute_insert_text({name, _detail, _values, :boolean}), do: name
+  def attribute_insert_text({_name, _detail, _values, {:snippet, snippet}}), do: snippet
+
+  @spec attribute_insert_text_format(attribute_spec()) :: InsertTextFormat.t()
+  def attribute_insert_text_format({_name, _detail, _values, :boolean}),
+    do: InsertTextFormat.plain_text()
+
+  def attribute_insert_text_format(_attribute), do: InsertTextFormat.snippet()
+
   @spec complete(CursorContext.t(), [PhoenixLS.Index.Fact.t()]) :: [CompletionItem.t()]
   def complete(%CursorContext{kind: :attribute_name, tag: tag, prefix: prefix}, _facts) do
     with {:ok, html_tag} <- html_tag(tag) do
@@ -412,15 +442,15 @@ defmodule PhoenixLS.Features.Completion.HTMLAttributes do
   defp match_name?({name, _detail, _values, _kind}, attribute), do: name == attribute
 
   defp attribute_item(attribute, tag) do
-    name = attr_name(attribute)
+    name = attribute_name(attribute)
 
     {name,
      %CompletionItem{
        label: name,
        kind: CompletionItemKind.property(),
-       detail: attr_detail(attribute),
-       insert_text: attr_insert_text(attribute),
-       insert_text_format: attr_insert_text_format(attribute),
+       detail: attribute_detail(attribute),
+       insert_text: attribute_insert_text(attribute),
+       insert_text_format: attribute_insert_text_format(attribute),
        data: %{"kind" => "html_attr", "tag" => tag, "name" => name}
      }}
   end
@@ -441,22 +471,6 @@ defmodule PhoenixLS.Features.Completion.HTMLAttributes do
        }
      }}
   end
-
-  defp attr_name({name, _detail, _values}), do: name
-  defp attr_name({name, _detail, _values, _kind}), do: name
-
-  defp attr_detail({_name, detail, _values}), do: detail
-  defp attr_detail({_name, detail, _values, _kind}), do: detail
-
-  defp attr_insert_text({name, _detail, []}), do: ~s[#{name}="${1:value}"]
-  defp attr_insert_text({name, _detail, values}), do: choice_snippet(name, values)
-  defp attr_insert_text({name, _detail, _values, :boolean}), do: name
-  defp attr_insert_text({_name, _detail, _values, {:snippet, snippet}}), do: snippet
-
-  defp attr_insert_text_format({_name, _detail, _values, :boolean}),
-    do: InsertTextFormat.plain_text()
-
-  defp attr_insert_text_format(_attribute), do: InsertTextFormat.snippet()
 
   defp choice_snippet(name, values) do
     ~s[#{name}="${1|#{Enum.join(values, ",")}|}"]

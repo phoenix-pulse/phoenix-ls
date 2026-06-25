@@ -5,6 +5,7 @@ defmodule PhoenixLS.LSP.RequestContext do
 
   alias GenLSP.LSP
   alias PhoenixLS.Index.Snapshot
+  alias PhoenixLS.LSP.ServerConfig
   alias PhoenixLS.Project.Manager
 
   @enforce_keys [:lsp, :assigns]
@@ -44,6 +45,11 @@ defmodule PhoenixLS.LSP.RequestContext do
     else
       _missing -> :error
     end
+  end
+
+  @spec server_config!(t()) :: ServerConfig.t()
+  def server_config!(%__MODULE__{assigns: assigns}) do
+    Map.fetch!(assigns, :server_config)
   end
 
   @spec project_snapshot_for_uri(t(), String.t()) :: {:ok, Snapshot.t()} | :error

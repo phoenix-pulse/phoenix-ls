@@ -618,4 +618,259 @@ describe('PhoenixPulseTreeProvider', () => {
     expect(firstFileTemplates[0].description).toBe('AppWeb.PageHTML');
     expect(secondFileTemplates[0].description).toBe('AppWeb.Admin.PageHTML');
   });
+
+  it('shows controller graph and navigates render targets to templates', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listControllers') {
+          return [
+            {
+              name: 'AppWeb.ProductController',
+              module: 'AppWeb.ProductController',
+              filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+              location: { line: 3, character: 2 },
+              actions: [
+                {
+                  name: 'show',
+                  arity: 2,
+                  filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+                  location: { line: 8, character: 2 },
+                  routes: [
+                    {
+                      verb: 'get',
+                      path: '/products/:id',
+                      helperBase: 'product',
+                      filePath: '/workspace/lib/app_web/router.ex',
+                      location: { line: 12, character: 4 }
+                    }
+                  ],
+                  renders: [
+                    {
+                      template: 'show',
+                      format: 'html',
+                      templatePath: '/workspace/lib/app_web/controllers/product_html/show.html.heex',
+                      templateLocation: { line: 0, character: 0 },
+                      assigns: ['product'],
+                      confidence: 'exact',
+                      filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+                      location: { line: 11, character: 6 }
+                    }
+                  ],
+                  assigns: [
+                    {
+                      name: 'product',
+                      source: 'assign',
+                      confidence: 'exact',
+                      filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+                      location: { line: 9, character: 8 }
+                    }
+                  ],
+                  layouts: []
+                }
+              ],
+              plugAssigns: [
+                {
+                  name: 'current_account',
+                  plug: 'load_account',
+                  confidence: 'medium',
+                  filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+                  location: { line: 16, character: 4 }
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const controllersCategory = roots.find(item => item.label === 'Controllers');
+    const controllers = await provider.getChildren(controllersCategory);
+    const actions = await provider.getChildren(controllers[0]);
+    const graphItems = await provider.getChildren(actions[0]);
+
+    expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listControllers', {});
+    expect(controllers[0].label).toBe('AppWeb.ProductController');
+    expect(actions[0].label).toBe('show/2');
+    expect(graphItems.map(item => item.label)).toEqual([
+      'GET /products/:id',
+      'render :show.html',
+      '@product',
+      '@current_account'
+    ]);
+    expect(graphItems[1].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: [
+        '/workspace/lib/app_web/controllers/product_html/show.html.heex',
+        { line: 0, character: 0 }
+      ]
+    });
+  });
+
+  it('stores copy payloads for nested Explorer item kinds', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listSchemas') {
+          return [
+            {
+              name: 'App.Catalog.Product',
+              tableName: 'products',
+              filePath: '/workspace/lib/app/catalog/product.ex',
+              location: { line: 10, character: 2 },
+              fieldsCount: 1,
+              associationsCount: 1,
+              fields: [
+                {
+                  name: 'name',
+                  type: 'string',
+                  elixirType: ':string',
+                  filePath: '/workspace/lib/app/catalog/product.ex',
+                  location: { line: 14, character: 6 }
+                }
+              ],
+              associations: [
+                {
+                  fieldName: 'category',
+                  targetModule: 'App.Catalog.Category',
+                  type: 'belongs_to',
+                  filePath: '/workspace/lib/app/catalog/product.ex',
+                  location: { line: 18, character: 6 }
+                }
+              ]
+            }
+          ];
+        }
+
+        if (method === 'phoenix/listComponents') {
+          return [
+            {
+              name: 'table',
+              module: 'AppWeb.CoreComponents',
+              filePath: '/workspace/lib/app_web/components/core_components.ex',
+              location: { line: 20, character: 2 },
+              attributesCount: 1,
+              slotsCount: 1,
+              attributes: [
+                {
+                  name: 'rows',
+                  type: 'list',
+                  required: true,
+                  filePath: '/workspace/lib/app_web/components/core_components.ex',
+                  location: { line: 12, character: 2 }
+                }
+              ],
+              slots: [
+                {
+                  name: 'col',
+                  required: false,
+                  filePath: '/workspace/lib/app_web/components/core_components.ex',
+                  location: { line: 31, character: 2 },
+                  attributes: [
+                    {
+                      name: 'label',
+                      type: 'string',
+                      required: true,
+                      filePath: '/workspace/lib/app_web/components/core_components.ex',
+                      location: { line: 32, character: 4 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ];
+        }
+
+        if (method === 'phoenix/listLiveView') {
+          return [
+            {
+              module: 'AppWeb.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              location: { line: 5, character: 2 },
+              assigns: [
+                {
+                  name: 'selected_id',
+                  filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+                  location: { line: 28, character: 14 }
+                }
+              ],
+              functions: [
+                {
+                  name: 'handle_event',
+                  type: 'handle_event',
+                  eventName: 'save',
+                  filePath: '/workspace/lib/app_web/live/product_live/events.ex',
+                  location: { line: 48, character: 4 }
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+
+    const schemasCategory = roots.find(item => item.label === 'Schemas');
+    const schemas = await provider.getChildren(schemasCategory);
+    const schemaSections = await provider.getChildren(schemas[0]);
+    const schemaFields = await provider.getChildren(
+      schemaSections.find(item => item.label === 'Fields')
+    );
+    const schemaAssociations = await provider.getChildren(
+      schemaSections.find(item => item.label === 'Associations')
+    );
+
+    expect(schemaFields[0].data).toMatchObject({
+      name: 'name',
+      filePath: '/workspace/lib/app/catalog/product.ex'
+    });
+    expect(schemaAssociations[0].data).toMatchObject({
+      fieldName: 'category',
+      filePath: '/workspace/lib/app/catalog/product.ex'
+    });
+
+    const componentsCategory = roots.find(item => item.label === 'Components');
+    const componentFiles = await provider.getChildren(componentsCategory);
+    const components = await provider.getChildren(componentFiles[0]);
+    const componentChildren = await provider.getChildren(components[0]);
+    const slotAttrs = await provider.getChildren(componentChildren.find(item => item.label === ':col'));
+
+    expect(componentChildren[0].data).toMatchObject({
+      name: 'rows',
+      filePath: '/workspace/lib/app_web/components/core_components.ex'
+    });
+    expect(componentChildren[1].data).toMatchObject({
+      name: 'col',
+      filePath: '/workspace/lib/app_web/components/core_components.ex'
+    });
+    expect(slotAttrs[0].data).toMatchObject({
+      name: 'label',
+      filePath: '/workspace/lib/app_web/components/core_components.ex'
+    });
+
+    const liveViewCategory = roots.find(item => item.label === 'LiveView');
+    const liveViewFolders = await provider.getChildren(liveViewCategory);
+    const liveViewModules = await provider.getChildren(liveViewFolders[0]);
+    const liveViewChildren = await provider.getChildren(liveViewModules[0]);
+
+    expect(liveViewModules[0].data).toMatchObject({
+      module: 'AppWeb.ProductLive.Index',
+      filePath: '/workspace/lib/app_web/live/product_live/index.ex'
+    });
+    expect(liveViewChildren[0].data).toMatchObject({
+      name: 'selected_id',
+      filePath: '/workspace/lib/app_web/live/product_live/index.ex'
+    });
+    expect(liveViewChildren[1].data).toMatchObject({
+      name: 'handle_event',
+      eventName: 'save',
+      filePath: '/workspace/lib/app_web/live/product_live/events.ex'
+    });
+  });
 });

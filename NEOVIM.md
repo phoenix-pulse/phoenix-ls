@@ -2,7 +2,7 @@
 
 **Intelligent IDE tooling for Phoenix LiveView development in Neovim**
 
-This is the complete Neovim plugin for Phoenix Pulse, providing all LSP features plus custom UI components including Project Explorer and ERD Diagram viewer.
+This is the Neovim plugin for Phoenix Pulse, providing Phoenix LS features plus custom UI components including Project Explorer and ERD Diagram viewer.
 
 ---
 
@@ -10,7 +10,7 @@ This is the complete Neovim plugin for Phoenix Pulse, providing all LSP features
 
 - **Neovim**: 0.8.0 or higher (tested on 0.9 and 0.10)
 - **Elixir/Mix**: 1.17+ when building from source, or a bundled Phoenix LS executable
-- **Phoenix**: 1.6+ or 1.7+ project
+- **Phoenix**: 1.7+ project
 - **nvim-lspconfig**: Required plugin
 - **nvim-web-devicons**: Optional (recommended for icons)
 
@@ -379,17 +379,18 @@ After installation, access built-in Vim help:
 
 ## 🎯 Supported Phoenix Versions
 
-| Feature | Phoenix 1.6 | Phoenix 1.7+ |
-|---------|-------------|--------------|
-| Function Components | ✅ | ✅ |
-| Component Attributes & Slots | ✅ | ✅ |
-| Templates (`:view` modules) | ✅ | ✅ |
-| Templates (`:html` modules) | - | ✅ |
-| Verified Routes (`~p`) | - | ✅ |
-| Route Helpers | ✅ | ✅ |
-| LiveView Events | ✅ | ✅ |
-| Ecto Schemas | ✅ | ✅ |
-| Controller Assigns | ✅ | ✅ |
+Phoenix Pulse targets Phoenix 1.7+ projects, including Phoenix 1.8.
+
+| Feature | Phoenix 1.7+ |
+|---------|--------------|
+| Function Components | ✅ |
+| Component Attributes & Slots | ✅ |
+| Templates (`:html` modules) | ✅ |
+| Verified Routes (`~p`) | ✅ |
+| Route Helpers | ✅ |
+| LiveView Events | ✅ |
+| Ecto Schemas | ✅ |
+| Controller Assigns | ✅ |
 
 ---
 

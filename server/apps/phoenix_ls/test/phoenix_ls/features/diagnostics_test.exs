@@ -6,7 +6,9 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   alias PhoenixLS.Features.Diagnostics
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Asset.Hooks, as: AssetHooks
   alias PhoenixLS.Introspection.Template
+  alias PhoenixLS.Support.Fixtures
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
   @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
@@ -41,6 +43,60 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown attr "unknown" for .button)
   end
 
+  test "reports local components that are unavailable in the template module" do
+    source = "<.button />"
+    {:ok, document} = Parser.parse(source)
+    facts = facts() ++ Template.facts(@template_uri, source)
+
+    [diagnostic] = Diagnostics.diagnostics(@template_uri, document, facts)
+
+    assert diagnostic.code == "phoenix.component_not_imported"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Component .button is not imported in AppWeb.PageHTML)
+
+    assert diagnostic.data == %{
+             "kind" => "component_not_imported",
+             "tag" => ".button",
+             "component" => "button",
+             "module" => "AppWeb.PageHTML"
+           }
+  end
+
+  test "uses imports to validate local components in template modules" do
+    source = "<.button />"
+    {:ok, document} = Parser.parse(source)
+
+    {:ok, html_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/controllers/page_html.ex", """
+      defmodule AppWeb.PageHTML do
+        import AppWeb.CoreComponents
+      end
+      """)
+
+    facts = facts() ++ Template.facts(@template_uri, source) ++ html_facts
+
+    [diagnostic] = Diagnostics.diagnostics(@template_uri, document, facts)
+
+    assert diagnostic.code == "phoenix.missing_required_attr"
+    assert diagnostic.message == ~s(Missing required attr "label" for .button)
+  end
+
+  test "uses Phoenix web macro imports to validate local components in template modules" do
+    source = "<.button />"
+    {:ok, document} = Parser.parse(source)
+
+    facts =
+      facts() ++
+        Template.facts(@template_uri, source) ++
+        page_html_uses_web_macro_facts() ++
+        web_macro_import_facts()
+
+    [diagnostic] = Diagnostics.diagnostics(@template_uri, document, facts)
+
+    assert diagnostic.code == "phoenix.missing_required_attr"
+    assert diagnostic.message == ~s(Missing required attr "label" for .button)
+  end
+
   test "reports unknown attrs on remote component tags" do
     [diagnostic] = diagnostics(~s(<CoreComponents.button label="Save" unknown="x" />))
 
@@ -48,11 +104,45 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown attr "unknown" for CoreComponents.button)
   end
 
-  test "reports unknown slots" do
-    [diagnostic] = diagnostics("<:footer />")
+  test "does not report unknown slots without a resolved parent component" do
+    assert diagnostics("<:footer />") == []
+  end
 
-    assert diagnostic.code == "phoenix.unknown_slot"
-    assert diagnostic.message == ~s(Unknown slot ":footer")
+  test "accepts generated Phoenix component slots and default inner blocks" do
+    assert diagnostics(
+             """
+             <.header>
+               Product {@product.id}
+               <:subtitle>This is a product record from your database.</:subtitle>
+               <:actions>
+                 <span>Edit product</span>
+               </:actions>
+             </.header>
+
+             <.list>
+               <:item title="Title">{@product.title}</:item>
+               <:item title="Slug">{@product.slug}</:item>
+             </.list>
+             """,
+             Fixtures.generated_core_component_facts()
+           ) == []
+  end
+
+  test "accepts generated Phoenix component directives and forwarded global attrs" do
+    assert diagnostics(
+             """
+             <.modal :if={@live_action == :edit} id="product-modal">
+               Modal content
+             </.modal>
+
+             <.simple_form :let={f} for={@form} action="/orders">
+               <.input field={f[:price]} type="number" step="0.01" />
+             </.simple_form>
+
+             <.metric_card :for={metric <- @metrics} title={metric.title} />
+             """,
+             Fixtures.generated_core_component_facts()
+           ) == []
   end
 
   test "reports unknown slot attrs" do
@@ -239,6 +329,25 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostics(~S|<button phx-click={JS.show(to: "#modal")} />|) == []
   end
 
+  test "reports exact invalid LiveView JS command option names" do
+    [diagnostic] = diagnostics(~S|<button phx-click={JS.show(unknown: "#modal")} />|)
+
+    assert diagnostic.code == "phoenix.invalid_live_view_js_option"
+    assert diagnostic.message == ~s(Unknown JS.show option :unknown)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_view_js_option",
+             "command" => "show",
+             "option" => "unknown",
+             "knownOptions" => ["to", "transition", "time", "display", "blocking"]
+           }
+  end
+
+  test "does not validate dynamic LiveView JS command expressions" do
+    assert diagnostics(~S|<button phx-click={JS.show(options)} />|) == []
+    assert diagnostics(~S|<button phx-click={build_js(@target)} />|) == []
+  end
+
   test "reports unknown phx attribute names" do
     [diagnostic] = diagnostics(~s(<button phx-clik="save">))
 
@@ -262,16 +371,64 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
              "kind" => "invalid_phx_attr_value",
              "attr" => "phx-update",
              "value" => "morph",
-             "values" => ["replace", "append", "prepend", "ignore", "stream"]
+             "values" => ["replace", "stream", "ignore"]
            }
   end
 
   test "does not report valid constrained phx attr values" do
     assert diagnostics(~s(<div phx-update="replace" />)) == []
-    assert diagnostics(~s(<div phx-update="append" />)) == []
-    assert diagnostics(~s(<div phx-update="prepend" />)) == []
     assert diagnostics(~s(<div phx-update="ignore" />)) == []
     assert diagnostics(~s(<div phx-update="stream" />)) == []
+  end
+
+  test "accepts dynamic HEEx attr maps without unknown attr diagnostics" do
+    assert diagnostics(~s(<div {@attrs}></div>)) == []
+
+    assert diagnostics(
+             ~s(<.input {@rest} />),
+             Fixtures.generated_core_component_facts()
+           ) == []
+  end
+
+  test "reports mismatched HEEx closing tags" do
+    [diagnostic] = diagnostics(~s(<div><span></div>))
+
+    assert diagnostic.code == "phoenix.mismatched_closing_tag"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Expected closing tag </span>, found </div>.)
+
+    assert diagnostic.data == %{
+             "kind" => "mismatched_closing_tag",
+             "expected" => "span",
+             "actual" => "div"
+           }
+  end
+
+  test "reports duplicate literal HEEx attrs" do
+    [diagnostic] = diagnostics(~s(<div id="first" id="second"></div>))
+
+    assert diagnostic.code == "phoenix.duplicate_attr"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Duplicate attr "id" on div.)
+
+    assert diagnostic.data == %{
+             "kind" => "duplicate_attr",
+             "tag" => "div",
+             "attr" => "id"
+           }
+  end
+
+  test "reports void HEEx elements with child tags" do
+    [diagnostic] = diagnostics(~s(<input><span></span></input>))
+
+    assert diagnostic.code == "phoenix.void_element_child"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Void element "input" must not have child content.)
+
+    assert diagnostic.data == %{
+             "kind" => "void_element_child",
+             "tag" => "input"
+           }
   end
 
   test "reports HTML :for loops without DOM tracking" do
@@ -362,6 +519,191 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message =~ "id={dom_id}"
   end
 
+  test "reports unknown LiveView upload names in live_file_input" do
+    source = ~s(<.live_file_input upload={@uploads.missing} />)
+    [diagnostic] = diagnostics(source, upload_facts(source))
+
+    assert diagnostic.code == "phoenix.unknown_upload"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Unknown LiveView upload "missing")
+
+    assert diagnostic.data == %{
+             "kind" => "unknown_upload",
+             "module" => "AppWeb.ProductLive",
+             "upload" => "missing",
+             "knownUploads" => ["avatar"]
+           }
+  end
+
+  test "reports upload forms missing phx-change" do
+    source = """
+    <form phx-submit="save">
+      <.live_file_input upload={@uploads.avatar} />
+    </form>
+    """
+
+    [diagnostic] = diagnostics(source, upload_facts(source))
+
+    assert diagnostic.code == "phoenix.upload_form_missing_phx_change"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Upload form containing @uploads.avatar should define phx-change.)
+
+    assert diagnostic.data == %{
+             "kind" => "upload_form_missing_binding",
+             "binding" => "phx-change",
+             "module" => "AppWeb.ProductLive",
+             "upload" => "avatar",
+             "tag" => "form"
+           }
+  end
+
+  test "reports upload forms missing phx-submit" do
+    source = """
+    <form phx-change="validate">
+      <.live_file_input upload={@uploads.avatar} />
+    </form>
+    """
+
+    [diagnostic] = diagnostics(source, upload_facts(source))
+
+    assert diagnostic.code == "phoenix.upload_form_missing_phx_submit"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Upload form containing @uploads.avatar should define phx-submit.)
+
+    assert diagnostic.data == %{
+             "kind" => "upload_form_missing_binding",
+             "binding" => "phx-submit",
+             "module" => "AppWeb.ProductLive",
+             "upload" => "avatar",
+             "tag" => "form"
+           }
+  end
+
+  test "reports upload Phoenix forms missing phx-change" do
+    source = """
+    <.form phx-submit="save">
+      <.live_file_input upload={@uploads.avatar} />
+    </.form>
+    """
+
+    [diagnostic] = diagnostics(source, upload_facts(source))
+
+    assert diagnostic.code == "phoenix.upload_form_missing_phx_change"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Upload form containing @uploads.avatar should define phx-change.)
+
+    assert diagnostic.data == %{
+             "kind" => "upload_form_missing_binding",
+             "binding" => "phx-change",
+             "module" => "AppWeb.ProductLive",
+             "upload" => "avatar",
+             "tag" => ".form"
+           }
+  end
+
+  test "scopes upload diagnostics to the current template uri" do
+    source = """
+    <form phx-change="validate" phx-submit="save">
+      <.live_file_input upload={@uploads.avatar} />
+    </form>
+    """
+
+    {:ok, document} = Parser.parse(source)
+
+    other_uri = "file:///tmp/app/lib/app_web/live/other_live.html.heex"
+
+    other_usage_facts =
+      Template.upload_usage_facts(other_uri, ~s(<.live_file_input upload={@uploads.missing} />))
+
+    assert Diagnostics.diagnostics(
+             @live_template_uri,
+             document,
+             upload_facts(source) ++ other_usage_facts
+           ) == []
+  end
+
+  test "reports unknown literal LiveView hook names" do
+    source = ~s(<div phx-hook="MissingHook"></div>)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] = Diagnostics.diagnostics(@live_template_uri, document, hook_facts(source))
+
+    assert diagnostic.code == "phoenix.unknown_hook"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Unknown LiveView hook "MissingHook")
+
+    assert diagnostic.data == %{
+             "kind" => "unknown_hook",
+             "name" => "MissingHook",
+             "attribute" => "phx-hook",
+             "knownHooks" => ["PhoneNumber"]
+           }
+  end
+
+  test "accepts known literal LiveView hook names" do
+    source = ~s(<div phx-hook="PhoneNumber"></div>)
+    {:ok, document} = Parser.parse(source)
+
+    assert Diagnostics.diagnostics(@live_template_uri, document, hook_facts(source)) == []
+  end
+
+  test "reports invalid colocated hook names" do
+    {source, expected_range} =
+      source_and_range(
+        ~s(<script :type={Phoenix.LiveView.ColocatedHook} name="[!Sortable!]"></script>)
+      )
+
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(
+        @live_template_uri,
+        document,
+        Template.colocated_asset_facts(@live_template_uri, source)
+      )
+
+    assert diagnostic.code == "phoenix.invalid_colocated_hook_name"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Invalid colocated hook name "Sortable")
+    assert diagnostic.range == expected_range
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_colocated_hook_name",
+             "name" => "Sortable",
+             "expected" => "dot-prefixed PascalCase, for example .Sortable"
+           }
+  end
+
+  test "accepts valid colocated hook names" do
+    source = ~s(<script :type={Phoenix.LiveView.ColocatedHook} name=".Sortable"></script>)
+    {:ok, document} = Parser.parse(source)
+
+    assert Diagnostics.diagnostics(
+             @live_template_uri,
+             document,
+             Template.colocated_asset_facts(@live_template_uri, source)
+           ) == []
+  end
+
+  test "does not leak hook usage facts into document-only diagnostics" do
+    {:ok, document} = Parser.parse("<div></div>")
+
+    other_uri = "file:///tmp/app/lib/app_web/live/other_live.html.heex"
+
+    other_usage_facts =
+      Template.hook_usage_facts(other_uri, ~s(<div phx-hook="MissingHook"></div>))
+
+    diagnostics = Diagnostics.diagnostics(document, other_usage_facts)
+
+    refute Enum.any?(diagnostics, &(&1.code == "phoenix.unknown_hook"))
+  end
+
   test "reports unknown verified routes" do
     [diagnostic] = diagnostics(~s(<.link navigate={~p"/missing"} />))
 
@@ -373,11 +715,351 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostics(~s(<.link navigate={~p"/products/123"} />)) == []
   end
 
+  test "accepts generated Phoenix static asset verified routes" do
+    assert diagnostics("""
+           <img src={~p"/images/logo.svg"} />
+           <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+           <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
+           """) == []
+  end
+
+  test "warns when patch navigation targets a different LiveView" do
+    source = ~s(<.link patch={~p"/other-live"} />)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@live_template_uri, document, live_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_patch"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+    assert diagnostic.message == ~s(Patch navigation to "/other-live" targets AppWeb.OtherLive.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_patch",
+             "navigation" => "patch",
+             "path" => "/other-live",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetModule" => "AppWeb.OtherLive"
+           }
+  end
+
+  test "warns when HEEx patch targets a known non-LiveView route" do
+    source = ~s(<.link patch={~p"/login"} />)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@live_template_uri, document, non_live_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_patch"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Patch navigation to "/login" targets non-LiveView route GET /login.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_patch",
+             "navigation" => "patch",
+             "path" => "/login",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetKind" => "route",
+             "targetVerb" => "get",
+             "targetModule" => "AppWeb.SessionController"
+           }
+  end
+
+  test "warns when navigate crosses live sessions" do
+    source = ~s(<.link navigate={~p"/different-session"} />)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@live_template_uri, document, live_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_navigate"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Navigate to "/different-session" changes live session from public to admin.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_navigate",
+             "navigation" => "navigate",
+             "path" => "/different-session",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetModule" => "AppWeb.AdminLive",
+             "currentLiveSession" => "public",
+             "targetLiveSession" => "admin"
+           }
+  end
+
+  test "does not run LiveView navigation checks for controller templates" do
+    source = ~s(<.back navigate={~p"/orders"}>Back to orders</.back>)
+    {:ok, document} = Parser.parse(source)
+
+    facts =
+      Fixtures.generated_core_component_facts() ++
+        Template.facts(@template_uri, source) ++
+        imported_page_html_facts() ++
+        route_facts("""
+        defmodule AppWeb.Router do
+          use Phoenix.Router
+
+          scope "/", AppWeb do
+            get "/orders", OrderController, :index
+          end
+        end
+        """)
+
+    assert Diagnostics.diagnostics(@template_uri, document, facts) == []
+  end
+
+  test "warns when navigate crosses sessions for a LiveView mounted in multiple sessions" do
+    source = ~s(<.link navigate={~p"/admin/settings"} />)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(
+        @live_template_uri,
+        document,
+        multi_session_navigation_facts(source)
+      )
+
+    assert diagnostic.code == "phoenix.invalid_live_navigate"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Navigate to "/admin/settings" changes live session from public to admin.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_navigate",
+             "navigation" => "navigate",
+             "path" => "/admin/settings",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetModule" => "AppWeb.SettingsLive",
+             "currentLiveSession" => "public",
+             "targetLiveSession" => "admin"
+           }
+  end
+
+  test "uses HEEx action context when checking multi-session LiveView navigation" do
+    source = ~s(<.link navigate={~p"/admin/settings"} />)
+    {:ok, document} = Parser.parse(source)
+    {template_uri, facts, cleanup} = admin_template_navigation_facts(source)
+
+    try do
+      assert Diagnostics.diagnostics(template_uri, document, facts) == []
+    after
+      cleanup.()
+    end
+  end
+
+  test "warns when source push_patch targets a different LiveView" do
+    source = """
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("show-other", _params, socket) do
+        {:noreply, push_patch(socket, to: ~p"/other-live")}
+      end
+    end
+    """
+
+    [diagnostic] = Diagnostics.diagnostics(@uri, live_navigation_source_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_patch"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+    assert diagnostic.message == ~s(Patch navigation to "/other-live" targets AppWeb.OtherLive.)
+  end
+
+  test "warns when source push_navigate targets a known non-LiveView route" do
+    source = """
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("login", _params, socket) do
+        {:noreply, push_navigate(socket, to: ~p"/login")}
+      end
+    end
+    """
+
+    [diagnostic] = Diagnostics.diagnostics(@uri, non_live_source_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_navigate"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Navigate to "/login" targets non-LiveView route GET /login.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_navigate",
+             "navigation" => "navigate",
+             "path" => "/login",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetKind" => "route",
+             "targetVerb" => "get",
+             "targetModule" => "AppWeb.SessionController"
+           }
+  end
+
+  test "warns when dynamic source push_patch lacks handle_params" do
+    source = ~S"""
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("show", %{"id" => id}, socket) do
+        {:noreply, push_patch(socket, to: ~p"/products/#{id}")}
+      end
+    end
+    """
+
+    [diagnostic] = Diagnostics.diagnostics(@uri, dynamic_source_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.missing_handle_params"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.data == %{
+             "kind" => "missing_handle_params",
+             "navigation" => "patch",
+             "path" => "/products/:dynamic",
+             "module" => "AppWeb.ProductLive",
+             "callback" => "handle_params/3"
+           }
+  end
+
+  test "uses router order for overlapping dynamic source navigation targets" do
+    source = ~S"""
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+      def handle_event("show", %{"id" => id}, socket) do
+        {:noreply, push_patch(socket, to: ~p"/products/#{id}")}
+      end
+    end
+    """
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@uri, overlapping_dynamic_source_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.invalid_live_patch"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             ~s(Patch navigation to "/products/:dynamic" targets non-LiveView route GET /products/:id.)
+
+    assert diagnostic.data == %{
+             "kind" => "invalid_live_patch",
+             "navigation" => "patch",
+             "path" => "/products/:dynamic",
+             "currentModule" => "AppWeb.ProductLive",
+             "targetKind" => "route",
+             "targetVerb" => "get",
+             "targetModule" => "AppWeb.ProductController"
+           }
+  end
+
+  test "warns when patch navigation targets current LiveView without handle_params" do
+    source = ~s(<.link patch={~p"/products"} />)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@live_template_uri, document, live_navigation_facts(source))
+
+    assert diagnostic.code == "phoenix.missing_handle_params"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+
+    assert diagnostic.message ==
+             "Patch navigation for AppWeb.ProductLive requires handle_params/3."
+
+    assert diagnostic.data == %{
+             "kind" => "missing_handle_params",
+             "navigation" => "patch",
+             "path" => "/products",
+             "module" => "AppWeb.ProductLive",
+             "callback" => "handle_params/3"
+           }
+  end
+
   test "reports unknown controller render templates" do
     [diagnostic] = Diagnostics.diagnostics(@controller_uri, controller_facts(:missing))
 
     assert diagnostic.code == "phoenix.unknown_template"
     assert diagnostic.message == ~s(Unknown template "missing.html.heex")
+  end
+
+  test "reports one unknown template diagnostic for controller render atoms" do
+    {:ok, facts} =
+      ElixirSource.facts(@controller_uri, """
+      defmodule AppWeb.PageController do
+        use Phoenix.Controller
+
+        def index(conn, _params) do
+          render(conn, :missing)
+        end
+      end
+      """)
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert diagnostic.code == "phoenix.unknown_template"
+    assert diagnostic.message == ~s(Unknown template "missing.html.heex")
+    assert diagnostic.range.start.character == 17
+    assert diagnostic.range.end.character == 25
+  end
+
+  test "reports unknown pipeline controller render templates" do
+    {:ok, facts} =
+      ElixirSource.facts(@controller_uri, """
+      defmodule AppWeb.PageController do
+        use Phoenix.Controller
+
+        def index(conn, _params) do
+          conn
+          |> render(:missing)
+        end
+      end
+      """)
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert diagnostic.code == "phoenix.unknown_template"
+    assert diagnostic.message == ~s(Unknown template "missing.html.heex")
+  end
+
+  test "does not report html template diagnostics for json-only controller routes" do
+    {:ok, router_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        pipeline :api do
+          plug :accepts, ["json"]
+        end
+
+        scope "/api", AppWeb do
+          pipe_through :api
+
+          resources "/tickets", TicketController, except: [:new, :edit]
+        end
+      end
+      """)
+
+    {:ok, controller_facts} =
+      ElixirSource.facts(@controller_uri, """
+      defmodule AppWeb.TicketController do
+        use AppWeb, :controller
+
+        def index(conn, _params) do
+          render(conn, :index, tickets: [])
+        end
+
+        def show(conn, %{"id" => id}) do
+          render(conn, :show, ticket: id)
+        end
+      end
+      """)
+
+    assert Diagnostics.diagnostics(@controller_uri, router_facts ++ controller_facts) == []
   end
 
   test "reports unknown route helpers" do
@@ -497,6 +1179,39 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     result
   end
 
+  defp source_and_range(marked_source) do
+    start_marker = "[!"
+    end_marker = "!]"
+    [{start_offset, _start_size}] = :binary.matches(marked_source, start_marker)
+    [{end_marker_offset, _end_size}] = :binary.matches(marked_source, end_marker)
+
+    source =
+      marked_source
+      |> String.replace(start_marker, "")
+      |> String.replace(end_marker, "")
+
+    end_offset = end_marker_offset - byte_size(start_marker)
+
+    {:ok, start_position} =
+      PhoenixLS.Support.Positions.offset_to_lsp_position(source, start_offset)
+
+    {:ok, end_position} = PhoenixLS.Support.Positions.offset_to_lsp_position(source, end_offset)
+
+    {
+      source,
+      %GenLSP.Structures.Range{
+        start: %GenLSP.Structures.Position{
+          line: start_position.line,
+          character: start_position.character
+        },
+        end: %GenLSP.Structures.Position{
+          line: end_position.line,
+          character: end_position.character
+        }
+      }
+    }
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts(@uri, """
@@ -584,6 +1299,227 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     facts ++ Template.facts(@live_template_uri, template_source)
   end
 
+  defp upload_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          {:ok, allow_upload(socket, :avatar, accept: ~w(.jpg .png), max_entries: 1)}
+        end
+
+        def handle_event("save", _params, socket), do: {:noreply, socket}
+        def handle_event("validate", _params, socket), do: {:noreply, socket}
+      end
+      """)
+
+    facts ++ Template.upload_usage_facts(@live_template_uri, template_source)
+  end
+
+  defp non_live_navigation_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live "/products", ProductLive, :index
+          get "/login", SessionController, :new
+        end
+      end
+      """)
+
+    facts ++ Template.facts(@live_template_uri, template_source)
+  end
+
+  defp hook_facts(template_source) do
+    AssetHooks.facts(
+      "file:///tmp/app/priv/static/assets/app.js",
+      """
+      const Hooks = {}
+      Hooks.PhoneNumber = {
+        mounted() {}
+      }
+      """,
+      %{source: :static_asset}
+    ) ++ Template.hook_usage_facts(@live_template_uri, template_source)
+  end
+
+  defp live_navigation_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", live_navigation_router())
+
+    facts ++
+      Template.facts(@live_template_uri, template_source) ++ live_navigation_live_view_facts()
+  end
+
+  defp live_navigation_source_facts(source) do
+    {:ok, source_facts} = ElixirSource.facts(@uri, source)
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", live_navigation_router())
+
+    source_facts ++ route_facts
+  end
+
+  defp non_live_source_navigation_facts(source) do
+    {:ok, source_facts} = ElixirSource.facts(@uri, source)
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live "/products", ProductLive, :index
+          get "/login", SessionController, :new
+        end
+      end
+      """)
+
+    source_facts ++ route_facts
+  end
+
+  defp dynamic_source_navigation_facts(source) do
+    {:ok, source_facts} = ElixirSource.facts(@uri, source)
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live "/products/:id", ProductLive, :show
+        end
+      end
+      """)
+
+    source_facts ++ route_facts
+  end
+
+  defp overlapping_dynamic_source_navigation_facts(source) do
+    {:ok, source_facts} = ElixirSource.facts(@uri, source)
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          get "/products/:id", ProductController, :show
+          live "/products/:slug", ProductLive, :show
+        end
+      end
+      """)
+
+    source_facts ++ route_facts
+  end
+
+  defp multi_session_navigation_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live_session :public do
+            live "/products", ProductLive, :index
+          end
+
+          live_session :admin do
+            live "/admin/products", ProductLive, :admin
+            live "/admin/settings", SettingsLive, :index
+          end
+        end
+      end
+      """)
+
+    facts ++ Template.facts(@live_template_uri, template_source)
+  end
+
+  defp admin_template_navigation_facts(template_source) do
+    root = System.unique_integer([:positive])
+    tmp_root = Path.join(System.tmp_dir!(), "phoenix-ls-navigation-#{root}")
+    live_dir = Path.join([tmp_root, "lib", "app_web", "live"])
+    template_dir = Path.join(live_dir, "product_live")
+    module_path = Path.join(live_dir, "product_live.ex")
+    template_path = Path.join(template_dir, "admin.html.heex")
+
+    File.mkdir_p!(template_dir)
+
+    File.write!(module_path, """
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      embed_templates "product_live/*"
+    end
+    """)
+
+    File.write!(template_path, template_source)
+
+    template_uri = "file://" <> template_path
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live_session :public do
+            live "/products", ProductLive, :index
+          end
+
+          live_session :admin do
+            live "/admin/products", ProductLive, :admin
+            live "/admin/settings", SettingsLive, :index
+          end
+        end
+      end
+      """)
+
+    {template_uri, route_facts ++ Template.facts(template_uri, template_source),
+     fn -> File.rm_rf!(tmp_root) end}
+  end
+
+  defp live_navigation_live_view_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+      end
+
+      defmodule AppWeb.OtherLive do
+        use Phoenix.LiveView
+      end
+
+      defmodule AppWeb.AdminLive do
+        use Phoenix.LiveView
+      end
+      """)
+
+    facts
+  end
+
+  defp live_navigation_router do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live_session :public do
+          live "/products", ProductLive, :index
+          live "/other-live", OtherLive, :index
+        end
+
+        live_session :admin do
+          live "/different-session", AdminLive, :index
+        end
+      end
+    end
+    """
+  end
+
   defp required_slot_attr_facts do
     {:ok, facts} =
       ElixirSource.facts(@uri, """
@@ -668,5 +1604,47 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     {:ok, router_facts} = ElixirSource.facts(@uri, router_source)
 
     controller_facts ++ router_facts
+  end
+
+  defp route_facts(router_source) do
+    {:ok, facts} = ElixirSource.facts(@uri, router_source)
+    facts
+  end
+
+  defp imported_page_html_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/controllers/page_html.ex", """
+      defmodule AppWeb.PageHTML do
+        import AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp page_html_uses_web_macro_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/controllers/page_html.ex", """
+      defmodule AppWeb.PageHTML do
+        use AppWeb, :html
+      end
+      """)
+
+    facts
+  end
+
+  defp web_macro_import_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web.ex", """
+      defmodule AppWeb do
+        def html do
+          quote do
+            import AppWeb.CoreComponents
+          end
+        end
+      end
+      """)
+
+    facts
   end
 end

@@ -3,8 +3,12 @@ defmodule PhoenixLS.Introspection.LiveView do
   Source-only extraction helpers for LiveView facts.
   """
 
-  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Introspection.Source
+  alias PhoenixLS.Introspection.LiveView.Assigns
+  alias PhoenixLS.Introspection.LiveView.Lifecycle
+  alias PhoenixLS.Introspection.LiveView.Navigation
+  alias PhoenixLS.Introspection.LiveView.Uploads
 
   defmodule LiveView do
     @moduledoc """
@@ -29,8 +33,8 @@ defmodule PhoenixLS.Introspection.LiveView do
     Typed LiveView assign fact payload.
     """
 
-    @enforce_keys [:module, :name]
-    defstruct [:module, :name]
+    @enforce_keys [:module, :name, :source]
+    defstruct [:module, :name, :source]
   end
 
   defmodule Function do
@@ -45,7 +49,7 @@ defmodule PhoenixLS.Introspection.LiveView do
   @spec live_view_module?(term()) :: boolean()
   def live_view_module?(body_ast) do
     body_ast
-    |> top_level_expressions()
+    |> Source.top_level_expressions()
     |> live_view_range()
     |> case do
       {:ok, _range} -> true
@@ -56,7 +60,7 @@ defmodule PhoenixLS.Introspection.LiveView do
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
-    expressions = top_level_expressions(body_ast)
+    expressions = Source.top_level_expressions(body_ast)
 
     case live_view_range(expressions) do
       {:ok, range} ->
@@ -74,10 +78,16 @@ defmodule PhoenixLS.Introspection.LiveView do
     expressions
     |> Enum.find_value(fn
       {:use, meta, [{:__aliases__, _alias_meta, [:Phoenix, :LiveView]}]} ->
-        {:ok, source_range(meta)}
+        {:ok, Source.source_range(meta)}
+
+      {:use, meta, [{:__aliases__, _alias_meta, [:Phoenix, :LiveComponent]}]} ->
+        {:ok, Source.source_range(meta)}
 
       {:use, meta, [_module_ast, :live_view]} ->
-        {:ok, source_range(meta)}
+        {:ok, Source.source_range(meta)}
+
+      {:use, meta, [_module_ast, :live_component]} ->
+        {:ok, Source.source_range(meta)}
 
       _expression ->
         nil
@@ -110,7 +120,7 @@ defmodule PhoenixLS.Introspection.LiveView do
                 kind: :live_event,
                 id: "#{module}:event:#{event}",
                 uri: uri,
-                range: source_range(meta),
+                range: Source.source_range(meta),
                 provenance: provenance,
                 data: %Event{
                   module: module,
@@ -132,57 +142,12 @@ defmodule PhoenixLS.Introspection.LiveView do
   end
 
   defp detail_facts(module, expressions, uri, provenance) do
-    function_facts(module, expressions, uri, provenance) ++
+    Lifecycle.facts(module, expressions, uri, provenance) ++
       event_facts(module, expressions, uri, provenance) ++
-      assign_facts(module, expressions, uri, provenance)
+      Assigns.facts(module, expressions, uri, provenance) ++
+      Navigation.facts(module, expressions, uri, provenance) ++
+      Uploads.facts(module, expressions, uri, provenance)
   end
-
-  defp function_facts(module, expressions, uri, provenance) do
-    expressions
-    |> Enum.flat_map(fn
-      {:def, meta, [head, _body]} ->
-        case live_view_function(head) do
-          {:ok, name, arity, type} ->
-            [
-              Fact.new!(
-                kind: :live_view_function,
-                id: "#{module}:live_view_function:#{name}/#{arity}",
-                uri: uri,
-                range: source_range(meta),
-                provenance: provenance,
-                data: %Function{
-                  module: module,
-                  name: name,
-                  type: type,
-                  arity: arity
-                }
-              )
-            ]
-
-          :error ->
-            []
-        end
-
-      _expression ->
-        []
-    end)
-  end
-
-  defp live_view_function({:when, _meta, [head | _guards]}), do: live_view_function(head)
-
-  defp live_view_function({:mount, _meta, args}) when is_list(args),
-    do: callback(:mount, args, 3)
-
-  defp live_view_function({:handle_params, _meta, args}) when is_list(args),
-    do: callback(:handle_params, args, 3)
-
-  defp live_view_function({:handle_info, _meta, args}) when is_list(args),
-    do: callback(:handle_info, args, 2)
-
-  defp live_view_function({:render, _meta, args}) when is_list(args),
-    do: callback(:render, args, 1)
-
-  defp live_view_function(_head), do: :error
 
   defp live_event({:when, _meta, [head | _guards]}), do: live_event(head)
 
@@ -190,72 +155,4 @@ defmodule PhoenixLS.Introspection.LiveView do
     do: {:ok, event, :handle_event, 3}
 
   defp live_event(_head), do: :error
-
-  defp callback(name, args, arity) when length(args) == arity do
-    {:ok, Atom.to_string(name), arity, name}
-  end
-
-  defp callback(_name, _args, _arity) do
-    :error
-  end
-
-  defp assign_facts(module, expressions, uri, provenance) do
-    expressions
-    |> Enum.flat_map(&assign_calls/1)
-    |> Enum.uniq_by(fn {_meta, name} -> name end)
-    |> Enum.map(fn {meta, name} ->
-      Fact.new!(
-        kind: :assign,
-        id: "#{module}:assign:#{name}",
-        uri: uri,
-        range: source_range(meta),
-        provenance: provenance,
-        data: %Assign{
-          module: module,
-          name: name
-        }
-      )
-    end)
-  end
-
-  defp assign_calls({:assign, meta, [_socket, name, _value]}) when is_atom(name) do
-    [{meta, Atom.to_string(name)}]
-  end
-
-  defp assign_calls(list) when is_list(list) do
-    Enum.flat_map(list, &assign_calls/1)
-  end
-
-  defp assign_calls(tuple) when is_tuple(tuple) do
-    tuple
-    |> Tuple.to_list()
-    |> Enum.flat_map(&assign_calls/1)
-  end
-
-  defp assign_calls(_node), do: []
-
-  defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
-  defp top_level_expressions(nil), do: []
-  defp top_level_expressions(expression), do: [expression]
-
-  defp source_range(meta) do
-    %Range{
-      start: position(meta),
-      end: position(end_meta(meta))
-    }
-  end
-
-  defp end_meta(meta) do
-    Keyword.get(meta, :end_of_expression) || Keyword.get(meta, :end) || meta
-  end
-
-  defp position(meta) do
-    %Position{
-      line: meta |> Keyword.get(:line, 1) |> zero_based(),
-      character: meta |> Keyword.get(:column, 1) |> zero_based()
-    }
-  end
-
-  defp zero_based(value) when is_integer(value) and value > 0, do: value - 1
-  defp zero_based(_value), do: 0
 end

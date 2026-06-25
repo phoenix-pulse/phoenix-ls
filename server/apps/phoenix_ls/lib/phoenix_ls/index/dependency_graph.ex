@@ -15,10 +15,18 @@ defmodule PhoenixLS.Index.DependencyGraph do
     component_slot_attr: :components,
     component_alias: :components,
     component_import: :components,
+    component_use: :components,
+    component_macro_import: :components,
     live_event: :events,
     live_event_usage: :events,
     live_view: :live_views,
     live_view_function: :live_views,
+    live_async: :live_views,
+    live_lifecycle_hook: :live_views,
+    live_message: :live_views,
+    live_navigation_reference: :live_views,
+    live_temporary_assign: :live_views,
+    pipeline: :routes,
     assign: :live_views,
     route: :routes,
     schema: :schemas,
@@ -33,8 +41,12 @@ defmodule PhoenixLS.Index.DependencyGraph do
                                       :component_attr,
                                       :component_slot,
                                       :component_slot_attr,
+                                      :component_use,
+                                      :component_macro_import,
+                                      :colocated_hook,
                                       :live_event,
                                       :live_event_usage,
+                                      :live_view_function,
                                       :route,
                                       :schema,
                                       :schema_association,
@@ -42,6 +54,10 @@ defmodule PhoenixLS.Index.DependencyGraph do
                                     ])
 
   @elixir_diagnostic_dependency_kinds MapSet.new([
+                                        :live_navigation_reference,
+                                        :live_view_function,
+                                        :pipeline,
+                                        :route,
                                         :template,
                                         :template_reference
                                       ])

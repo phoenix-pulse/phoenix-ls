@@ -65,13 +65,26 @@ defmodule PhoenixLS.HEEx.ParserTest do
     assert disabled.value_kind == :boolean
   end
 
-  test "ignores HEEx expression tags" do
+  test "parses HEEx expression entries separately from tags" do
     source = "<%= @name %><div id=\"profile\" />"
 
-    assert {:ok, %Document{tags: [tag]}} = Parser.parse(source)
+    assert {:ok, %Document{tags: [tag], expressions: [expression]}} = Parser.parse(source)
 
     assert tag.name == "div"
     assert Enum.map(tag.attrs, & &1.name) == ["id"]
+    assert expression.kind == :output
+    assert expression.value == "@name"
+    assert expression.value_range == range_for(source, "@name")
+  end
+
+  test "recovers parsed tags when a HEEx expression is unterminated" do
+    source = ~s(<button phx-click="save"></button>\n<%= @uploads.avatar)
+
+    assert {:ok, %Document{tags: [tag], expressions: [expression]}} = Parser.parse(source)
+
+    assert tag.name == "button"
+    assert expression.kind == :output
+    assert expression.value == "@uploads.avatar"
   end
 
   test "returns parser errors for unterminated tags" do

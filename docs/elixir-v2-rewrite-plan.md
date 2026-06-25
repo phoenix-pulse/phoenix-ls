@@ -10,13 +10,16 @@ The VS Code extension remains TypeScript because VS Code extensions run in Node.
 
 ## Current Baseline
 
-The current workspace has three product surfaces:
+The current workspace has two editor product surfaces plus the Elixir server:
 
-- `packages/language-server`: TypeScript LSP server published as `@phoenix-pulse/language-server`.
-- `packages/vscode-extension`: VS Code extension that starts the Node LSP server and provides extra UI.
-- `packages/nvim-plugin`: Neovim plugin that starts the same LSP server and provides extra UI.
+- `server/apps/phoenix_ls`: Elixir-native Phoenix LS server.
+- `packages/vscode-extension`: VS Code extension that starts the Elixir server and provides extra UI.
+- `packages/nvim-plugin`: Neovim plugin that starts the Elixir server and provides extra UI.
 
-The language server already depends on Elixir for core project understanding through parser scripts in `packages/language-server/elixir-parser`. That means the current architecture is split between a TypeScript LSP host and Elixir parser subprocesses.
+The former `packages/language-server` TypeScript server has been removed after
+its user-facing behavior was captured in
+`docs/old-ts-server-feature-closure.md`. Old TypeScript behavior remains
+historical evidence only, not a parity contract.
 
 Current server capabilities include:
 
@@ -460,7 +463,7 @@ Signature help and code actions can be rebuilt after the core is stable unless t
 
 ### VS Code
 
-Keep `packages/vscode-extension`, but replace the dependency on `@phoenix-pulse/language-server` with a launcher for the Elixir server.
+Keep `packages/vscode-extension` as a launcher for the Elixir server.
 
 The extension should:
 

@@ -12,7 +12,11 @@ defmodule PhoenixLS.RealProjectMatrixTest do
     "phoenix/listRoutes",
     "phoenix/listTemplates",
     "phoenix/listEvents",
-    "phoenix/listLiveView"
+    "phoenix/listLiveView",
+    "phoenix/listUploads",
+    "phoenix/listHooks",
+    "phoenix/listColocatedAssets",
+    "phoenix/listControllers"
   ]
 
   @matrix [
@@ -62,24 +66,48 @@ defmodule PhoenixLS.RealProjectMatrixTest do
        "phoenix/listRoutes" => 20,
        "phoenix/listEvents" => 10,
        "phoenix/listLiveView" => 1
+     }},
+    {"Phoenix 1.8 complex app", "phoenix_1_8_complex_app",
+     %{
+       "phoenix/listSchemas" => 3,
+       "phoenix/listComponents" => 1,
+       "phoenix/listRoutes" => 5,
+       "phoenix/listTemplates" => 5,
+       "phoenix/listEvents" => 2,
+       "phoenix/listLiveView" => 2,
+       "phoenix/listUploads" => 1,
+       "phoenix/listHooks" => 1,
+       "phoenix/listColocatedAssets" => 1,
+       "phoenix/listControllers" => 1
      }}
   ]
 
+  @template_kind_expectations %{
+    "Phoenix 1.8 complex app" => ["component", "controller", "layout", "live_view"]
+  }
+
   test "source-only indexing covers the real Phoenix project matrix" do
     for {label, relative_root, expected_minimums} <- @matrix do
-      snapshot = index_fixture(relative_root)
-      results = Map.new(@methods, &{&1, PhoenixRequests.handle(&1, snapshot)})
+      store = index_fixture_store(relative_root)
 
-      for {method, minimum} <- expected_minimums do
-        assert length(results[method]) >= minimum,
-               "#{label} expected at least #{minimum} #{method} entries"
-      end
+      results =
+        assert_eventually(fn ->
+          snapshot = Snapshot.from_store(store)
+          results = Map.new(@methods, &{&1, PhoenixRequests.handle(&1, snapshot)})
+
+          for {method, minimum} <- expected_minimums do
+            assert length(results[method]) >= minimum,
+                   "#{label} expected at least #{minimum} #{method} entries"
+          end
+
+          results
+        end)
 
       assert_explorer_contracts(label, results)
     end
   end
 
-  defp index_fixture(relative_root) do
+  defp index_fixture_store(relative_root) do
     root = Path.join(@fixtures, relative_root)
     root_uri = SupportURI.path_to_file_uri!(root)
     store = Module.concat(__MODULE__, :"Store#{System.unique_integer([:positive])}")
@@ -94,7 +122,7 @@ defmodule PhoenixLS.RealProjectMatrixTest do
       assert Store.all(store) != [] or relative_root == "broken_syntax_app"
     end)
 
-    Snapshot.from_store(store)
+    store
   end
 
   defp assert_explorer_contracts(label, results) do
@@ -102,8 +130,13 @@ defmodule PhoenixLS.RealProjectMatrixTest do
     Enum.each(results["phoenix/listComponents"], &assert_component_payload!(label, &1))
     Enum.each(results["phoenix/listRoutes"], &assert_route_payload!(label, &1))
     Enum.each(results["phoenix/listTemplates"], &assert_template_payload!(label, &1))
+    assert_template_kind_expectations(label, results["phoenix/listTemplates"])
     Enum.each(results["phoenix/listEvents"], &assert_event_payload!(label, &1))
     Enum.each(results["phoenix/listLiveView"], &assert_live_view_payload!(label, &1))
+    Enum.each(results["phoenix/listUploads"], &assert_upload_payload!(label, &1))
+    Enum.each(results["phoenix/listHooks"], &assert_hook_payload!(label, &1))
+    Enum.each(results["phoenix/listColocatedAssets"], &assert_colocated_asset_payload!(label, &1))
+    Enum.each(results["phoenix/listControllers"], &assert_controller_payload!(label, &1))
   end
 
   defp assert_schema_payload!(label, payload) do
@@ -145,6 +178,15 @@ defmodule PhoenixLS.RealProjectMatrixTest do
     assert_location(label, "template.location", payload["location"])
   end
 
+  defp assert_template_kind_expectations(label, templates) do
+    expected_kinds = Map.get(@template_kind_expectations, label, [])
+    actual_kinds = templates |> Enum.map(& &1["kind"]) |> MapSet.new()
+
+    Enum.each(expected_kinds, fn kind ->
+      assert MapSet.member?(actual_kinds, kind), "#{label} expected #{kind} template"
+    end)
+  end
+
   defp assert_event_payload!(label, payload) do
     assert_string(label, "event.name", payload["name"])
     assert_string(label, "event.type", payload["type"])
@@ -162,6 +204,61 @@ defmodule PhoenixLS.RealProjectMatrixTest do
     assert_location(label, "liveView.location", payload["location"])
     assert is_list(payload["assigns"])
     assert is_list(payload["functions"])
+  end
+
+  defp assert_upload_payload!(label, payload) do
+    assert_string(label, "upload.name", payload["name"])
+    assert_string(label, "upload.module", payload["module"])
+    assert is_map(payload["options"])
+    assert is_integer(payload["usagesCount"])
+    assert is_list(payload["usages"])
+
+    if payload["defined"] != false do
+      assert_string(label, "upload.filePath", payload["filePath"])
+      assert_location(label, "upload.location", payload["location"])
+    end
+  end
+
+  defp assert_hook_payload!(label, payload) do
+    assert_string(label, "hook.name", payload["name"])
+    assert is_boolean(payload["defined"])
+    assert is_integer(payload["usagesCount"])
+    assert is_list(payload["usages"])
+    assert_string(label, "hook.filePath", payload["filePath"])
+    assert_location(label, "hook.location", payload["location"])
+  end
+
+  defp assert_colocated_asset_payload!(label, payload) do
+    assert_string(label, "colocated.ownerModule", payload["ownerModule"])
+    assert is_integer(payload["assetsCount"])
+    assert is_list(payload["assets"])
+
+    Enum.each(payload["assets"], fn asset ->
+      assert_string(label, "colocated.kind", asset["kind"])
+      assert_string(label, "colocated.typeModule", asset["typeModule"])
+      assert_string(label, "colocated.generatedName", asset["generatedName"])
+      assert_string(label, "colocated.filePath", asset["filePath"])
+      assert_location(label, "colocated.location", asset["location"])
+    end)
+  end
+
+  defp assert_controller_payload!(label, payload) do
+    assert_string(label, "controller.module", payload["module"])
+    assert_string(label, "controller.filePath", payload["filePath"])
+    assert_location(label, "controller.location", payload["location"])
+    assert is_list(payload["actions"])
+    assert is_list(payload["plugAssigns"])
+
+    Enum.each(payload["actions"], fn action ->
+      assert_string(label, "controller.action.name", action["name"])
+      assert is_integer(action["arity"])
+      assert_string(label, "controller.action.filePath", action["filePath"])
+      assert_location(label, "controller.action.location", action["location"])
+      assert is_list(action["routes"])
+      assert is_list(action["renders"])
+      assert is_list(action["assigns"])
+      assert is_list(action["layouts"])
+    end)
   end
 
   defp assert_string(label, field, value) do

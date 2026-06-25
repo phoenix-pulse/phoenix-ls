@@ -17,8 +17,10 @@ defmodule PhoenixLS.LSP.Diagnostics do
   }
 
   alias PhoenixLS.Features.Diagnostics, as: FeatureDiagnostics
+  alias PhoenixLS.Features.Policy
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.{DependencyGraph, Snapshot}
+  alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Project.Engine
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -49,6 +51,17 @@ defmodule PhoenixLS.LSP.Diagnostics do
     else
       _other -> :ok
     end
+  end
+
+  @spec schedule_open_documents(LSP.t(), DocumentStore.server(), {:ok, Engine.t()} | :error) ::
+          :ok
+  def schedule_open_documents(%LSP{} = lsp, document_store, project_engine) do
+    document_store
+    |> DocumentStore.open_documents()
+    |> Enum.filter(&diagnostic_document?/1)
+    |> Enum.each(&schedule_publish(lsp, document_store, &1.uri, project_engine))
+
+    :ok
   end
 
   @spec clear(LSP.t(), String.t()) :: :ok
@@ -93,24 +106,34 @@ defmodule PhoenixLS.LSP.Diagnostics do
 
   def handle_info(_message, %LSP{} = lsp), do: {:noreply, lsp}
 
-  defp diagnostics(_document, :error) do
-    [project_unavailable_diagnostic()]
+  defp diagnostics(_document, :error, config) do
+    if Policy.allow?(:diagnostics, :phoenix, config) do
+      [project_unavailable_diagnostic()]
+    else
+      []
+    end
   end
 
-  defp diagnostics(%Document{} = document, {:ok, engine}) do
+  defp diagnostics(%Document{} = document, {:ok, engine}, config) do
     snapshot = Snapshot.from_store(engine.index_store)
     facts = Snapshot.all(snapshot)
 
     cond do
       heex_document?(document) ->
-        heex_diagnostics(document, facts)
+        allowed_diagnostics(:heex_structure, config, fn -> heex_diagnostics(document, facts) end)
 
       elixir_document?(document) ->
-        FeatureDiagnostics.diagnostics(document.uri, facts)
+        allowed_diagnostics(:phoenix, config, fn ->
+          FeatureDiagnostics.diagnostics(document.uri, facts)
+        end)
 
       true ->
         []
     end
+  end
+
+  defp allowed_diagnostics(feature_kind, config, fun) do
+    if Policy.allow?(:diagnostics, feature_kind, config), do: fun.(), else: []
   end
 
   defp heex_diagnostics(%Document{uri: uri, text: text}, facts) do
@@ -123,7 +146,8 @@ defmodule PhoenixLS.LSP.Diagnostics do
   defp publish_current_document(lsp, document_store, uri, project_engine) do
     case DocumentStore.fetch(document_store, uri) do
       {:ok, %Document{} = document} ->
-        diagnostics = diagnostics(document, project_engine)
+        config = lsp |> RequestContext.new() |> RequestContext.server_config!()
+        diagnostics = diagnostics(document, project_engine, config)
 
         publish(lsp, document.uri, document.version, diagnostics)
 

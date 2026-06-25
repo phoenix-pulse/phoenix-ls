@@ -2,7 +2,17 @@ defmodule PhoenixLS.Features.CodeActionTest do
   use ExUnit.Case, async: true
 
   alias GenLSP.Enumerations.CodeActionKind
-  alias GenLSP.Structures.{CodeAction, Position, Range, TextEdit, WorkspaceEdit}
+
+  alias GenLSP.Structures.{
+    CodeAction,
+    CreateFile,
+    Diagnostic,
+    Position,
+    Range,
+    TextEdit,
+    WorkspaceEdit
+  }
+
   alias PhoenixLS.Features.CodeAction, as: CodeActionFeature
   alias PhoenixLS.Features.Diagnostics
   alias PhoenixLS.HEEx.Parser
@@ -10,6 +20,7 @@ defmodule PhoenixLS.Features.CodeActionTest do
   alias PhoenixLS.Introspection.Template
 
   @uri "file:///tmp/app/lib/app_web/live/page.html.heex"
+  @live_source_uri "file:///tmp/app/lib/app_web/live/product_live.ex"
   @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
   @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
 
@@ -93,17 +104,58 @@ defmodule PhoenixLS.Features.CodeActionTest do
 
     assert Enum.map(actions, & &1.title) == [
              ~s(Change phx-update to "replace"),
-             ~s(Change phx-update to "append"),
-             ~s(Change phx-update to "prepend"),
-             ~s(Change phx-update to "ignore"),
-             ~s(Change phx-update to "stream")
+             ~s(Change phx-update to "stream"),
+             ~s(Change phx-update to "ignore")
            ]
 
     assert Enum.map(actions, fn action ->
              [%TextEdit{range: range, new_text: new_text}] = action.edit.changes[@uri]
              assert range == diagnostic.range
              new_text
-           end) == ["replace", "append", "prepend", "ignore", "stream"]
+           end) == ["replace", "stream", "ignore"]
+  end
+
+  test "replaces unknown LiveView hook names with known hooks" do
+    source = ~s(<div phx-hook="MissingHook"></div>)
+
+    diagnostic = %Diagnostic{
+      source: "PhoenixLS",
+      code: "phoenix.unknown_hook",
+      message: ~s(Unknown LiveView hook "MissingHook"),
+      range: %Range{
+        start: %Position{line: 0, character: 15},
+        end: %Position{line: 0, character: 26}
+      },
+      data: %{
+        "kind" => "unknown_hook",
+        "name" => "MissingHook",
+        "attribute" => "phx-hook",
+        "knownHooks" => ["KnownHook"]
+      }
+    }
+
+    assert [
+             %CodeAction{
+               title: ~s(Change hook to "KnownHook"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 15},
+                         end: %Position{line: 0, character: 26}
+                       },
+                       new_text: "KnownHook"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
   end
 
   test "removes unknown attrs from component tags" do
@@ -224,9 +276,10 @@ defmodule PhoenixLS.Features.CodeActionTest do
   end
 
   test "removes self-closing unknown slots" do
-    source = "<:footer />"
+    source = "<.button><:footer /></.button>"
+    facts = slot_scope_facts()
     {:ok, document} = Parser.parse(source)
-    [diagnostic] = Diagnostics.diagnostics(document, facts())
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
 
     assert [
              %CodeAction{
@@ -238,8 +291,8 @@ defmodule PhoenixLS.Features.CodeActionTest do
                    @uri => [
                      %TextEdit{
                        range: %Range{
-                         start: %Position{line: 0, character: 0},
-                         end: %Position{line: 0, character: 11}
+                         start: %Position{line: 0, character: 9},
+                         end: %Position{line: 0, character: 20}
                        },
                        new_text: ""
                      }
@@ -247,15 +300,16 @@ defmodule PhoenixLS.Features.CodeActionTest do
                  }
                }
              }
-           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
 
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
   test "removes unknown slot blocks" do
-    source = "<:footer>Body</:footer>"
+    source = "<.button><:footer>Body</:footer></.button>"
+    facts = slot_scope_facts()
     {:ok, document} = Parser.parse(source)
-    [diagnostic] = Diagnostics.diagnostics(document, facts())
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
 
     assert [
              %CodeAction{
@@ -267,8 +321,8 @@ defmodule PhoenixLS.Features.CodeActionTest do
                    @uri => [
                      %TextEdit{
                        range: %Range{
-                         start: %Position{line: 0, character: 0},
-                         end: %Position{line: 0, character: 23}
+                         start: %Position{line: 0, character: 9},
+                         end: %Position{line: 0, character: 32}
                        },
                        new_text: ""
                      }
@@ -276,7 +330,7 @@ defmodule PhoenixLS.Features.CodeActionTest do
                  }
                }
              }
-           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
 
     assert quick_fix == CodeActionKind.quick_fix()
   end
@@ -553,6 +607,76 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "adds missing upload form binding attributes" do
+    source = """
+    <form phx-submit="save">
+      <.live_file_input upload={@uploads.avatar} />
+    </form>
+    """
+
+    facts = upload_facts(source)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Add phx-change="validate"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 23},
+                         end: %Position{line: 0, character: 23}
+                       },
+                       new_text: ~s( phx-change="validate")
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "adds missing upload Phoenix form binding attributes" do
+    source = """
+    <.form phx-submit="save">
+      <.live_file_input upload={@uploads.avatar} />
+    </.form>
+    """
+
+    facts = upload_facts(source)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Add phx-change="validate"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 24},
+                         end: %Position{line: 0, character: 24}
+                       },
+                       new_text: ~s( phx-change="validate")
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "removes unnecessary stream :key" do
     source = """
     <table phx-update="stream">
@@ -758,26 +882,152 @@ defmodule PhoenixLS.Features.CodeActionTest do
     facts = template_reference_facts(source)
     [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
 
+    actions = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert %CodeAction{
+             title: ~s(Change template to "index.html.heex"),
+             kind: quick_fix,
+             diagnostics: [^diagnostic],
+             edit: %WorkspaceEdit{
+               changes: %{
+                 @controller_uri => [
+                   %TextEdit{
+                     range: %Range{
+                       start: %Position{line: 2, character: 17},
+                       end: %Position{line: 2, character: 25}
+                     },
+                     new_text: ":index"
+                   }
+                 ]
+               }
+             }
+           } = Enum.find(actions, &(&1.title == ~s(Change template to "index.html.heex")))
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "creates missing render template files from unknown template diagnostics" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        render(conn, :missing)
+      end
+    end
+    """
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, controller_facts)
+
+    actions = CodeActionFeature.actions(source, @controller_uri, [diagnostic], controller_facts)
+
+    assert %CodeAction{
+             title: ~s(Create template "missing.html.heex"),
+             kind: quick_fix,
+             diagnostics: [^diagnostic],
+             edit: %WorkspaceEdit{
+               document_changes: [
+                 %CreateFile{
+                   kind: "create",
+                   uri: "file:///tmp/app/lib/app_web/controllers/page_html/missing.html.heex"
+                 }
+               ]
+             }
+           } = Enum.find(actions, &(&1.title == ~s(Create template "missing.html.heex")))
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "creates missing embedded template functions from unknown template diagnostics" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        render(conn, :missing)
+      end
+    end
+    """
+
+    html_uri = "file:///tmp/app/lib/app_web/controllers/page_html.ex"
+
+    {:ok, html_facts} =
+      ElixirSource.facts(html_uri, """
+      defmodule AppWeb.PageHTML do
+        use AppWeb, :html
+        embed_templates "page_html/*"
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+    facts = controller_facts ++ html_facts
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    actions = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert %CodeAction{
+             title: ~s(Create embedded template function "missing/1"),
+             kind: quick_fix,
+             diagnostics: [^diagnostic],
+             edit: %WorkspaceEdit{
+               changes: %{
+                 ^html_uri => [
+                   %TextEdit{
+                     range: %Range{
+                       start: %Position{line: 3, character: 0},
+                       end: %Position{line: 3, character: 0}
+                     },
+                     new_text:
+                       "\n  def missing(assigns) do\n" <>
+                         "    ~H\"\"\"\n" <>
+                         "    \n" <>
+                         "    \"\"\"\n" <>
+                         "  end\n"
+                   }
+                 ]
+               }
+             }
+           } =
+             Enum.find(actions, &(&1.title == ~s(Create embedded template function "missing/1")))
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "adds handle_params callback for source patch navigation diagnostics" do
+    source = """
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("show", _params, socket) do
+        {:noreply, push_patch(socket, to: ~p"/products")}
+      end
+    end
+    """
+
+    facts = live_navigation_source_facts(source)
+    [diagnostic] = Diagnostics.diagnostics(@live_source_uri, facts)
+
     assert [
              %CodeAction{
-               title: ~s(Change template to "index.html.heex"),
+               title: "Add handle_params/3 callback",
                kind: quick_fix,
                diagnostics: [^diagnostic],
                edit: %WorkspaceEdit{
                  changes: %{
-                   @controller_uri => [
+                   @live_source_uri => [
                      %TextEdit{
                        range: %Range{
-                         start: %Position{line: 2, character: 17},
-                         end: %Position{line: 2, character: 25}
+                         start: %Position{line: 6, character: 0},
+                         end: %Position{line: 6, character: 0}
                        },
-                       new_text: ":index"
+                       new_text:
+                         "\n  @impl true\n" <>
+                           "  def handle_params(_params, _uri, socket) do\n" <>
+                           "    {:noreply, socket}\n" <>
+                           "  end\n\n"
                      }
                    ]
                  }
                }
              }
-           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+           ] = CodeActionFeature.actions(source, @live_source_uri, [diagnostic], facts)
 
     assert quick_fix == CodeActionKind.quick_fix()
   end
@@ -885,6 +1135,28 @@ defmodule PhoenixLS.Features.CodeActionTest do
     facts
   end
 
+  defp upload_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          {:ok, allow_upload(socket, :avatar, accept: ~w(.jpg .png), max_entries: 1)}
+        end
+
+        def handle_event("save", _params, socket), do: {:noreply, socket}
+        def handle_event("validate", _params, socket), do: {:noreply, socket}
+      end
+      """)
+
+    facts ++
+      Template.upload_usage_facts(
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        template_source
+      )
+  end
+
   defp route_helper_facts(source) do
     route_helper_facts(source, """
       defmodule AppWeb.Router do
@@ -924,5 +1196,24 @@ defmodule PhoenixLS.Features.CodeActionTest do
     {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
 
     controller_facts ++ Template.facts(@template_uri, "<h1>Index</h1>")
+  end
+
+  defp live_navigation_source_facts(source) do
+    {:ok, source_facts} = ElixirSource.facts(@live_source_uri, source)
+
+    {:ok, route_facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/router.ex", """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live_session :public do
+            live "/products", ProductLive, :index
+          end
+        end
+      end
+      """)
+
+    source_facts ++ route_facts
   end
 end

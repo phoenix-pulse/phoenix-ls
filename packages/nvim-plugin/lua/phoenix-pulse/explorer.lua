@@ -26,11 +26,12 @@ M.state = {
   data = {
     schemas = {},
     components = {},
-    routes = {},
-    events = {},
-    templates = {},
-    liveviews = {},  -- LiveView modules with functions
-    statistics = nil,  -- Computed statistics
+	    routes = {},
+	    events = {},
+	    templates = {},
+	    controllers = {},
+	    liveviews = {},  -- LiveView modules with functions
+	    statistics = nil,  -- Computed statistics
   },
   lines = {},       -- Rendered lines
   line_map = {},    -- Maps line number to item (enhanced with depth, id, parent_id)
@@ -122,6 +123,17 @@ end
 -- Generate unique ID for controller
 local function generate_controller_id(controller)
   return "controller:" .. (controller.name or "unknown")
+end
+
+-- Generate unique ID for controller action
+local function generate_controller_action_id(controller, action)
+  return "controller-action:" .. (controller.name or controller.module or "unknown") .. ":" .. (action.name or "unknown")
+end
+
+-- Generate unique ID for controller graph entries
+local function generate_controller_child_id(controller, action, kind, child)
+  local child_name = child.name or child.path or child.template or child.layout or "unknown"
+  return generate_controller_action_id(controller, action) .. ":" .. kind .. ":" .. child_name
 end
 
 -- Generate unique ID for asset
@@ -328,6 +340,82 @@ local function render_component_children(component, parent_id, depth)
   end
 end
 
+-- Render controller action graph children
+local function render_controller_action_children(controller, action, parent_id, depth)
+  if not is_expanded(parent_id) then
+    return
+  end
+
+  for _, route in ipairs(action.routes or {}) do
+    local route_id = generate_controller_child_id(controller, action, "route", route)
+    local method = route.verb or route.method or "GET"
+    local path = route.path or "/"
+    local line = get_indentation(depth) .. string.format("%s %s %s", get_icon("route"), method:upper(), path)
+    add_line(line, route_id, depth, "controller-route", route, parent_id, false)
+  end
+
+  for _, render in ipairs(action.renders or {}) do
+    local render_id = generate_controller_child_id(controller, action, "render", render)
+    local template = render.template or "unknown"
+    local format = render.format or "html"
+    local line = get_indentation(depth) .. string.format("%s render :%s.%s", get_icon("template"), template, format)
+
+    if render.templatePath then
+      line = line .. " → " .. render.templatePath
+    end
+
+    add_line(line, render_id, depth, "controller-render", { render = render }, parent_id, false)
+  end
+
+  for _, assign in ipairs(action.assigns or {}) do
+    local assign_id = generate_controller_child_id(controller, action, "assign", assign)
+    local source = assign.source or "assign"
+    local line = get_indentation(depth) .. string.format("🏷️ @%s (%s)", assign.name or "unknown", source)
+    add_line(line, assign_id, depth, "controller-assign", { action = action, assign = assign }, parent_id, false)
+  end
+
+  for _, layout in ipairs(action.layouts or {}) do
+    local layout_id = generate_controller_child_id(controller, action, "layout", layout)
+    local name = layout.name or layout.layout or "unknown"
+    local line = get_indentation(depth) .. string.format("🧩 layout :%s", name)
+    add_line(line, layout_id, depth, "controller-layout", { action = action, layout = layout }, parent_id, false)
+  end
+
+  for _, assign in ipairs(controller.plugAssigns or {}) do
+    local assign_id = generate_controller_child_id(controller, action, "plug-assign", assign)
+    local plug = assign.plug or "plug"
+    local line = get_indentation(depth) .. string.format("🏷️ @%s (%s)", assign.name or "unknown", plug)
+    add_line(line, assign_id, depth, "controller-plug-assign", { action = action, assign = assign }, parent_id, false)
+  end
+end
+
+-- Render controller children
+local function render_controller_children(controller, parent_id, depth)
+  if not is_expanded(parent_id) then
+    return
+  end
+
+  for _, action in ipairs(controller.actions or {}) do
+    local action_id = generate_controller_action_id(controller, action)
+    local children_count =
+      #(action.routes or {}) +
+      #(action.renders or {}) +
+      #(action.assigns or {}) +
+      #(action.layouts or {}) +
+      #(controller.plugAssigns or {})
+    local has_children = children_count > 0
+    local expanded_icon = has_children and (is_expanded(action_id) and "▼" or "▶") or ""
+    local prefix = has_children and (expanded_icon .. " ") or ""
+    local line = get_indentation(depth) .. prefix .. string.format("⚙️ %s/%s", action.name or "unknown", action.arity or "?")
+
+    add_line(line, action_id, depth, "controller-action", { controller = controller, action = action }, parent_id, has_children)
+
+    if has_children then
+      render_controller_action_children(controller, action, action_id, depth + 1)
+    end
+  end
+end
+
 -- Group LiveViews by folder path
 local function group_liveviews_by_folder(liveviews)
   local folder_map = {}
@@ -456,6 +544,7 @@ local function compute_statistics()
   local routes = M.state.data.routes or {}
   local events = M.state.data.events or {}
   local templates = M.state.data.templates or {}
+  local controllers = M.state.data.controllers or {}
   local liveviews = M.state.data.liveviews or {}
 
   -- Count top schemas by field + association count
@@ -482,6 +571,7 @@ local function compute_statistics()
     total_routes = #routes,
     total_events = #events,
     total_templates = #templates,
+    total_controllers = #controllers,
     total_liveviews = #liveviews,
     top_schemas = top_schemas
   }
@@ -496,11 +586,12 @@ local function render_statistics()
 
   -- Totals
   local totals_line = get_indentation(1) .. string.format(
-    "📈 %d Schemas, %d Components, %d Routes, %d Templates, %d Events, %d LiveViews",
+    "📈 %d Schemas, %d Components, %d Routes, %d Templates, %d Controllers, %d Events, %d LiveViews",
     stats.total_schemas,
     stats.total_components,
     stats.total_routes,
     stats.total_templates,
+    stats.total_controllers,
     stats.total_events,
     stats.total_liveviews
   )
@@ -893,6 +984,27 @@ local function definition_target(item)
     }
   end
 
+  if item.render then
+    local render = item.render
+    local line = item_line(render)
+
+    if render.templateLocation and render.templateLocation.line then
+      line = render.templateLocation.line + 1
+    end
+
+    return {
+      file = render.templatePath or item_file(render),
+      line = line,
+    }
+  end
+
+  if item.layout then
+    return {
+      file = item_file(item.layout),
+      line = item_line(item.layout),
+    }
+  end
+
   if item.schema then
     item = item.schema
   elseif item.component then
@@ -1202,6 +1314,55 @@ function M.render()
     return string.format("%s %s %s%s", get_icon("route"), method, path, suffix)
   end)
 
+  -- Controllers category
+  do
+    local name = "controllers"
+    local icon = get_icon(name)
+    local expanded_icon = M.state.expanded[name] and "▼" or "▶"
+    local items = M.state.data.controllers
+
+    local filtered_items = {}
+    if items then
+      for _, controller in ipairs(items) do
+        if matches_search(controller) then
+          table.insert(filtered_items, controller)
+        end
+      end
+    end
+
+    local header = string.format("%s %s Controllers (%d)", expanded_icon, icon, #filtered_items)
+    local category_id = generate_category_id(name)
+    add_line(header, category_id, 0, "category", { name = name }, nil, false)
+
+    if M.state.expanded[name] and #filtered_items > 0 then
+      for _, controller in ipairs(filtered_items) do
+        local controller_id = generate_controller_id(controller)
+        local actions_count = controller.actions and #controller.actions or 0
+        local plug_assigns_count = controller.plugAssigns and #controller.plugAssigns or 0
+        local has_children = actions_count > 0 or plug_assigns_count > 0
+        local controller_expanded_icon = has_children and (is_expanded(controller_id) and "▼" or "▶") or ""
+        local prefix = has_children and (controller_expanded_icon .. " ") or ""
+        local details = {}
+
+        if actions_count > 0 then table.insert(details, actions_count .. " actions") end
+        if plug_assigns_count > 0 then table.insert(details, plug_assigns_count .. " plug assigns") end
+
+        local line = get_indentation(1) .. prefix .. string.format("%s %s", get_icon("controller"), controller.module or controller.name or "Unknown")
+        if #details > 0 then
+          line = line .. " (" .. table.concat(details, ", ") .. ")"
+        end
+
+        add_line(line, controller_id, 1, "controller", controller, category_id, has_children)
+
+        if has_children then
+          render_controller_children(controller, controller_id, 2)
+        end
+      end
+    end
+
+    add_line("", nil, 0, "empty", nil, nil, false)
+  end
+
   add_category("events", "Events", M.state.data.events, "event", function(event)
     local label = event.name or "Unknown"
     local context = {}
@@ -1319,6 +1480,12 @@ function M.refresh()
   -- Fetch templates
   lsp.call_lsp_command("phoenix/listTemplates", {}, function(result)
     M.state.data.templates = result or {}
+    M.render()
+  end)
+
+  -- Fetch controllers
+  lsp.call_lsp_command("phoenix/listControllers", {}, function(result)
+    M.state.data.controllers = result or {}
     M.render()
   end)
 

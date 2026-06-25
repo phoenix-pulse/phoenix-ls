@@ -3,9 +3,10 @@ defmodule PhoenixLS.Introspection.Component do
   Source-only extraction helpers for Phoenix components.
   """
 
-  alias GenLSP.Structures.{Position, Range}
+  alias GenLSP.Structures.Range
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Introspection.LiveView
+  alias PhoenixLS.Introspection.Source
 
   defmodule Component do
     @moduledoc """
@@ -61,11 +62,31 @@ defmodule PhoenixLS.Introspection.Component do
     defstruct [:module, :target, :only, :except]
   end
 
+  defmodule Use do
+    @moduledoc """
+    Typed Phoenix web macro use fact payload for component availability.
+    """
+
+    @enforce_keys [:module, :target, :macro]
+    defstruct [:module, :target, :macro]
+  end
+
+  defmodule MacroImport do
+    @moduledoc """
+    Typed component import fact payload declared inside a Phoenix web macro.
+    """
+
+    @enforce_keys [:module, :macro, :target]
+    defstruct [:module, :macro, :target, :only, :except]
+  end
+
+  @component_web_macros [:html, :live_view, :live_component]
+
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
-    |> top_level_expressions()
+    |> Source.top_level_expressions()
     |> Enum.reduce(
       initial_state(LiveView.live_view_module?(body_ast)),
       &collect_expression(&1, &2, module, uri, provenance)
@@ -128,6 +149,13 @@ defmodule PhoenixLS.Introspection.Component do
     end
   end
 
+  defp collect_expression({:use, meta, args}, state, module, uri, provenance) do
+    case component_use_fact(module, meta, args, uri, provenance) do
+      {:ok, fact} -> append_fact(state, fact)
+      :error -> state
+    end
+  end
+
   defp collect_expression(
          {:@, _meta, [{:doc, _doc_meta, [doc]}]},
          state,
@@ -155,9 +183,13 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp collect_expression({visibility, meta, [head, body]}, state, module, uri, provenance)
        when visibility in [:def, :defp] do
+    state =
+      state
+      |> append_facts(macro_import_facts(visibility, head, body, module, uri, provenance))
+
     with {:ok, name, arity} <- function_signature(head),
          visibility <- visibility(visibility),
-         range <- source_range(meta),
+         range <- Source.source_range(meta),
          false <- live_view_render?(state, name, arity),
          {:ok, component_fact} <-
            function_component_fact(module, name, arity, visibility, body, range, uri, provenance) do
@@ -186,6 +218,12 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp append_fact(state, fact) do
     %{state | facts: state.facts ++ [fact]}
+  end
+
+  defp append_facts(state, []), do: state
+
+  defp append_facts(state, facts) do
+    %{state | facts: state.facts ++ facts}
   end
 
   defp declaration_facts(component_id, module, component_name, attrs, slots, uri, provenance) do
@@ -302,7 +340,7 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp component_alias_fact(module, meta, [target_ast, options], uri, provenance)
        when is_list(options) do
-    with {:ok, target} <- alias_to_string(target_ast) do
+    with {:ok, target} <- Source.alias_to_string(target_ast) do
       as = options |> Keyword.get(:as) |> alias_as(target)
 
       {:ok,
@@ -310,7 +348,7 @@ defmodule PhoenixLS.Introspection.Component do
          kind: :component_alias,
          id: "#{module}:alias:#{target}",
          uri: uri,
-         range: source_range(meta),
+         range: Source.source_range(meta),
          provenance: provenance,
          data: %Alias{
            module: module,
@@ -329,13 +367,13 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp component_import_fact(module, meta, [target_ast, options], uri, provenance)
        when is_list(options) do
-    with {:ok, target} <- alias_to_string(target_ast) do
+    with {:ok, target} <- Source.alias_to_string(target_ast) do
       {:ok,
        Fact.new!(
          kind: :component_import,
          id: "#{module}:import:#{target}",
          uri: uri,
-         range: source_range(meta),
+         range: Source.source_range(meta),
          provenance: provenance,
          data: %Import{
            module: module,
@@ -349,16 +387,94 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp component_import_fact(_module, _meta, _args, _uri, _provenance), do: :error
 
-  defp alias_to_string({:__aliases__, _meta, parts}) do
-    if Enum.all?(parts, &is_atom/1) do
-      {:ok, Enum.map_join(parts, ".", &Atom.to_string/1)}
-    else
-      :error
+  defp component_use_fact(module, meta, [target_ast, macro], uri, provenance)
+       when is_atom(macro) and macro in @component_web_macros do
+    with {:ok, target} <- Source.alias_to_string(target_ast) do
+      {:ok,
+       Fact.new!(
+         kind: :component_use,
+         id: "#{module}:use:#{target}:#{macro}",
+         uri: uri,
+         range: Source.source_range(meta),
+         provenance: provenance,
+         data: %Use{
+           module: module,
+           target: target,
+           macro: macro
+         }
+       )}
     end
   end
 
-  defp alias_to_string(atom) when is_atom(atom), do: {:ok, Atom.to_string(atom)}
-  defp alias_to_string(_ast), do: :error
+  defp component_use_fact(_module, _meta, _args, _uri, _provenance), do: :error
+
+  defp macro_import_facts(:def, head, body, module, uri, provenance) do
+    with {:ok, macro, 0} <- function_signature(head),
+         {:ok, macro} <- component_web_macro(macro),
+         {:ok, quote_body} <- quote_body(body) do
+      quote_body
+      |> Source.top_level_expressions()
+      |> Enum.flat_map(&macro_import_fact(module, macro, &1, uri, provenance))
+    else
+      _not_component_web_macro -> []
+    end
+  end
+
+  defp macro_import_facts(_visibility, _head, _body, _module, _uri, _provenance), do: []
+
+  defp macro_import_fact(module, macro, {:import, meta, args}, uri, provenance) do
+    case component_macro_import_fact(module, macro, meta, args, uri, provenance) do
+      {:ok, fact} -> [fact]
+      :error -> []
+    end
+  end
+
+  defp macro_import_fact(_module, _macro, _expression, _uri, _provenance), do: []
+
+  defp component_macro_import_fact(module, macro, meta, [target_ast], uri, provenance) do
+    component_macro_import_fact(module, macro, meta, [target_ast, []], uri, provenance)
+  end
+
+  defp component_macro_import_fact(module, macro, meta, [target_ast, options], uri, provenance)
+       when is_list(options) do
+    with {:ok, target} <- Source.alias_to_string(target_ast) do
+      {:ok,
+       Fact.new!(
+         kind: :component_macro_import,
+         id: "#{module}:#{macro}:import:#{target}",
+         uri: uri,
+         range: Source.source_range(meta),
+         provenance: provenance,
+         data: %MacroImport{
+           module: module,
+           macro: macro,
+           target: target,
+           only: Keyword.get(options, :only),
+           except: Keyword.get(options, :except)
+         }
+       )}
+    end
+  end
+
+  defp component_macro_import_fact(_module, _macro, _meta, _args, _uri, _provenance),
+    do: :error
+
+  defp component_web_macro(name) when is_atom(name), do: component_web_macro(Atom.to_string(name))
+
+  defp component_web_macro(name) when is_binary(name) do
+    Enum.find_value(@component_web_macros, :error, fn macro ->
+      if Atom.to_string(macro) == name, do: {:ok, macro}
+    end)
+  end
+
+  defp quote_body(do: {:quote, _meta, [options]}) when is_list(options) do
+    case Keyword.fetch(options, :do) do
+      {:ok, body} -> {:ok, body}
+      :error -> :error
+    end
+  end
+
+  defp quote_body(_body), do: :error
 
   defp alias_as(nil, target) do
     target
@@ -370,17 +486,24 @@ defmodule PhoenixLS.Introspection.Component do
   defp alias_as(_other, target), do: alias_as(nil, target)
 
   defp attr_declaration(meta, [name, type]) when is_atom(name) do
-    {:ok, %{name: Atom.to_string(name), type: type, options: [], range: source_range(meta)}}
+    {:ok,
+     %{name: Atom.to_string(name), type: type, options: [], range: Source.source_range(meta)}}
   end
 
   defp attr_declaration(meta, [name, type, options]) when is_atom(name) and is_list(options) do
-    {:ok, %{name: Atom.to_string(name), type: type, options: options, range: source_range(meta)}}
+    {:ok,
+     %{
+       name: Atom.to_string(name),
+       type: type,
+       options: normalize_options(options),
+       range: Source.source_range(meta)
+     }}
   end
 
   defp attr_declaration(_meta, _args), do: :error
 
   defp slot_declaration(meta, [name]) when is_atom(name) do
-    {:ok, %{name: Atom.to_string(name), options: [], attrs: [], range: source_range(meta)}}
+    {:ok, %{name: Atom.to_string(name), options: [], attrs: [], range: Source.source_range(meta)}}
   end
 
   defp slot_declaration(meta, [name, options_or_block])
@@ -390,9 +513,9 @@ defmodule PhoenixLS.Introspection.Component do
     {:ok,
      %{
        name: Atom.to_string(name),
-       options: options,
+       options: normalize_options(options),
        attrs: slot_attr_declarations(block),
-       range: source_range(meta)
+       range: Source.source_range(meta)
      }}
   end
 
@@ -403,7 +526,7 @@ defmodule PhoenixLS.Introspection.Component do
        name: Atom.to_string(name),
        options: options,
        attrs: slot_attr_declarations(block),
-       range: source_range(meta)
+       range: Source.source_range(meta)
      }}
   end
 
@@ -411,8 +534,8 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp slot_options_and_block(options_or_block) do
     case Keyword.fetch(options_or_block, :do) do
-      {:ok, block} -> {Keyword.delete(options_or_block, :do), block}
-      :error -> {options_or_block, nil}
+      {:ok, block} -> {options_or_block |> Keyword.delete(:do) |> normalize_options(), block}
+      :error -> {normalize_options(options_or_block), nil}
     end
   end
 
@@ -420,7 +543,7 @@ defmodule PhoenixLS.Introspection.Component do
 
   defp slot_attr_declarations(block) do
     block
-    |> top_level_expressions()
+    |> Source.top_level_expressions()
     |> Enum.flat_map(fn
       {:attr, meta, args} ->
         case attr_declaration(meta, args) do
@@ -433,9 +556,19 @@ defmodule PhoenixLS.Introspection.Component do
     end)
   end
 
-  defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
-  defp top_level_expressions(nil), do: []
-  defp top_level_expressions(expression), do: [expression]
+  defp normalize_options(options) when is_list(options) do
+    Enum.map(options, fn
+      {key, value} when is_atom(key) -> {key, normalize_option_value(value)}
+      other -> other
+    end)
+  end
+
+  defp normalize_option_value(value) do
+    case Source.static_literal(value) do
+      {:ok, literal} -> literal
+      :error -> value
+    end
+  end
 
   defp function_signature({:when, _meta, [head | _guards]}) do
     function_signature(head)
@@ -464,27 +597,6 @@ defmodule PhoenixLS.Introspection.Component do
   end
 
   defp contains_heex_sigil?(_node), do: false
-
-  defp source_range(meta) do
-    %Range{
-      start: position(meta),
-      end: position(end_meta(meta))
-    }
-  end
-
-  defp end_meta(meta) do
-    Keyword.get(meta, :end_of_expression) || Keyword.get(meta, :end) || meta
-  end
-
-  defp position(meta) do
-    %Position{
-      line: meta |> Keyword.get(:line, 1) |> zero_based(),
-      character: meta |> Keyword.get(:column, 1) |> zero_based()
-    }
-  end
-
-  defp zero_based(value) when is_integer(value) and value > 0, do: value - 1
-  defp zero_based(_value), do: 0
 
   defp visibility(:def), do: :public
   defp visibility(:defp), do: :private

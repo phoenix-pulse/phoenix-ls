@@ -176,6 +176,65 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert template_fact.provenance.document_version == 4
   end
 
+  test "indexes HEEx upload usage facts" do
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/profile_live.html.heex",
+        "phoenix-heex",
+        5,
+        """
+        <.live_file_input upload={@uploads.avatar} />
+        """
+      )
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    assert [usage_fact] = Store.by_kind(@store, :upload_usage)
+    assert usage_fact.uri == document.uri
+    assert usage_fact.data.module == "AppWeb.ProfileLive"
+    assert usage_fact.data.upload == "avatar"
+    assert usage_fact.data.role == :live_file_input
+    assert usage_fact.provenance.document_version == 5
+  end
+
+  test "indexes HEEx hook usage facts" do
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/profile_live.html.heex",
+        "phoenix-heex",
+        5,
+        ~s(<div id="phone" phx-hook="PhoneNumber"></div>)
+      )
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    assert [usage_fact] = Store.by_kind(@store, :hook_usage)
+    assert usage_fact.uri == document.uri
+    assert usage_fact.data.module == "AppWeb.ProfileLive"
+    assert usage_fact.data.name == "PhoneNumber"
+    assert usage_fact.data.attribute == "phx-hook"
+    assert usage_fact.data.tag == "div"
+    assert usage_fact.provenance.document_version == 5
+  end
+
+  test "indexes recoverable HEEx facts when an expression is incomplete" do
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/profile_live.html.heex",
+        "phoenix-heex",
+        6,
+        """
+        <button phx-click="save">Save</button>
+        <%= @uploads.avatar
+        """
+      )
+
+    assert DocumentIndexer.index(@store, document) == :ok
+
+    assert [%{data: %{event: "save"}}] = Store.by_kind(@store, :live_event_usage)
+    assert [%{data: %{upload: "avatar"}}] = Store.by_kind(@store, :upload_usage)
+  end
+
   test "delete_uri deletes facts for a closed document" do
     fact =
       Fact.new!(

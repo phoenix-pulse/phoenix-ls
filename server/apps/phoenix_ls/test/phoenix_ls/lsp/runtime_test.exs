@@ -107,7 +107,7 @@ defmodule PhoenixLS.LSP.RuntimeTest do
       %{
         "id" => 7,
         "jsonrpc" => "2.0",
-        "method" => "phoenix/listSchemas",
+        "method" => "phoenix/listControllers",
         "params" => %{}
       }
     })

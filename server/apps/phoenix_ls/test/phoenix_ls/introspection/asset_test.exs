@@ -40,6 +40,100 @@ defmodule PhoenixLS.Introspection.AssetTest do
     assert fact.data.type == :image
   end
 
+  test "extracts LiveView hook facts from supported JavaScript hook maps", context do
+    root = tmp_dir(context)
+    path = Path.join([root, "priv", "static", "assets", "app.js"])
+    uri = SupportURI.path_to_file_uri!(path)
+
+    File.mkdir_p!(Path.dirname(path))
+
+    File.write!(path, """
+    let Hooks = {}
+    Hooks.PhoneNumber = {
+      mounted() {}
+    }
+    """)
+
+    facts = Asset.facts(uri, path, root, version: 3)
+
+    assert asset_fact = Enum.find(facts, &(&1.kind == :asset))
+    assert asset_fact.data.type == :script
+
+    assert hook_fact = Enum.find(facts, &(&1.kind == :hook))
+    assert hook_fact.uri == uri
+    assert hook_fact.data.name == "PhoneNumber"
+    assert hook_fact.data.source == :javascript_hook_map
+    assert hook_fact.range.start.line == 1
+    assert hook_fact.range.start.character == 6
+    assert hook_fact.range.end.character == 17
+
+    assert hook_fact.provenance == %{
+             source: :static_asset,
+             scanner: :live_view_hook_map,
+             document_version: 3
+           }
+  end
+
+  test "ignores hook map assignments in JavaScript line comments", context do
+    root = tmp_dir(context)
+    path = Path.join([root, "priv", "static", "assets", "app.js"])
+    uri = SupportURI.path_to_file_uri!(path)
+
+    File.mkdir_p!(Path.dirname(path))
+
+    File.write!(path, """
+    let Hooks = {}
+    // Hooks.Commented = {
+    Hooks.Real = {
+      mounted() {}
+    }
+    """)
+
+    hook_facts =
+      uri
+      |> Asset.facts(path, root)
+      |> Enum.filter(&(&1.kind == :hook))
+
+    assert Enum.map(hook_facts, & &1.data.name) == ["Real"]
+
+    assert [real] = hook_facts
+    assert real.range.start.line == 2
+    assert real.range.start.character == 6
+    assert real.range.end.character == 10
+  end
+
+  test "ignores hook map assignments in JavaScript block comments", context do
+    root = tmp_dir(context)
+    path = Path.join([root, "priv", "static", "assets", "app.js"])
+    uri = SupportURI.path_to_file_uri!(path)
+
+    File.mkdir_p!(Path.dirname(path))
+
+    File.write!(path, """
+    let Hooks = {}
+    /*
+    Hooks.Commented = {
+      mounted() {}
+    }
+    */
+    Hooks.Real = {
+      mounted() {}
+    }
+    """)
+
+    hook_facts =
+      uri
+      |> Asset.facts(path, root)
+      |> Enum.filter(&(&1.kind == :hook))
+
+    assert Enum.map(hook_facts, & &1.data.name) == ["Real"]
+
+    assert [real] = hook_facts
+    assert real.range.start.line == 6
+    assert real.range.start.character == 6
+    assert real.range.end.character == 10
+  end
+
   test "ignores non-static and unsupported files", context do
     root = tmp_dir(context)
     outside_path = Path.join([root, "assets", "app.css"])

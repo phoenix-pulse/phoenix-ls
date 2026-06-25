@@ -42,6 +42,10 @@ describe('maybeWriteDogfoodSnapshot', () => {
     expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listSchemas', {});
     expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listComponents', {});
     expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listLiveView', {});
+    expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listUploads', {});
+    expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listHooks', {});
+    expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listColocatedAssets', {});
+    expect(client.sendRequest).toHaveBeenCalledWith('phoenix/listControllers', {});
     expect(snapshot).toEqual(fileSnapshot);
     expect(fileSnapshot.counts).toEqual({
       'phoenix/listSchemas': 1,
@@ -49,7 +53,11 @@ describe('maybeWriteDogfoodSnapshot', () => {
       'phoenix/listRoutes': 1,
       'phoenix/listTemplates': 1,
       'phoenix/listEvents': 1,
-      'phoenix/listLiveView': 1
+      'phoenix/listLiveView': 1,
+      'phoenix/listUploads': 1,
+      'phoenix/listHooks': 1,
+      'phoenix/listColocatedAssets': 1,
+      'phoenix/listControllers': 1
     });
     expect(fileSnapshot.results['phoenix/listRoutes'][0]).toEqual({
       method: 'phoenix/listRoutes'

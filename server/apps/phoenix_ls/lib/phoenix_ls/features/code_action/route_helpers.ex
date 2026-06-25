@@ -13,6 +13,8 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
     WorkspaceEdit
   }
 
+  alias PhoenixLS.Features.Facts
+  alias PhoenixLS.Features.RouteHelpers, as: HelperSemantics
   alias PhoenixLS.Index.Fact
 
   @source "PhoenixLS"
@@ -166,7 +168,7 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
 
   defp route_helper_action_range(facts, diagnostic, helper, action) do
     facts
-    |> facts_by_kind(:route_helper_reference)
+    |> Facts.by_kind(:route_helper_reference)
     |> Enum.find(&route_helper_reference?(&1, diagnostic, helper, action))
     |> case do
       %Fact{data: %{action_range: %Range{} = range}} -> range
@@ -176,13 +178,13 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
 
   defp route_helper_reference(facts, diagnostic) do
     facts
-    |> facts_by_kind(:route_helper_reference)
+    |> Facts.by_kind(:route_helper_reference)
     |> Enum.find(&(&1.range == diagnostic.range))
   end
 
   defp route_helper_names(facts, variant) do
     facts
-    |> facts_by_kind(:route)
+    |> Facts.by_kind(:route)
     |> Enum.map(&route_helper_name(&1, variant))
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
@@ -191,7 +193,7 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
 
   defp route_helper_name(%Fact{data: %{helper_base: helper_base}}, variant)
        when is_binary(helper_base) and variant in [:path, :url] do
-    "#{helper_base}_#{variant}"
+    HelperSemantics.helper_name(helper_base, variant)
   end
 
   defp route_helper_name(_route, _variant), do: nil
@@ -233,10 +235,10 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
 
   defp route_helper_missing_params(facts, reference, actual_arity, expected_arities) do
     facts
-    |> facts_by_kind(:route)
+    |> Facts.by_kind(:route)
     |> Enum.filter(&route_for_reference?(&1, reference))
-    |> Enum.filter(&(route_helper_expected_arity(&1) in expected_arities))
-    |> Enum.filter(&(actual_arity < route_helper_expected_arity(&1)))
+    |> Enum.filter(&(HelperSemantics.expected_arity(&1) in expected_arities))
+    |> Enum.filter(&(actual_arity < HelperSemantics.expected_arity(&1)))
     |> Enum.map(&missing_path_params(&1, reference, actual_arity))
     |> Enum.reject(&(&1 == []))
     |> Enum.uniq()
@@ -251,16 +253,9 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
 
   defp route_for_reference?(_route, _reference), do: false
 
-  defp route_helper_expected_arity(%Fact{data: %{action: action, path_params: path_params}}) do
-    1 + route_helper_action_arity(action) + length(path_params)
-  end
-
-  defp route_helper_action_arity(nil), do: 0
-  defp route_helper_action_arity(_action), do: 1
-
   defp missing_path_params(%Fact{data: %{path_params: path_params}}, reference, actual_arity) do
     path_args_supplied =
-      max(actual_arity - 1 - route_helper_action_arity(reference.data.action), 0)
+      max(actual_arity - 1 - HelperSemantics.action_arity(reference.data.action), 0)
 
     Enum.drop(path_params, path_args_supplied)
   end
@@ -276,8 +271,4 @@ defmodule PhoenixLS.Features.CodeAction.RouteHelpers do
   end
 
   defp route_helper_reference?(_fact, _diagnostic, _helper, _action), do: false
-
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
-  end
 end

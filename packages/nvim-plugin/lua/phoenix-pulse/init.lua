@@ -22,6 +22,11 @@ local default_config = {
   lsp_server_path = nil,
 
   -- Server runtime options
+  mode = "auto",
+  companion = {
+    detect_expert = true,
+    disable_generic_elixir = true,
+  },
   source_only_mode = true,
   log_level = "info",
   indexing_enabled = true,

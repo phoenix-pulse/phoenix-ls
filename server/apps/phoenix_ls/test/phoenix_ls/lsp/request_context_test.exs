@@ -4,7 +4,7 @@ defmodule PhoenixLS.LSP.RequestContextTest do
   alias GenLSP.LSP
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.{Fact, Snapshot, Store}
-  alias PhoenixLS.LSP.{RequestContext, Server}
+  alias PhoenixLS.LSP.{RequestContext, Server, ServerConfig}
   alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
 
@@ -78,6 +78,21 @@ defmodule PhoenixLS.LSP.RequestContextTest do
              "file:///tmp/elsewhere/page.html.heex"
            ) ==
              :error
+  end
+
+  test "fetches server config from initialized assigns", %{
+    context: %RequestContext{} = context
+  } do
+    config = ServerConfig.default()
+    context = %RequestContext{context | assigns: Map.put(context.assigns, :server_config, config)}
+
+    assert RequestContext.server_config!(context) == config
+  end
+
+  test "raises when server config is missing", %{context: context} do
+    assert_raise KeyError, fn ->
+      RequestContext.server_config!(context)
+    end
   end
 
   defp fact(kind, id) do

@@ -75,6 +75,22 @@ defmodule PhoenixLS.LSP.CustomRequestTest do
     assert {:reply, [], ^lsp} = Dispatcher.handle_request(request, lsp)
   end
 
+  test "dispatcher treats controller graph as a known phoenix explorer request without a project",
+       %{
+         lsp: lsp
+       } do
+    lsp =
+      LSP.assign(lsp,
+        project_manager: Manager,
+        project_root_uri: nil,
+        workspace_project_roots: MapSet.new()
+      )
+
+    request = %CustomRequest{id: 11, method: "phoenix/listControllers", params: %{}}
+
+    assert {:reply, [], ^lsp} = Dispatcher.handle_request(request, lsp)
+  end
+
   test "dispatcher bridges phoenix executeCommand requests into explorer handlers", %{
     lsp: lsp
   } do

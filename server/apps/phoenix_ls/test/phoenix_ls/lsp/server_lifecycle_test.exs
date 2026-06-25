@@ -15,10 +15,12 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     WorkspaceFolder
   }
 
-  alias PhoenixLS.LSP.{Server, ServerConfig}
+  alias PhoenixLS.LSP.Server
   alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
+
+  import PhoenixLS.Support.LSPConfigHelpers, only: [server_config: 1]
 
   setup do
     {:ok, assigns} = start_supervised(GenLSP.Assigns)
@@ -54,12 +56,8 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
   end
 
   test "init stores runtime server config", %{lsp: lsp} do
-    config = %ServerConfig{
-      source_only?: false,
-      project_indexing_enabled?: false,
-      project_compilation_enabled?: false,
-      log_level: :debug
-    }
+    config =
+      server_config(source_only?: false, project_indexing_enabled?: false, log_level: :debug)
 
     assert {:ok, initialized_lsp} = Server.init(lsp, server_config: config)
     assert LSP.assigns(initialized_lsp).server_config == config
@@ -83,7 +81,22 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert result.server_info.version == PhoenixLS.version()
     assert result.capabilities.text_document_sync.open_close == true
     assert result.capabilities.text_document_sync.change == TextDocumentSyncKind.full()
-    assert result.capabilities.completion_provider.trigger_characters == [".", ":"]
+
+    assert result.capabilities.completion_provider.trigger_characters == [
+             "<",
+             " ",
+             "-",
+             ":",
+             "\"",
+             "'",
+             "=",
+             "{",
+             ".",
+             "#",
+             "@",
+             "/"
+           ]
+
     assert result.capabilities.completion_provider.resolve_provider == true
     assert result.capabilities.hover_provider == true
     assert result.capabilities.definition_provider == true
@@ -164,12 +177,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     root_path = fixture_project(context, "server_project_indexing_config")
     root_uri = SupportURI.path_to_file_uri!(root_path)
 
-    config = %ServerConfig{
-      source_only?: true,
-      project_indexing_enabled?: false,
-      project_compilation_enabled?: false,
-      log_level: :info
-    }
+    config = server_config(project_indexing_enabled?: false)
 
     {:ok, lsp} = Server.init(lsp, project_manager: Manager, server_config: config)
 
@@ -192,12 +200,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     root_path = fixture_project(context, "server_project_compilation_config")
     root_uri = SupportURI.path_to_file_uri!(root_path)
 
-    config = %ServerConfig{
-      source_only?: true,
-      project_indexing_enabled?: true,
-      project_compilation_enabled?: true,
-      log_level: :info
-    }
+    config = server_config(project_compilation_enabled?: true)
 
     {:ok, lsp} = Server.init(lsp, project_manager: Manager, server_config: config)
 
@@ -297,7 +300,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
         "capabilities" => %{
           "completionProvider" => %{
             "resolveProvider" => true,
-            "triggerCharacters" => [".", ":"]
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
           },
           "experimental" => nil,
           "textDocumentSync" => %{

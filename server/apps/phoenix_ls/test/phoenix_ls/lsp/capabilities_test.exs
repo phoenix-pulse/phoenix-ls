@@ -41,7 +41,22 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     capabilities = Capabilities.build()
 
     assert %CompletionOptions{} = completion = capabilities.completion_provider
-    assert completion.trigger_characters == [".", ":"]
+
+    assert completion.trigger_characters == [
+             "<",
+             " ",
+             "-",
+             ":",
+             "\"",
+             "'",
+             "=",
+             "{",
+             ".",
+             "#",
+             "@",
+             "/"
+           ]
+
     assert completion.resolve_provider == true
   end
 

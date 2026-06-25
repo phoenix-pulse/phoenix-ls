@@ -4,6 +4,7 @@ defmodule PhoenixLS.LSP.SignatureHelp do
   """
 
   alias GenLSP.Requests.TextDocumentSignatureHelp
+  alias PhoenixLS.Features.Policy
   alias PhoenixLS.Features.SignatureHelp, as: SignatureHelpFeature
   alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
@@ -20,9 +21,11 @@ defmodule PhoenixLS.LSP.SignatureHelp do
            {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
            {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
+        config = RequestContext.server_config!(context)
+
         snapshot
         |> Snapshot.all()
-        |> signature_help(document.text, position)
+        |> signature_help(document.text, position, config)
       else
         _missing_or_invalid -> nil
       end
@@ -30,7 +33,9 @@ defmodule PhoenixLS.LSP.SignatureHelp do
     {:reply, result, context.lsp}
   end
 
-  defp signature_help(facts, source, position) do
-    SignatureHelpFeature.signature_help(source, position, facts)
+  defp signature_help(facts, source, position, config) do
+    if Policy.allow?(:signature_help, :phoenix, config) do
+      SignatureHelpFeature.signature_help(source, position, facts)
+    end
   end
 end

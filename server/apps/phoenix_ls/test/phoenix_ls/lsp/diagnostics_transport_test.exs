@@ -1,13 +1,16 @@
 defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_notification: 3, assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0, server_config: 1]
 
+  alias PhoenixLS.Index.DocumentIndexer
   alias PhoenixLS.Index.Store, as: IndexStore
   alias PhoenixLS.LSP.Server
+  alias PhoenixLS.LSP.Status
   alias PhoenixLS.Project.Names
   alias PhoenixLS.Support.URI, as: SupportURI
-  alias PhoenixLS.Workspace.DocumentStore
+  alias PhoenixLS.Workspace.{Document, DocumentStore}
 
   @fallback_store __MODULE__.DocumentStore
 
@@ -26,6 +29,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    open_page_module(test_client, root)
 
     assert_eventually(fn ->
       assert [_attr] = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
@@ -59,6 +63,114 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
         "version" => 2,
         "diagnostics" => []
       },
+      500
+    )
+  end
+
+  test "GenLSP transport publishes only PhoenixLS diagnostics in companion mode", context do
+    root = fixture_project(context, "companion_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    open_page_module(test_client, root)
+
+    assert_eventually(fn ->
+      assert [_attr] = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
+    end)
+
+    open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.missing_required_attr",
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+  end
+
+  test "GenLSP transport reports local components unavailable to the HEEx module", context do
+    root = fixture_project(context, "not_imported_component_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+
+    assert_eventually(fn ->
+      assert [_component] = IndexStore.by_kind(Names.index_store(root_uri), :component)
+    end)
+
+    open_document(test_client, heex_uri, "phoenix-heex", ~s(<.button label="Save" />))
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.component_not_imported",
+            "message" => "Component .button is not imported in AppWeb.Page",
+            "data" => %{
+              "kind" => "component_not_imported",
+              "tag" => ".button",
+              "component" => "button",
+              "module" => "AppWeb.Page"
+            },
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+  end
+
+  test "GenLSP transport omits compiler diagnostics in companion mode", context do
+    root = fixture_project(context, "companion_generic_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app/broken.ex"))
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      elixir_uri,
+      "elixir",
+      "defmodule App.Broken do\n  def broken(\nend"
+    )
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{"uri" => ^elixir_uri, "version" => 1, "diagnostics" => []},
       500
     )
   end
@@ -107,6 +219,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source_with_values())
+    open_page_module(test_client, root)
 
     assert_eventually(fn ->
       attrs = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
@@ -159,6 +272,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    open_page_module(test_client, root)
 
     assert_eventually(fn ->
       assert [_component] = IndexStore.by_kind(Names.index_store(root_uri), :component)
@@ -204,6 +318,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    open_page_module(test_client, root)
 
     assert_eventually(fn ->
       assert [_attr] = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
@@ -237,6 +352,62 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
         "version" => 1,
         "diagnostics" => []
       },
+      500
+    )
+  end
+
+  test "GenLSP transport refreshes open diagnostics after project indexing completes",
+       context do
+    root = fixture_project(context, "project_index_refresh_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    router_path = Path.join(root, "lib/app_web/router.ex")
+    router_uri = SupportURI.path_to_file_uri!(router_path)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    File.write!(router_path, router_source())
+
+    test_server =
+      GenLSP.Test.server(Server,
+        init_args: [server_config: server_config(project_indexing_enabled?: false)]
+      )
+
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", ~s(<.link navigate={~p"/products"} />))
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.unknown_route",
+            "message" => ~s(Unknown verified route "/products"),
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+
+    :ok =
+      DocumentIndexer.index(
+        Names.index_store(root_uri),
+        Document.new(router_uri, "elixir", 1, router_source())
+      )
+
+    send(
+      test_server.lsp,
+      {:phoenix_ls_status,
+       Status.indexing_completed(root_uri: root_uri, job: :project, result: :ok, count: 1)}
+    )
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{"uri" => ^heex_uri, "version" => 1, "diagnostics" => []},
       500
     )
   end
@@ -290,6 +461,74 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     )
   end
 
+  test "GenLSP transport does not publish html template diagnostics for json routes",
+       context do
+    root = fixture_project(context, "json_route_template_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+
+    controller_uri =
+      SupportURI.path_to_file_uri!(
+        Path.join(root, "lib/app_web/controllers/ticket_controller.ex")
+      )
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      router_uri,
+      "elixir",
+      """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        pipeline :api do
+          plug :accepts, ["json"]
+        end
+
+        scope "/api", AppWeb do
+          pipe_through :api
+
+          resources "/tickets", TicketController, except: [:new, :edit]
+        end
+      end
+      """
+    )
+
+    assert_eventually(fn ->
+      assert [_pipeline] = IndexStore.by_kind(Names.index_store(root_uri), :pipeline)
+    end)
+
+    open_document(
+      test_client,
+      controller_uri,
+      "elixir",
+      """
+      defmodule AppWeb.TicketController do
+        use AppWeb, :controller
+
+        def index(conn, _params) do
+          render(conn, :index, tickets: [])
+        end
+
+        def show(conn, %{"id" => id}) do
+          render(conn, :show, ticket: id)
+        end
+      end
+      """
+    )
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{"uri" => ^controller_uri, "version" => 1, "diagnostics" => []},
+      500
+    )
+  end
+
   test "GenLSP transport clears diagnostics when HEEx documents close", context do
     root = fixture_project(context, "clear_diagnostics_project")
     root_uri = SupportURI.path_to_file_uri!(root)
@@ -330,6 +569,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    open_page_module(test_client, root)
 
     assert_eventually(fn ->
       assert [_attr] = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
@@ -478,6 +718,16 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     })
   end
 
+  defp open_page_module(test_client, root) do
+    page_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.ex"))
+
+    open_document(test_client, page_uri, "elixir", """
+    defmodule AppWeb.Page do
+      import AppWeb.CoreComponents
+    end
+    """)
+  end
+
   defp change_document(test_client, uri, version, text) do
     GenLSP.Test.notify(test_client, %{
       jsonrpc: "2.0",
@@ -543,6 +793,18 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     defmodule AppWeb.PageController do
       def index(conn, _params) do
         render(conn, :index)
+      end
+    end
+    """
+  end
+
+  defp router_source do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products", ProductLive.Index, :index
       end
     end
     """

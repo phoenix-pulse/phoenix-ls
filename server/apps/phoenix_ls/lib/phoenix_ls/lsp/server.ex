@@ -78,9 +78,37 @@ defmodule PhoenixLS.LSP.Server do
 
   def handle_info({:phoenix_ls_status, payload}, lsp) do
     Status.publish(lsp, payload)
+    refresh_project_diagnostics(lsp, payload)
 
     {:noreply, lsp}
   end
+
+  defp refresh_project_diagnostics(
+         lsp,
+         %{
+           "kind" => "indexing",
+           "phase" => "completed",
+           "job" => "project",
+           "rootUri" => root_uri
+         }
+       )
+       when is_binary(root_uri) do
+    case Map.get(GenLSP.LSP.assigns(lsp), :project_manager) do
+      nil ->
+        :ok
+
+      project_manager ->
+        case Manager.fetch_engine(project_manager, root_uri) do
+          {:ok, engine} ->
+            Diagnostics.schedule_open_documents(lsp, engine.document_store, {:ok, engine})
+
+          :error ->
+            :ok
+        end
+    end
+  end
+
+  defp refresh_project_diagnostics(_lsp, _payload), do: :ok
 
   defp missing_gen_lsp_options(opts) do
     Enum.reject(@required_gen_lsp_options, &Keyword.has_key?(opts, &1))

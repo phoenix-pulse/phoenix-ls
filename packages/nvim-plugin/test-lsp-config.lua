@@ -40,19 +40,81 @@ vim = {
 
 local lsp = require("phoenix-pulse.lsp")
 
-lsp.setup({
-  lsp_server_path = "/tmp/phoenix_ls",
+local function lsp_config(overrides)
+  local config = {
+    lsp_server_path = "/tmp/phoenix_ls",
+    mode = "auto",
+    companion = {
+      detect_expert = true,
+      disable_generic_elixir = true,
+    },
+  }
+
+  overrides = overrides or {}
+
+  for key, value in pairs(overrides) do
+    if key ~= "companion" then
+      config[key] = value
+    end
+  end
+
+  for key, value in pairs(overrides.companion or {}) do
+    config.companion[key] = value
+  end
+
+  return config
+end
+
+local function assert_env(env, key, expected, message)
+  if env[key] ~= expected then
+    error(message, 2)
+  end
+end
+
+local function setup_lsp(config, client_provider)
+  captured_setup = nil
+
+  for key in pairs(configs) do
+    configs[key] = nil
+  end
+
+  vim.lsp.get_clients = nil
+  vim.lsp.get_active_clients = nil
+  vim.lsp.is_enabled = nil
+
+  if client_provider then
+    client_provider()
+  end
+
+  lsp.setup(config)
+
+  local default_config = configs.phoenix_pulse and configs.phoenix_pulse.default_config
+
+  if not default_config then
+    error("expected phoenix_pulse default_config to be registered", 2)
+  end
+
+  return default_config
+end
+
+local default_config = setup_lsp(lsp_config({
   source_only_mode = false,
   log_level = "debug",
   indexing_enabled = false,
   compilation_enabled = true,
-})
+  mode = "full",
+  companion = {
+    disable_generic_elixir = false,
+  },
+}), function()
+  vim.lsp.get_clients = function(filter)
+    if filter.name ~= "expert" then
+      error("expected expert client filter", 2)
+    end
 
-local default_config = configs.phoenix_pulse and configs.phoenix_pulse.default_config
-
-if not default_config then
-  error("expected phoenix_pulse default_config to be registered", 2)
-end
+    return { { name = "expert" } }
+  end
+end)
 
 if default_config.cmd[1] ~= "/tmp/phoenix_ls" or default_config.cmd[2] ~= "--stdio" then
   error("expected phoenix_pulse to start the configured Elixir executable", 2)
@@ -60,21 +122,92 @@ end
 
 local env = default_config.cmd_env or {}
 
-if env.PHOENIX_LS_SOURCE_ONLY ~= "0" then
-  error("expected PHOENIX_LS_SOURCE_ONLY=0", 2)
-end
+assert_env(env, "PHOENIX_LS_SOURCE_ONLY", "0", "expected PHOENIX_LS_SOURCE_ONLY=0")
+assert_env(env, "PHOENIX_LS_LOG_LEVEL", "debug", "expected PHOENIX_LS_LOG_LEVEL=debug")
+assert_env(env, "PHOENIX_LS_INDEXING", "0", "expected PHOENIX_LS_INDEXING=0")
+assert_env(env, "PHOENIX_LS_COMPILATION", "1", "expected PHOENIX_LS_COMPILATION=1")
+assert_env(env, "PHOENIX_LS_MODE", "full", "expected PHOENIX_LS_MODE=full")
+assert_env(env, "PHOENIX_LS_DETECTED_EXPERT", "1", "expected PHOENIX_LS_DETECTED_EXPERT=1")
+assert_env(env, "PHOENIX_LS_DISABLE_GENERIC_ELIXIR", "0", "expected PHOENIX_LS_DISABLE_GENERIC_ELIXIR=0")
 
-if env.PHOENIX_LS_LOG_LEVEL ~= "debug" then
-  error("expected PHOENIX_LS_LOG_LEVEL=debug", 2)
-end
+local auto_config = setup_lsp(lsp_config(), function()
+  vim.lsp.get_clients = function(filter)
+    if filter.name ~= "expert" then
+      error("expected expert client filter", 2)
+    end
 
-if env.PHOENIX_LS_INDEXING ~= "0" then
-  error("expected PHOENIX_LS_INDEXING=0", 2)
-end
+    return { { name = "expert" } }
+  end
+end)
 
-if env.PHOENIX_LS_COMPILATION ~= "1" then
-  error("expected PHOENIX_LS_COMPILATION=1", 2)
-end
+local auto_env = auto_config.cmd_env or {}
+
+assert_env(auto_env, "PHOENIX_LS_MODE", "auto", "expected auto mode to be passed to server")
+assert_env(auto_env, "PHOENIX_LS_DETECTED_EXPERT", "1", "expected active expert client to be detected")
+assert_env(
+  auto_env,
+  "PHOENIX_LS_DISABLE_GENERIC_ELIXIR",
+  "1",
+  "expected generic Elixir to be disabled by default in companion settings"
+)
+
+local configured_config = setup_lsp(lsp_config(), function()
+  configs.expert = { default_config = {} }
+end)
+
+assert_env(
+  configured_config.cmd_env,
+  "PHOENIX_LS_DETECTED_EXPERT",
+  "1",
+  "expected configured expert client to be detected"
+)
+
+local native_enabled_config = setup_lsp(lsp_config(), function()
+  vim.lsp.is_enabled = function(name)
+    if name ~= "expert" then
+      error("expected expert enabled-state filter", 2)
+    end
+
+    return true
+  end
+end)
+
+assert_env(
+  native_enabled_config.cmd_env,
+  "PHOENIX_LS_DETECTED_EXPERT",
+  "1",
+  "expected native enabled expert setup to be detected"
+)
+
+local disabled_detection_config = setup_lsp(lsp_config({
+  companion = {
+    detect_expert = false,
+  },
+}), function()
+  vim.lsp.get_clients = function()
+    return { { name = "expert" } }
+  end
+end)
+
+assert_env(
+  disabled_detection_config.cmd_env,
+  "PHOENIX_LS_DETECTED_EXPERT",
+  "0",
+  "expected expert detection to respect detect_expert=false"
+)
+
+local unrelated_client_config = setup_lsp(lsp_config(), function()
+  vim.lsp.get_clients = function()
+    return { { name = "elixirls" } }
+  end
+end)
+
+assert_env(
+  unrelated_client_config.cmd_env,
+  "PHOENIX_LS_DETECTED_EXPERT",
+  "0",
+  "expected unrelated LSP clients not to count as expert"
+)
 
 if type(captured_setup) ~= "table" then
   error("expected lspconfig setup to be called", 2)

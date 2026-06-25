@@ -3,6 +3,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
 
   alias PhoenixLS.Features.PhoenixRequests
   alias PhoenixLS.Index.{ElixirSource, Snapshot}
+  alias PhoenixLS.Introspection.Asset.Hooks, as: AssetHooks
   alias PhoenixLS.Introspection.Template
 
   @source_uri "file:///tmp/app/lib/app_web/live/page_live.ex"
@@ -193,6 +194,104 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
            ] = PhoenixRequests.handle("phoenix/listRoutes", Snapshot.new(facts))
   end
 
+  test "lists controller graph with routes renders templates assigns layouts and plug assigns" do
+    router_uri = "file:///tmp/app/lib/app_web/router.ex"
+    controller_uri = "file:///tmp/app/lib/app_web/controllers/product_controller.ex"
+    template_uri = "file:///tmp/app/lib/app_web/controllers/product_html/show.html.heex"
+
+    {:ok, router_facts} =
+      ElixirSource.facts(router_uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          pipe_through :browser
+
+          get "/products/:id", ProductController, :show
+        end
+      end
+      """)
+
+    {:ok, controller_facts} =
+      ElixirSource.facts(controller_uri, """
+      defmodule AppWeb.ProductController do
+        use AppWeb, :controller
+
+        plug :load_account
+
+        def show(conn, %{"id" => id}) do
+          conn
+          |> assign(:product, id)
+          |> put_layout(html: :admin)
+          |> render(:show, page_title: "Product")
+        end
+
+        defp load_account(conn, _opts) do
+          assign(conn, :current_account, "acct")
+        end
+      end
+      """)
+
+    controller_graph =
+      PhoenixRequests.handle(
+        "phoenix/listControllers",
+        Snapshot.new(router_facts ++ controller_facts ++ Template.facts(template_uri, "<h1 />"))
+      )
+
+    assert [
+             %{
+               "module" => "AppWeb.ProductController",
+               "name" => "AppWeb.ProductController",
+               "filePath" => "/tmp/app/lib/app_web/controllers/product_controller.ex",
+               "actions" => [
+                 %{
+                   "name" => "show",
+                   "arity" => 2,
+                   "routes" => [
+                     %{
+                       "verb" => "get",
+                       "path" => "/products/:id",
+                       "helperBase" => "product",
+                       "filePath" => "/tmp/app/lib/app_web/router.ex"
+                     }
+                   ],
+                   "renders" => [
+                     %{
+                       "template" => "show",
+                       "format" => "html",
+                       "templatePath" =>
+                         "/tmp/app/lib/app_web/controllers/product_html/show.html.heex",
+                       "assigns" => ["page_title"],
+                       "confidence" => "exact"
+                     }
+                   ],
+                   "assigns" => assigns,
+                   "layouts" => [
+                     %{
+                       "name" => "admin",
+                       "source" => "put_layout",
+                       "confidence" => "exact"
+                     }
+                   ]
+                 }
+               ],
+               "plugAssigns" => [
+                 %{
+                   "plug" => "load_account",
+                   "name" => "current_account",
+                   "confidence" => "medium",
+                   "filePath" => "/tmp/app/lib/app_web/controllers/product_controller.ex"
+                 }
+               ]
+             }
+           ] = controller_graph
+
+    assert Enum.map(assigns, &{&1["name"], &1["source"], &1["confidence"]}) == [
+             {"page_title", "render_keyword", "exact"},
+             {"product", "assign", "exact"}
+           ]
+  end
+
   test "lists templates" do
     facts =
       [
@@ -292,6 +391,223 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "location" => %{"line" => _line, "character" => 2}
              }
            ] = PhoenixRequests.handle("phoenix/listEvents", snapshot())
+  end
+
+  test "lists LiveView uploads with usage locations" do
+    source =
+      ~s(<form phx-change="validate" phx-submit="save"><.live_file_input upload={@uploads.avatar} /></form>)
+
+    {:ok, upload_facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          {:ok, allow_upload(socket, :avatar, accept: ~w(.jpg .png), max_entries: 1)}
+        end
+      end
+      """)
+
+    usage_facts =
+      Template.upload_usage_facts(
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        source
+      )
+
+    assert [
+             %{
+               "name" => "avatar",
+               "module" => "AppWeb.ProductLive",
+               "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+               "location" => %{"line" => _line, "character" => _character},
+               "options" => %{
+                 "accept" => [".jpg", ".png"],
+                 "max_entries" => 1
+               },
+               "usagesCount" => 1,
+               "usages" => [
+                 %{
+                   "name" => "avatar",
+                   "module" => "AppWeb.ProductLive",
+                   "role" => "live_file_input",
+                   "attribute" => "upload",
+                   "tag" => ".live_file_input",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 0, "character" => _usage_character},
+                   "defined" => true
+                 }
+               ]
+             }
+           ] =
+             PhoenixRequests.handle(
+               "phoenix/listUploads",
+               Snapshot.new(upload_facts ++ usage_facts)
+             )
+  end
+
+  test "lists LiveView upload callback usages" do
+    {:ok, upload_facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          {:ok, allow_upload(socket, :avatar, accept: ~w(.jpg .png), max_entries: 1)}
+        end
+
+        def handle_event("save", _params, socket) do
+          consume_uploaded_entries(socket, :avatar, fn %{path: path}, _entry -> {:ok, path} end)
+          cancel_upload(socket, :avatar, "ref")
+          {:noreply, socket}
+        end
+      end
+      """)
+
+    assert [
+             %{
+               "name" => "avatar",
+               "module" => "AppWeb.ProductLive",
+               "usagesCount" => 2,
+               "usages" => [
+                 %{
+                   "role" => "consume_uploaded_entries",
+                   "function" => "consume_uploaded_entries/3",
+                   "defined" => true
+                 },
+                 %{
+                   "role" => "cancel_upload",
+                   "function" => "cancel_upload/3",
+                   "defined" => true
+                 }
+               ]
+             }
+           ] = PhoenixRequests.handle("phoenix/listUploads", Snapshot.new(upload_facts))
+  end
+
+  test "lists LiveView hooks with definition and usage locations" do
+    usage_source =
+      ~s(<div phx-hook="PhoneNumber"></div><div phx-hook="MissingHook"></div>)
+
+    hook_facts =
+      AssetHooks.facts(
+        "file:///tmp/app/priv/static/assets/app.js",
+        """
+        const Hooks = {}
+        Hooks.PhoneNumber = {
+          mounted() {}
+        }
+        """,
+        %{source: :static_asset}
+      )
+
+    usage_facts =
+      Template.hook_usage_facts(
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        usage_source
+      )
+
+    hooks = PhoenixRequests.handle("phoenix/listHooks", Snapshot.new(hook_facts ++ usage_facts))
+
+    assert [
+             %{
+               "name" => "MissingHook",
+               "defined" => false,
+               "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+               "location" => %{"line" => 0, "character" => _missing_character},
+               "usagesCount" => 1,
+               "usages" => [
+                 %{
+                   "name" => "MissingHook",
+                   "module" => "AppWeb.ProductLive",
+                   "attribute" => "phx-hook",
+                   "tag" => "div",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 0, "character" => _missing_usage_character},
+                   "defined" => false
+                 }
+               ]
+             },
+             %{
+               "name" => "PhoneNumber",
+               "defined" => true,
+               "source" => "javascript_hook_map",
+               "filePath" => "/tmp/app/priv/static/assets/app.js",
+               "location" => %{"line" => 1, "character" => 6},
+               "usagesCount" => 1,
+               "usages" => [
+                 %{
+                   "name" => "PhoneNumber",
+                   "module" => "AppWeb.ProductLive",
+                   "attribute" => "phx-hook",
+                   "tag" => "div",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 0, "character" => _usage_character},
+                   "defined" => true
+                 }
+               ]
+             }
+           ] = hooks
+  end
+
+  test "lists colocated assets grouped by owner module" do
+    source = """
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".Sortable">
+      export default {}
+    </script>
+
+    <script :type={Phoenix.LiveView.ColocatedJS}>
+      console.log("local")
+    </script>
+
+    <style :type={Phoenix.LiveView.ColocatedCSS}>
+      .root {}
+    </style>
+    """
+
+    facts =
+      Template.colocated_asset_facts(
+        "file:///tmp/app/lib/app_web/live/product_live.html.heex",
+        source
+      )
+
+    assert [
+             %{
+               "ownerModule" => "AppWeb.ProductLive",
+               "assetsCount" => 3,
+               "assets" => [
+                 %{
+                   "kind" => "colocated_hook",
+                   "typeModule" => "Phoenix.LiveView.ColocatedHook",
+                   "name" => ".Sortable",
+                   "generatedName" => "AppWeb.ProductLive.Sortable",
+                   "tag" => "script",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 0, "character" => 0},
+                   "options" => %{"name" => ".Sortable"}
+                 },
+                 %{
+                   "kind" => "colocated_js",
+                   "typeModule" => "Phoenix.LiveView.ColocatedJS",
+                   "name" => nil,
+                   "generatedName" => "AppWeb.ProductLive.ColocatedJS",
+                   "tag" => "script",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 4, "character" => 0},
+                   "options" => %{}
+                 },
+                 %{
+                   "kind" => "colocated_css",
+                   "typeModule" => "Phoenix.LiveView.ColocatedCSS",
+                   "name" => nil,
+                   "generatedName" => "AppWeb.ProductLive.ColocatedCSS",
+                   "tag" => "style",
+                   "filePath" => "/tmp/app/lib/app_web/live/product_live.html.heex",
+                   "location" => %{"line" => 8, "character" => 0},
+                   "options" => %{}
+                 }
+               ]
+             }
+           ] = PhoenixRequests.handle("phoenix/listColocatedAssets", Snapshot.new(facts))
   end
 
   test "lists LiveView event usages with handler mapping state" do
@@ -407,6 +723,74 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                ]
              }
            ] = PhoenixRequests.handle("phoenix/listLiveView", snapshot())
+  end
+
+  test "lists LiveView lifecycle relationships" do
+    {:ok, facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          socket =
+            socket
+            |> start_async(:load_stats, fn -> :ok end)
+            |> attach_hook(:log_events, :handle_event, fn _event, _params, socket -> {:cont, socket} end)
+
+          {:ok, socket, temporary_assigns: [messages: []]}
+        end
+
+        def handle_async(:load_stats, {:ok, _result}, socket), do: {:noreply, socket}
+        def handle_info(:tick, socket), do: {:noreply, socket}
+      end
+      """)
+
+    assert [
+             %{
+               "module" => "AppWeb.ProductLive",
+               "async" => [
+                 %{
+                   "name" => "load_stats",
+                   "source" => "start_async",
+                   "handler" => nil,
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _start_line, "character" => _start_char}
+                 },
+                 %{
+                   "name" => "load_stats",
+                   "source" => "handle_async",
+                   "handler" => "handle_async/3",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _async_line, "character" => 2}
+                 }
+               ],
+               "hooks" => [
+                 %{
+                   "name" => "log_events",
+                   "stage" => "handle_event",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _hook_line, "character" => _hook_char}
+                 }
+               ],
+               "messages" => [
+                 %{
+                   "name" => "tick",
+                   "pattern" => ":tick",
+                   "handler" => "handle_info/2",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _message_line, "character" => 2}
+                 }
+               ],
+               "temporaryAssigns" => [
+                 %{
+                   "name" => "messages",
+                   "default" => "[]",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _temporary_line, "character" => _temporary_char}
+                 }
+               ]
+             }
+           ] = PhoenixRequests.handle("phoenix/listLiveView", Snapshot.new(facts))
   end
 
   test "lists many-to-many association metadata for ERD explorers" do

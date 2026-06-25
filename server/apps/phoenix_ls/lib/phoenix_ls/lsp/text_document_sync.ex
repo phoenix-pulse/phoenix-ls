@@ -20,6 +20,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   @spec handle(TextDocumentDidOpen.t(), LSP.t()) :: {:noreply, LSP.t()}
   def handle(%TextDocumentDidOpen{params: %{text_document: text_document}}, lsp) do
     project_engine = project_engine(lsp, text_document.uri)
+    lsp = assign_project(lsp, project_engine)
 
     :ok =
       DocumentStore.open(
@@ -44,6 +45,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         lsp
       ) do
     project_engine = project_engine(lsp, text_document.uri)
+    lsp = assign_project(lsp, project_engine)
     document_store = document_store(lsp, project_engine)
 
     case full_text_change(content_changes) do
@@ -67,6 +69,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
   @spec handle(TextDocumentDidClose.t(), LSP.t()) :: {:noreply, LSP.t()}
   def handle(%TextDocumentDidClose{params: %{text_document: text_document}}, lsp) do
     project_engine = project_engine(lsp, text_document.uri)
+    lsp = assign_project(lsp, project_engine)
 
     :ok = DocumentStore.close(document_store(lsp, project_engine), text_document.uri)
     delete_indexed_document(lsp, project_engine, text_document.uri)
@@ -151,6 +154,12 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         end
     end
   end
+
+  defp assign_project(lsp, {:ok, engine}) do
+    LSP.assign(lsp, document_store: engine.document_store, project_root_uri: engine.root_uri)
+  end
+
+  defp assign_project(lsp, :error), do: lsp
 
   defp indexer_opts(lsp, engine) do
     [

@@ -1,5 +1,5 @@
 defmodule PhoenixLS.LSP.TextDocumentSyncTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias GenLSP.LSP
 

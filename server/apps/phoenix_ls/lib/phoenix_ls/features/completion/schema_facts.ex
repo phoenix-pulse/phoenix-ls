@@ -7,10 +7,10 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
 
   @spec schema_id_for_source(String.t(), [Fact.t()]) :: {:ok, String.t()} | :error
   def schema_id_for_source(source, facts) when is_binary(source) and is_list(facts) do
-    case String.trim(source) do
-      "@" <> assign -> schema_id_for_assign(assign, facts)
-      ":" <> atom -> schema_id_for_name(atom, facts)
-      _source -> :error
+    with {:ok, ast} <- quoted_source(source) do
+      schema_id_for_source_ast(ast, facts)
+    else
+      _not_static_source -> :error
     end
   end
 
@@ -91,6 +91,60 @@ defmodule PhoenixLS.Features.Completion.SchemaFacts do
       end
     end
   end
+
+  defp quoted_source(source) do
+    source
+    |> String.trim()
+    |> Code.string_to_quoted(columns: true, token_metadata: true)
+  end
+
+  defp schema_id_for_source_ast(atom, facts) when is_atom(atom) do
+    atom
+    |> Atom.to_string()
+    |> schema_id_for_name(facts)
+  end
+
+  defp schema_id_for_source_ast(ast, facts) do
+    with {:ok, assign, path} <- assign_source_path(ast),
+         {:ok, base_schema_id} <- schema_id_for_assign(assign, facts) do
+      schema_id_for_association_path(base_schema_id, path, facts)
+    else
+      _not_assign_source -> :error
+    end
+  end
+
+  defp assign_source_path(
+         {{:., _meta, [{:__aliases__, _alias_meta, [:Phoenix, :Component]}, call]}, _call_meta,
+          [inner_ast | _rest]}
+       )
+       when call in [:to_form, :form] do
+    assign_source_path(inner_ast)
+  end
+
+  defp assign_source_path({call, _meta, [inner_ast | _rest]}) when call in [:to_form, :form] do
+    assign_source_path(inner_ast)
+  end
+
+  defp assign_source_path({:@, _meta, [{assign, _assign_meta, nil}]}) when is_atom(assign) do
+    assign = Atom.to_string(assign)
+
+    if identifier?(assign), do: {:ok, assign, []}, else: :error
+  end
+
+  defp assign_source_path({{:., _meta, [inner_ast, segment]}, _call_meta, []}) do
+    with {:ok, assign, path} <- assign_source_path(inner_ast),
+         {:ok, segment} <- path_segment(segment) do
+      {:ok, assign, path ++ [segment]}
+    else
+      _not_assign_path -> :error
+    end
+  end
+
+  defp assign_source_path(_ast), do: :error
+
+  defp path_segment(segment) when is_atom(segment), do: {:ok, Atom.to_string(segment)}
+  defp path_segment(segment) when is_binary(segment), do: {:ok, segment}
+  defp path_segment(_segment), do: :error
 
   defp schema_id_for_association(schema_id, name, facts) do
     with %Fact{data: %{related: related_module}} <-

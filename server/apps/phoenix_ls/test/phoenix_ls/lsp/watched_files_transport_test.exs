@@ -1,5 +1,5 @@
 defmodule PhoenixLS.LSP.WatchedFilesTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
 
@@ -30,7 +30,10 @@ defmodule PhoenixLS.LSP.WatchedFilesTransportTest do
       1,
       %{
         "capabilities" => %{
-          "completionProvider" => %{"resolveProvider" => true, "triggerCharacters" => [".", ":"]},
+          "completionProvider" => %{
+            "resolveProvider" => true,
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
+          },
           "experimental" => nil,
           "textDocumentSync" => %{"openClose" => true, "change" => 1},
           "workspace" => %{

@@ -1,7 +1,8 @@
 defmodule PhoenixLS.LSP.CodeActionTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0]
 
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Support.URI, as: SupportURI
@@ -31,7 +32,9 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
     assert_indexed(component_uri, 5)
+    assert_indexed(page_uri, 2)
     open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
     assert_indexed(heex_uri, 1)
 
@@ -92,6 +95,108 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
                    500
   end
 
+  test "GenLSP transport keeps PhoenixLS diagnostic quick fixes in companion mode", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "companion_code_action_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
+    assert_indexed(component_uri, 5)
+    assert_indexed(page_uri, 2)
+    open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
+    assert_indexed(heex_uri, 1)
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "method" => "textDocument/publishDiagnostics",
+                     "params" => %{
+                       "uri" => ^heex_uri,
+                       "diagnostics" => [
+                         %{
+                           "source" => "PhoenixLS",
+                           "code" => "phoenix.missing_required_attr",
+                           "range" => diagnostic_range
+                         } = diagnostic
+                       ]
+                     }
+                   },
+                   500
+
+    GenLSP.Test.request(test_client, %{
+      id: 6,
+      jsonrpc: "2.0",
+      method: "textDocument/codeAction",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        range: diagnostic_range,
+        context: %{diagnostics: [diagnostic]}
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 6,
+                     "result" => [%{"title" => "Add required attr \"label\""}]
+                   },
+                   500
+  end
+
+  test "GenLSP transport ignores non-Phoenix diagnostic sources in companion mode", context do
+    root = fixture_project(context, "companion_generic_code_action_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    diagnostic = %{
+      source: "ElixirLS",
+      code: "phoenix.missing_required_attr",
+      message: "generic source must not be handled",
+      range: %{
+        start: %{line: 0, character: 0},
+        end: %{line: 0, character: 8}
+      },
+      data: %{kind: "missing_required_attr", tag: ".button", attr: "label"}
+    }
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", "<.button />")
+
+    GenLSP.Test.request(test_client, %{
+      id: 7,
+      jsonrpc: "2.0",
+      method: "textDocument/codeAction",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        range: diagnostic.range,
+        context: %{diagnostics: [diagnostic]}
+      }
+    })
+
+    assert_result(7, [], 500)
+  end
+
   test "GenLSP transport returns invalid attr value quick fixes", context do
     handler_id = {__MODULE__, self(), make_ref()}
 
@@ -117,7 +222,9 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
     assert_indexed(component_uri, 5)
+    assert_indexed(page_uri, 2)
 
     open_document(
       test_client,
@@ -419,30 +526,53 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
       }
     })
 
-    assert_receive %{
-                     "jsonrpc" => "2.0",
-                     "id" => 2,
-                     "result" => [
-                       %{
-                         "title" => "Change template to \"index.html.heex\"",
-                         "kind" => "quickfix",
-                         "edit" => %{
-                           "changes" => %{
-                             ^controller_uri => [
-                               %{
-                                 "newText" => ":index",
-                                 "range" => %{
-                                   "start" => %{"line" => 2, "character" => 17},
-                                   "end" => %{"line" => 2, "character" => 25}
-                                 }
-                               }
-                             ]
-                           }
-                         }
+    assert_receive %{"jsonrpc" => "2.0", "id" => 2, "result" => actions}, 500
+
+    assert Enum.any?(actions, fn
+             %{
+               "title" => "Change template to \"index.html.heex\"",
+               "kind" => "quickfix",
+               "edit" => %{
+                 "changes" => %{
+                   ^controller_uri => [
+                     %{
+                       "newText" => ":index",
+                       "range" => %{
+                         "start" => %{"line" => 2, "character" => 17},
+                         "end" => %{"line" => 2, "character" => 25}
                        }
-                     ]
-                   },
-                   500
+                     }
+                   ]
+                 }
+               }
+             } ->
+               true
+
+             _action ->
+               false
+           end)
+
+    assert Enum.any?(actions, fn
+             %{
+               "title" => "Create template \"missing.html.heex\"",
+               "kind" => "quickfix",
+               "edit" => %{
+                 "documentChanges" => [
+                   %{
+                     "kind" => "create",
+                     "uri" => create_uri
+                   }
+                 ]
+               }
+             } ->
+               String.ends_with?(
+                 create_uri,
+                 "/lib/app_web/controllers/page_html/missing.html.heex"
+               )
+
+             _action ->
+               false
+           end)
   end
 
   def handle_indexer_event(event, measurements, metadata, parent) do
@@ -479,6 +609,18 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
         }
       }
     })
+  end
+
+  defp open_page_module(test_client, root) do
+    page_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.ex"))
+
+    open_document(test_client, page_uri, "elixir", """
+    defmodule AppWeb.Page do
+      import AppWeb.CoreComponents
+    end
+    """)
+
+    page_uri
   end
 
   defp component_source do

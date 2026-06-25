@@ -1,5 +1,5 @@
 defmodule PhoenixLS.LSP.StatusTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_notification: 3, assert_result: 3]
 

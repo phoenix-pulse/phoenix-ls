@@ -1,7 +1,8 @@
 defmodule PhoenixLS.LSP.HoverTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import GenLSP.Test, only: [assert_result: 3]
+  import PhoenixLS.Support.LSPConfigHelpers, only: [companion_config: 0]
 
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Support.Positions
@@ -34,8 +35,10 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
 
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
     assert_indexed(component_uri, 3)
+    assert_indexed(page_uri, 2)
     assert_indexed(heex_uri, 1)
 
     GenLSP.Test.request(test_client, %{
@@ -62,6 +65,161 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
 
     assert String.contains?(value, "component AppWeb.CoreComponents.button/1")
     assert String.contains?(value, "Renders a button.")
+  end
+
+  test "GenLSP transport keeps component hover content in companion mode", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "companion_hover_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<.button| />")
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+    page_uri = open_page_module(test_client, root)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri, 3)
+    assert_indexed(page_uri, 2)
+    assert_indexed(heex_uri, 1)
+
+    GenLSP.Test.request(test_client, %{
+      id: 6,
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 6,
+                     "result" => %{"contents" => %{"value" => value}}
+                   },
+                   500
+
+    assert String.contains?(value, "component AppWeb.CoreComponents.button/1")
+  end
+
+  test "GenLSP transport omits ordinary Elixir hover in companion mode", context do
+    root = fixture_project(context, "companion_generic_hover_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app/example.ex"))
+
+    {source, position} =
+      source_and_position("""
+      defmodule App.Example do
+        def label(value), do: to_str|ing(value)
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server, init_args: [server_config: companion_config()])
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 7,
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: %{textDocument: %{uri: elixir_uri}, position: position}
+    })
+
+    assert_result(7, nil, 500)
+  end
+
+  test "GenLSP transport hovers built-in Phoenix component attrs in HEEx", context do
+    root = fixture_project(context, "builtin_link_attr_hover_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} =
+      source_and_position(~s(<.link nav|igate={~p"/products"}>Products</.link>))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 8,
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: %{textDocument: %{uri: heex_uri}, position: position}
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 8,
+                     "result" => %{"contents" => %{"value" => value}}
+                   },
+                   500
+
+    assert String.contains?(value, "attr :navigate, :string")
+    assert String.contains?(value, "Navigates to a LiveView")
+  end
+
+  test "GenLSP transport hovers built-in Phoenix component attrs in H sigils", context do
+    root = fixture_project(context, "builtin_link_attr_h_sigils_hover_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex"))
+
+    {elixir_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageLive do
+        use Phoenix.LiveView
+
+        def render(assigns) do
+          ~H\"\"\"
+          <.link pat|ch={~p"/products"}>Products</.link>
+          \"\"\"
+        end
+      end
+      """)
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, elixir_uri, "elixir", elixir_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 9,
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: %{textDocument: %{uri: elixir_uri}, position: position}
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 9,
+                     "result" => %{"contents" => %{"value" => value}}
+                   },
+                   500
+
+    assert String.contains?(value, "attr :patch, :string")
+    assert String.contains?(value, "Patches the current LiveView")
   end
 
   test "GenLSP transport returns route helper hover content from Elixir source indexes",
@@ -313,7 +471,7 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
                    },
                    500
 
-    assert String.contains?(value, "handle_event(\"save\", ...)")
+    assert String.contains?(value, "handle_event(\"save\", params, socket)")
     assert String.contains?(value, "AppWeb.ProductLive")
     refute String.contains?(value, "AppWeb.Admin.ProductLive")
   end
@@ -426,7 +584,7 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
         "capabilities" => %{
           "completionProvider" => %{
             "resolveProvider" => true,
-            "triggerCharacters" => [".", ":"]
+            "triggerCharacters" => ["<", " ", "-", ":", "\"", "'", "=", "{", ".", "#", "@", "/"]
           },
           "experimental" => nil,
           "hoverProvider" => true,
@@ -463,6 +621,18 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
         }
       }
     })
+  end
+
+  defp open_page_module(test_client, root) do
+    page_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.ex"))
+
+    open_document(test_client, page_uri, "elixir", """
+    defmodule AppWeb.Page do
+      import AppWeb.CoreComponents
+    end
+    """)
+
+    page_uri
   end
 
   defp component_source do

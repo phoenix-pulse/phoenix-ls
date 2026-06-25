@@ -1,5 +1,5 @@
 defmodule PhoenixLS.LSP.DocumentSyncTransportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias PhoenixLS.LSP.Server
   alias PhoenixLS.Workspace.DocumentStore

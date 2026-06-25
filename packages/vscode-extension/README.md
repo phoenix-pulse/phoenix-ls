@@ -5,7 +5,7 @@
 <h1 align="center">Phoenix Pulse</h1>
 
 <p align="center">
-  <strong>The complete IDE companion for Phoenix LiveView development</strong>
+  <strong>A Phoenix-aware IDE companion for LiveView development</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ---
 
-Phoenix Pulse provides intelligent IntelliSense, validation, and navigation for Phoenix 1.6+ and 1.7+ applications. Work faster with smart completions for components, templates, routes, and assigns—all powered by deep understanding of your Phoenix project structure.
+Phoenix Pulse provides intelligent IntelliSense, validation, and navigation for Phoenix 1.7+ applications, including Phoenix 1.8. Work faster with smart completions for components, templates, routes, and assigns—all powered by deep understanding of your Phoenix project structure.
 
 **Powered by the Elixir-native Phoenix LS server** for source-aware analysis, indexing, completions, diagnostics, navigation, explorer data, and ERD payloads.
 
@@ -37,7 +37,7 @@ For the best experience with Phoenix Pulse, add these settings to your VS Code `
     // Allow snippets in quick suggestions
     "editor.suggest.snippetsPreventQuickSuggestions": false,
 
-    // Instant completions (no delay)
+    // Request completions promptly
     "editor.quickSuggestionsDelay": 0,
 
     // Better completion ordering
@@ -59,12 +59,12 @@ For the best experience with Phoenix Pulse, add these settings to your VS Code `
 
 ## ☰ Phoenix Pulse Project Explorer
 
-Phoenix Pulse provides a comprehensive **Project Explorer** in the VS Code sidebar that gives you instant visibility into your entire Phoenix application structure. Click the Phoenix Pulse icon in the Activity Bar to access it.
+Phoenix Pulse provides a **Project Explorer** in the VS Code sidebar that gives you visibility into indexed Phoenix project facts. Click the Phoenix Pulse icon in the Activity Bar to access it.
 
 ### Features
 
 #### 📊 Statistics Overview
-Get a bird's-eye view of your Phoenix project with real-time metrics:
+Get a bird's-eye view of indexed Phoenix facts:
 - **Overview** - Total counts: components, routes, schemas, templates, LiveView modules
 - **Route Breakdown** - Routes grouped by HTTP verb (GET, POST, PUT, DELETE, etc.)
 - **Component Metrics** - Components categorized by complexity
@@ -86,10 +86,16 @@ Explore all function components grouped by file:
 
 #### 🛣️ Routes
 Navigate your Phoenix router with grouped routes:
-- **Routes grouped by controller** for better organization
+- **Routes grouped by controller module/action** for better organization
 - **Route info** → Shows HTTP verb, path, and action
 - **Click route** → Jump to route definition in router
 - **Right-click** → Copy route name, path, or file path
+
+#### Controllers
+Browse indexed controller action graphs:
+- **Expand controller** → See actions, routes, renders, assigns, plug assigns, and layouts
+- **Click action graph item** → Jump to the controller, router, assign source, or rendered template
+- **Right-click** → Copy controller, action, render, assign, layout, module, or file path details
 
 #### 📄 Templates
 View all templates (file-based and embedded):
@@ -99,7 +105,7 @@ View all templates (file-based and embedded):
 - **Right-click** → Copy template name or file path
 
 #### ⚡ LiveView
-Complete visibility into your LiveView architecture:
+Browse indexed LiveView modules:
 - **LiveView modules grouped by name**
 - **Expand module** → See all lifecycle functions organized by type
 - **Function count badge** - Shows total functions in each module
@@ -112,7 +118,7 @@ Complete visibility into your LiveView architecture:
 - **Auto-expand** → Matching categories expand automatically
 
 #### 📋 Copy Actions
-Right-click any item to copy useful information to clipboard:
+Right-click indexed project items to copy useful information to clipboard:
 - **Copy Name** - The item's name
 - **Copy Module Name** - Full module path
 - **Copy File Path** - Absolute path to the file
@@ -177,7 +183,7 @@ Right-click any item to copy useful information to clipboard:
 **Navigation**
 - **F12 / Ctrl+Click** on `:template_name` → Jump to template file or function definition
 - **Hover** → See template type, file location, and parent module
-- Supports both Phoenix 1.6 (`:view`) and 1.7+ (`:html`) patterns
+- Supports Phoenix 1.7+ `:html` module patterns
 
 ---
 
@@ -232,20 +238,31 @@ Right-click any item to copy useful information to clipboard:
 ### ⚡ Phoenix Attributes & Events
 
 **Phoenix LiveView Attributes**
-- All 29 `phx-*` attributes with rich documentation
-- Context-aware: `phx-click`, `phx-submit` only shown when events exist
-- Hover documentation includes usage examples and HexDocs links
+- Documented Phoenix LiveView `phx-*` attributes with rich documentation
+- Context-aware ranking for form, focus, key, and event-related attributes
+- Hover documentation includes concise usage guidance
 
 **Event Completions**
 - Inside `phx-click=""` → Shows available `handle_event` functions
 - Distinguishes between primary (same file) and secondary (LiveView) events
-- Supports both string and atom event names
 - Validates event name exists in LiveView module
 
 **JS Command Support**
 - `JS.push`, `JS.navigate`, `JS.patch`, `JS.show`, `JS.hide`, etc.
 - Pipe chain completions
 - Parameter suggestions for each command
+
+---
+
+### 🌐 Embedded HTML/CSS/JS Forwarding
+
+The VS Code client forwards non-Phoenix editor requests from HEEx regions to VS Code language providers:
+- `.heex` documents → HTML providers
+- `~H` sigil bodies in `.ex` files → HTML providers
+- `<style>` regions → CSS providers
+- `<script>` regions → JavaScript providers
+
+This works alongside Phoenix LS completions, hover, diagnostics, and navigation. Phoenix LS still owns Phoenix-specific semantics; VS Code’s installed HTML, CSS, JavaScript, Emmet, and Tailwind providers own their normal language features.
 
 ---
 
@@ -274,10 +291,9 @@ Right-click any item to copy useful information to clipboard:
 - ✅ Route helpers (`Routes.user_path`)
 - ✅ Verified routes (`~p"/users"`)
 
-**Fast & Cached:**
-- First navigation: ~500ms (parses file)
-- Subsequent: ~1-2ms (uses cache)
-- Content-based caching for instant repeat lookups
+**Cached Navigation:**
+- Uses indexed source facts and caches repeat lookups where possible
+- File changes invalidate affected facts before new navigation results are served
 
 ---
 
@@ -317,13 +333,13 @@ code --install-extension onsever.phoenix-pulse
 ### Minimum Requirements
 
 - **VS Code**: 1.75.0 or higher
-- **Phoenix**: 1.6+ or 1.7+ project
+- **Phoenix**: 1.7+ project
 - **Phoenix LS executable**: bundled with release builds, or configured with `phoenixPulse.serverPath`
 
 ### Recommended
 
 - **Elixir/Mix**: 1.17+ when building the local Phoenix LS executable from source
-- **Phoenix**: 1.7+ (for verified routes and `:html` modules)
+- **Phoenix**: 1.7+ (Phoenix 1.8 recommended)
 
 ### Supported File Types
 
@@ -336,19 +352,20 @@ code --install-extension onsever.phoenix-pulse
 
 ## 🎯 Supported Phoenix Versions
 
-| Feature | Phoenix 1.6 | Phoenix 1.7+ |
-|---------|-------------|--------------|
-| Function Components | ✅ | ✅ |
-| Component Attributes & Slots | ✅ | ✅ |
-| Templates (`:view` modules) | ✅ | ✅ |
-| Templates (`:html` modules) | - | ✅ |
-| Verified Routes (`~p`) | - | ✅ |
-| Route Helpers | ✅ | ✅ |
-| LiveView Events | ✅ | ✅ |
-| Ecto Schemas | ✅ | ✅ |
-| Controller Assigns | ✅ | ✅ |
-| Nested Resources | ✅ | ✅ |
-| Singleton Resources | ✅ | ✅ |
+Phoenix Pulse targets Phoenix 1.7+ projects, including Phoenix 1.8.
+
+| Feature | Phoenix 1.7+ |
+|---------|--------------|
+| Function Components | ✅ |
+| Component Attributes & Slots | ✅ |
+| Templates (`:html` modules) | ✅ |
+| Verified Routes (`~p`) | ✅ |
+| Route Helpers | ✅ |
+| LiveView Events | ✅ |
+| Ecto Schemas | ✅ |
+| Controller Assigns | ✅ |
+| Nested Resources | ✅ |
+| Singleton Resources | ✅ |
 
 ---
 
@@ -406,11 +423,6 @@ Ctrl+Shift+P → "Developer: Reload Window"
 - HTML module must use: `use YourAppWeb, :html`
 - Controller name must match convention: `PageController` → `PageHTML`
 - Templates in `page_html/` directory or embedded functions
-
-**Phoenix 1.6 (`:view` modules)**
-- View module must use: `use YourAppWeb, :view`
-- Controller name must match: `PageController` → `PageView`
-- Templates in `templates/page/` directory
 
 ### Routes not showing?
 

@@ -5,9 +5,11 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
   alias PhoenixLS.Features.Completion.Components
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
   alias PhoenixLS.Support.Positions
 
   @uri "file:///tmp/app/lib/app_web/components/core_components.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
 
   test "completes function component tags by prefix" do
     items = complete("<.bu| />")
@@ -17,14 +19,23 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     assert [item] = items
     assert item.kind == CompletionItemKind.function()
     assert item.detail == "AppWeb.CoreComponents.button/1"
-    assert item.insert_text == ".button"
-    assert item.insert_text_format == InsertTextFormat.plain_text()
+    assert item.insert_text == ".button label={${1:value}}"
+    assert item.insert_text_format == InsertTextFormat.snippet()
 
     assert item.data == %{
              "kind" => "component",
              "id" => "AppWeb.CoreComponents.button/1",
              "documentation" => "Renders a button."
            }
+  end
+
+  test "component tag completions include required attr snippets" do
+    items = complete("<.bu| />")
+
+    assert [item] = items
+    assert item.label == ".button"
+    assert item.insert_text == ".button label={${1:value}}"
+    assert item.insert_text_format == InsertTextFormat.snippet()
   end
 
   test "completes component attrs for a local function component tag" do
@@ -53,7 +64,8 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     assert [item] = items
     assert item.kind == CompletionItemKind.function()
     assert item.detail == "AppWeb.CoreComponents.button/1"
-    assert item.insert_text == "CoreComponents.button"
+    assert item.insert_text == "CoreComponents.button label={${1:value}}"
+    assert item.insert_text_format == InsertTextFormat.snippet()
 
     assert item.data == %{
              "kind" => "component",
@@ -68,6 +80,63 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     assert Enum.map(items, & &1.label) == ["label", "kind"]
   end
 
+  test "source-aware local component completions require availability in the template module" do
+    assert complete_source(
+             @template_uri,
+             "<.bu| />",
+             component_facts() ++ template_facts("<.bu />")
+           ) == []
+
+    items =
+      complete_source(
+        @template_uri,
+        "<.bu| />",
+        component_facts() ++ template_facts("<.bu />") ++ imported_html_facts()
+      )
+
+    assert Enum.map(items, & &1.label) == [".button"]
+
+    macro_items =
+      complete_source(
+        @template_uri,
+        "<.bu| />",
+        component_facts() ++
+          template_facts("<.bu />") ++
+          page_html_uses_web_macro_facts() ++ web_macro_import_facts()
+      )
+
+    assert Enum.map(macro_items, & &1.label) == [".button"]
+  end
+
+  test "source-aware local component attr completions require availability in the template module" do
+    assert complete_source(
+             @template_uri,
+             "<.button |>",
+             component_facts() ++ template_facts("<.button >")
+           ) == []
+
+    items =
+      complete_source(
+        @template_uri,
+        "<.button |>",
+        component_facts() ++ template_facts("<.button >") ++ imported_html_facts()
+      )
+
+    assert Enum.map(items, & &1.label) == ["label", "kind"]
+
+    macro_items =
+      complete_source(
+        @template_uri,
+        "<.button |>",
+        component_facts() ++
+          template_facts("<.button >") ++
+          page_html_uses_web_macro_facts() ++
+          web_macro_import_facts()
+      )
+
+    assert Enum.map(macro_items, & &1.label) == ["label", "kind"]
+  end
+
   test "completes slot tags by prefix" do
     items = complete("<:in| />")
 
@@ -76,7 +145,8 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     assert [item] = items
     assert item.kind == CompletionItemKind.field()
     assert item.detail == "slot :inner_block"
-    assert item.insert_text == ":inner_block"
+    assert item.insert_text =~ ":inner_block"
+    assert item.insert_text_format == InsertTextFormat.snippet()
 
     assert item.data == %{
              "kind" => "component_slot",
@@ -106,6 +176,19 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
            ]
 
     assert complete_source("<.card><:| /></.card>") |> Enum.map(& &1.label) == [":footer"]
+  end
+
+  test "source-aware slot completions insert snippets for declared slots" do
+    assert [item] = complete_source("<.list><:it| /></.list>")
+
+    assert item.label == ":item"
+    assert item.insert_text =~ ":item"
+    assert item.insert_text =~ "role={${1:value}}"
+    assert item.insert_text_format == InsertTextFormat.snippet()
+  end
+
+  test "source-aware slot completions do not fabricate implicit inner_block slots" do
+    assert complete_source("<.empty><:| /></.empty>") == []
   end
 
   test "source-aware slot completions are not offered outside component blocks" do
@@ -139,6 +222,13 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
     Components.complete(source, position, component_facts())
   end
 
+  defp complete_source(uri, marked_source, facts) do
+    {source, position} = source_and_position(marked_source)
+    {:ok, context} = CursorContext.at(source, position)
+
+    Components.complete(uri, source, position, context, facts)
+  end
+
   defp component_facts do
     {:ok, facts} =
       ElixirSource.facts(@uri, """
@@ -166,10 +256,65 @@ defmodule PhoenixLS.Features.Completion.ComponentsTest do
           <section><%= render_slot(@footer) %></section>
           \"\"\"
         end
+
+        slot :item, required: true do
+          attr :role, :string, required: true
+        end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <ul><%= render_slot(@item) %></ul>
+          \"\"\"
+        end
+
+        def empty(assigns) do
+          ~H\"\"\"
+          <div>{render_slot(@inner_block)}</div>
+          \"\"\"
+        end
       end
 
       defmodule AppWeb.PageLive do
         alias AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp template_facts(source), do: Template.facts(@template_uri, source)
+
+  defp imported_html_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/controllers/page_html.ex", """
+      defmodule AppWeb.PageHTML do
+        import AppWeb.CoreComponents
+      end
+      """)
+
+    facts
+  end
+
+  defp page_html_uses_web_macro_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/controllers/page_html.ex", """
+      defmodule AppWeb.PageHTML do
+        use AppWeb, :html
+      end
+      """)
+
+    facts
+  end
+
+  defp web_macro_import_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web.ex", """
+      defmodule AppWeb do
+        def html do
+          quote do
+            import AppWeb.CoreComponents
+          end
+        end
       end
       """)
 

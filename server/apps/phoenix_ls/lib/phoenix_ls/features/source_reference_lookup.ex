@@ -4,6 +4,7 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
   """
 
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.LiveView.Hooks
 
   @type target_result :: {:ok, Fact.t()} | {:missing_target, Fact.t()} | :not_found
 
@@ -51,6 +52,10 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
     Enum.find(facts, &live_event_handler_match?(&1, reference))
   end
 
+  defp target(%Fact{kind: :hook_usage} = reference, facts) do
+    Hooks.definition_for_usage(reference, facts)
+  end
+
   defp target(_reference, _facts), do: nil
 
   defp reference_at?(
@@ -59,7 +64,12 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
          position
        )
        when fact_uri == uri and
-              kind in [:template_reference, :route_helper_reference, :live_event_usage] do
+              kind in [
+                :template_reference,
+                :route_helper_reference,
+                :live_event_usage,
+                :hook_usage
+              ] do
     contains_position?(range, position)
   end
 

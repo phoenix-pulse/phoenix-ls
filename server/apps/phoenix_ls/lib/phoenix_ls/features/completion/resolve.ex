@@ -4,6 +4,8 @@ defmodule PhoenixLS.Features.Completion.Resolve do
   """
 
   alias GenLSP.Structures.CompletionItem
+  alias PhoenixLS.Features.BuiltInComponents
+  alias PhoenixLS.Features.ComponentDocs
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.URI, as: SupportURI
 
@@ -15,6 +17,8 @@ defmodule PhoenixLS.Features.Completion.Resolve do
     "component_attr" => "A Phoenix component attribute declared with attr/3.",
     "component_slot" => "A Phoenix component slot declared with slot/3.",
     "component_slot_attr" => "A Phoenix component slot attribute declared inside a slot.",
+    "phoenix_component" => "A built-in Phoenix function component.",
+    "phoenix_component_attr" => "An attribute accepted by a built-in Phoenix function component.",
     "schema_field" => "An Ecto schema field indexed from source.",
     "schema_association" => "An Ecto schema association indexed from source.",
     "assign" => "A LiveView assign discovered from source.",
@@ -46,7 +50,7 @@ defmodule PhoenixLS.Features.Completion.Resolve do
   defp documentation(%CompletionItem{} = item, facts) do
     lines =
       [
-        documentation(item),
+        item_documentation(item, facts),
         source_context(item, facts)
       ]
       |> Enum.reject(&blank?/1)
@@ -57,12 +61,53 @@ defmodule PhoenixLS.Features.Completion.Resolve do
     end
   end
 
-  defp documentation(%CompletionItem{data: %{"documentation" => documentation}})
+  defp item_documentation(%CompletionItem{} = item, facts) do
+    embedded_documentation(item) || fact_documentation(item, facts) || generic_documentation(item)
+  end
+
+  defp embedded_documentation(%CompletionItem{data: %{"documentation" => documentation}})
        when is_binary(documentation) do
     documentation
   end
 
-  defp documentation(%CompletionItem{
+  defp embedded_documentation(_item), do: nil
+
+  defp fact_documentation(%CompletionItem{data: %{"id" => id}}, facts) when is_binary(id) do
+    facts
+    |> Enum.find(&(&1.id == id))
+    |> fact_documentation_for_fact(facts)
+  end
+
+  defp fact_documentation(_item, _facts), do: nil
+
+  defp fact_documentation_for_fact(%Fact{kind: :component_slot} = fact, facts) do
+    ComponentDocs.slot_markdown(fact, facts)
+  end
+
+  defp fact_documentation_for_fact(%Fact{kind: :component} = fact, facts) do
+    ComponentDocs.component_markdown(fact, facts)
+  end
+
+  defp fact_documentation_for_fact(%Fact{kind: :component_attr} = fact, _facts) do
+    ComponentDocs.attr_markdown(fact)
+  end
+
+  defp fact_documentation_for_fact(%Fact{kind: :component_slot_attr} = fact, _facts) do
+    ComponentDocs.slot_attr_markdown(fact)
+  end
+
+  defp fact_documentation_for_fact(_fact, _facts), do: nil
+
+  defp generic_documentation(%CompletionItem{
+         data: %{"kind" => "phoenix_component", "id" => id}
+       })
+       when is_binary(id) do
+    with component when not is_nil(component) <- BuiltInComponents.component_for_id(id) do
+      ComponentDocs.built_in_component_markdown(component, BuiltInComponents.attrs(component))
+    end
+  end
+
+  defp generic_documentation(%CompletionItem{
          detail: detail,
          data: %{"kind" => "route_helper", "helper" => helper}
        })
@@ -70,14 +115,15 @@ defmodule PhoenixLS.Features.Completion.Resolve do
     route_helper_documentation(detail || "Routes.#{helper}")
   end
 
-  defp documentation(%CompletionItem{data: %{"kind" => kind}} = item) when is_binary(kind) do
+  defp generic_documentation(%CompletionItem{data: %{"kind" => kind}} = item)
+       when is_binary(kind) do
     case Map.fetch(@kind_descriptions, kind) do
       {:ok, description} -> completion_documentation(item, description)
       :error -> nil
     end
   end
 
-  defp documentation(_item), do: nil
+  defp generic_documentation(_item), do: nil
 
   defp source_context(%CompletionItem{data: %{"id" => id}}, facts) when is_binary(id) do
     facts

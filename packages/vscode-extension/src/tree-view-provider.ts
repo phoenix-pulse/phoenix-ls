@@ -103,6 +103,57 @@ interface TemplateInfo {
   module: string;
 }
 
+interface ControllerAssignInfo {
+  name: string;
+  source?: string;
+  confidence?: string;
+  plug?: string;
+  filePath?: string;
+  location?: { line: number; character: number };
+}
+
+interface ControllerRenderInfo {
+  template: string;
+  format: string;
+  templatePath?: string;
+  templateLocation?: { line: number; character: number };
+  candidateTemplatePaths?: string[];
+  assigns?: string[];
+  confidence?: string;
+  filePath: string;
+  location: { line: number; character: number };
+}
+
+interface ControllerLayoutInfo {
+  name: string;
+  layout?: string;
+  source?: string;
+  confidence?: string;
+  filePath: string;
+  location: { line: number; character: number };
+}
+
+interface ControllerActionInfo {
+  name: string;
+  arity: number;
+  filePath: string;
+  location: { line: number; character: number };
+  route?: RouteInfo;
+  routes: RouteInfo[];
+  renders: ControllerRenderInfo[];
+  assigns: ControllerAssignInfo[];
+  layouts: ControllerLayoutInfo[];
+}
+
+interface ControllerInfo {
+  name: string;
+  module: string;
+  filePath: string;
+  location: { line: number; character: number };
+  actions: ControllerActionInfo[];
+  plugAssigns: ControllerAssignInfo[];
+}
+
 interface EventInfo {
   name: string;
   type: string;
@@ -145,6 +196,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
   private componentsCache: ComponentInfo[] = [];
   private routesCache: RouteInfo[] = [];
   private templatesCache: TemplateInfo[] = [];
+  private controllersCache: ControllerInfo[] = [];
   private eventsCache: EventInfo[] = []; // Keep for backward compat with stats
   private liveViewCache: LiveViewInfo[] = [];
 
@@ -198,6 +250,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     this.schemasCache = [];
     this.componentsCache = [];
     this.templatesCache = [];
+    this.controllersCache = [];
     this.eventsCache = [];
     this.routesCache = [];
     this.searchQuery = ''; // Clear search
@@ -240,6 +293,12 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             contextValue: 'category-routes',
             icon: '$(link)',
             color: 'charts.purple'
+          },
+          {
+            label: 'Controllers',
+            contextValue: 'category-controllers',
+            icon: '$(symbol-class)',
+            color: 'charts.orange'
           },
           {
             label: 'Templates',
@@ -309,6 +368,12 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           return this.getControllersInScope(element.data);
         case 'route-controller':
           return this.getRoutesForController(element.data);
+        case 'category-controllers':
+          return this.getControllers();
+        case 'controller-expandable':
+          return this.getControllerActions(element.data);
+        case 'controller-action':
+          return this.getControllerActionGraph(element.data);
         case 'category-templates':
           return this.getTemplateFiles();
         case 'template-file':
@@ -322,7 +387,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         case 'liveview-folder':
           return this.getLiveViewsInFolder(element.data);
         case 'liveview-module':
-          return this.getLiveViewFunctions(element.data);
+          return this.getLiveViewFunctions(liveViewModuleName(element.data));
         default:
           return [];
       }
@@ -435,6 +500,13 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Field',
         arguments: [field.filePath || schema.filePath, field.location || schema.location]
       };
+      item.data = {
+        ...field,
+        name: field.name,
+        filePath: field.filePath || schema.filePath,
+        location: field.location || schema.location,
+        module: schema.module || schema.name
+      };
       return item;
     });
   }
@@ -478,6 +550,13 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           arguments: [schema.filePath, schema.location]
         };
       }
+      item.data = {
+        ...assoc,
+        name: assoc.name || assoc.fieldName,
+        filePath: assoc.filePath || targetSchema?.filePath || schema.filePath,
+        location: assoc.location || targetSchema?.location || schema.location,
+        module: schema.module || schema.name
+      };
 
       return item;
     });
@@ -593,6 +672,14 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Attribute',
         arguments: [attr.filePath || component.filePath, attr.location || component.location]
       };
+      item.data = {
+        ...attr,
+        name: attr.name,
+        filePath: attr.filePath || component.filePath,
+        location: attr.location || component.location,
+        module: component.module,
+        component: component.name
+      };
       items.push(item);
     });
 
@@ -622,7 +709,14 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Slot',
         arguments: [slot.filePath || component.filePath, slot.location || component.location]
       };
-      item.data = { component, slot };
+      item.data = {
+        component,
+        slot,
+        name: slot.name,
+        filePath: slot.filePath || component.filePath,
+        location: slot.location || component.location,
+        module: component.module
+      };
       items.push(item);
     });
 
@@ -661,6 +755,15 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           attr.filePath || data.slot.filePath || data.component.filePath,
           attr.location || data.slot.location || data.component.location
         ]
+      };
+      item.data = {
+        ...attr,
+        name: attr.name,
+        filePath: attr.filePath || data.slot.filePath || data.component.filePath,
+        location: attr.location || data.slot.location || data.component.location,
+        module: data.component.module,
+        component: data.component.name,
+        slot: data.slot.name
       };
 
       return item;
@@ -787,6 +890,230 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     });
   }
 
+  private async getControllers(): Promise<PhoenixTreeItem[]> {
+    try {
+      const controllers: ControllerInfo[] = await this.client.sendRequest('phoenix/listControllers', {});
+      this.controllersCache = controllers;
+
+      const filtered = controllers.filter(controller =>
+        this.matchesSearch(controller.module || controller.name) ||
+        this.matchesSearch(controller.filePath) ||
+        controller.actions.some(action =>
+          this.matchesSearch(action.name) ||
+          action.routes.some(route => this.matchesSearch(route.path)) ||
+          action.renders.some(render => this.matchesSearch(render.template)) ||
+          action.assigns.some(assign => this.matchesSearch(assign.name))
+        ) ||
+        controller.plugAssigns.some(assign => this.matchesSearch(assign.name))
+      );
+
+      return filtered.map(controller => {
+        const actionsCount = controller.actions.length;
+        const plugAssignsCount = controller.plugAssigns.length;
+        const hasChildren = actionsCount > 0 || plugAssignsCount > 0;
+        const details: string[] = [];
+
+        if (actionsCount > 0) details.push(`${actionsCount} actions`);
+        if (plugAssignsCount > 0) details.push(`${plugAssignsCount} plug assigns`);
+
+        const item = new PhoenixTreeItem(
+          controller.module || controller.name,
+          hasChildren ? 'controller-expandable' : 'controller',
+          hasChildren ? this.getCollapsibleState() : vscode.TreeItemCollapsibleState.None,
+          '$(symbol-class)',
+          'charts.orange'
+        );
+
+      item.description = details.join(', ');
+      item.tooltip = `${controller.module || controller.name}\n${details.join('\n')}\n${controller.filePath}`;
+      item.data = controller;
+
+        if (!hasChildren) {
+          item.command = {
+            command: 'phoenixPulse.goToItem',
+            title: 'Go to Controller',
+            arguments: [controller.filePath, controller.location]
+          };
+        }
+
+        return item;
+      });
+    } catch (error) {
+      console.error('[PhoenixPulse] Error fetching controllers:', error);
+      return [];
+    }
+  }
+
+  private getControllerActions(controller: ControllerInfo): PhoenixTreeItem[] {
+    return controller.actions.map(action => {
+      const childrenCount =
+        action.routes.length +
+        action.renders.length +
+        action.assigns.length +
+        action.layouts.length +
+        controller.plugAssigns.length;
+
+      const item = new PhoenixTreeItem(
+        `${action.name}/${action.arity}`,
+        'controller-action',
+        childrenCount > 0 ? this.getCollapsibleState() : vscode.TreeItemCollapsibleState.None,
+        '$(symbol-method)',
+        'charts.orange'
+      );
+
+      item.description = controllerActionDescription(action, controller.plugAssigns);
+      item.tooltip = `${controller.module}.${action.name}/${action.arity}\n${item.description}\n${action.filePath}`;
+      item.data = {
+        controller,
+        action,
+        name: action.name,
+        module: controller.module,
+        filePath: action.filePath,
+        location: action.location
+      };
+
+      if (childrenCount === 0) {
+        item.command = {
+          command: 'phoenixPulse.goToItem',
+          title: 'Go to Controller Action',
+          arguments: [action.filePath, action.location]
+        };
+      }
+
+      return item;
+    });
+  }
+
+  private getControllerActionGraph(data: {
+    controller: ControllerInfo;
+    action: ControllerActionInfo;
+  }): PhoenixTreeItem[] {
+    const { controller, action } = data;
+
+    return [
+      ...action.routes.map(route => this.controllerRouteItem(route)),
+      ...action.renders.map(render => this.controllerRenderItem(render)),
+      ...action.assigns.map(assign => this.controllerAssignItem(assign, action, false)),
+      ...action.layouts.map(layout => this.controllerLayoutItem(layout)),
+      ...controller.plugAssigns.map(assign => this.controllerAssignItem(assign, action, true))
+    ];
+  }
+
+  private controllerRouteItem(route: RouteInfo): PhoenixTreeItem {
+    const label = `${route.verb.toUpperCase()} ${route.path}`;
+    const item = new PhoenixTreeItem(
+      label,
+      'controller-route',
+      vscode.TreeItemCollapsibleState.None,
+      this.getRouteIcon(route.verb),
+      'charts.purple'
+    );
+
+    item.description = route.helperName || route.helperBase || route.action || '';
+    item.tooltip = routeTooltip(route, `${route.controller}.${route.action}`);
+    item.command = {
+      command: 'phoenixPulse.goToItem',
+      title: 'Go to Route',
+      arguments: [route.filePath, route.location]
+    };
+    item.data = route;
+    return item;
+  }
+
+  private controllerRenderItem(render: ControllerRenderInfo): PhoenixTreeItem {
+    const label = `render :${render.template}.${render.format}`;
+    const targetPath = render.templatePath || render.filePath;
+    const targetLocation = render.templateLocation || render.location;
+    const details: string[] = [];
+
+    if (render.templatePath) details.push(render.templatePath);
+    if (render.confidence) details.push(`confidence: ${render.confidence}`);
+    if (render.assigns && render.assigns.length > 0) {
+      details.push(`assigns: ${render.assigns.join(', ')}`);
+    }
+    if (render.candidateTemplatePaths && render.candidateTemplatePaths.length > 0) {
+      details.push(`candidates: ${render.candidateTemplatePaths.join(', ')}`);
+    }
+
+    const item = new PhoenixTreeItem(
+      label,
+      'controller-render',
+      vscode.TreeItemCollapsibleState.None,
+      '$(file-code)',
+      'charts.yellow'
+    );
+
+    item.description = render.templatePath ? 'template' : render.confidence || '';
+    item.tooltip = details.join('\n') || label;
+    item.command = {
+      command: 'phoenixPulse.goToItem',
+      title: render.templatePath ? 'Go to Template' : 'Go to Render',
+      arguments: [targetPath, targetLocation]
+    };
+    item.data = {
+      ...render,
+      name: `${render.template}.${render.format}`,
+      filePath: targetPath,
+      location: targetLocation
+    };
+    return item;
+  }
+
+  private controllerAssignItem(
+    assign: ControllerAssignInfo,
+    action: ControllerActionInfo,
+    plugAssign: boolean
+  ): PhoenixTreeItem {
+    const item = new PhoenixTreeItem(
+      `@${assign.name}`,
+      plugAssign ? 'controller-plug-assign' : 'controller-assign',
+      vscode.TreeItemCollapsibleState.None,
+      '$(symbol-variable)',
+      plugAssign ? 'charts.red' : 'charts.orange'
+    );
+
+    const source = plugAssign ? `plug ${assign.plug}` : assign.source || 'assign';
+    item.description = assign.confidence ? `${source}, ${assign.confidence}` : source;
+    item.tooltip = `@${assign.name}\n${item.description}`;
+    item.command = {
+      command: 'phoenixPulse.goToItem',
+      title: plugAssign ? 'Go to Plug Assign' : 'Go to Assign',
+      arguments: [assign.filePath || action.filePath, assign.location || action.location]
+    };
+    item.data = {
+      ...assign,
+      name: assign.name,
+      filePath: assign.filePath || action.filePath,
+      location: assign.location || action.location
+    };
+    return item;
+  }
+
+  private controllerLayoutItem(layout: ControllerLayoutInfo): PhoenixTreeItem {
+    const item = new PhoenixTreeItem(
+      `layout :${layout.name || layout.layout}`,
+      'controller-layout',
+      vscode.TreeItemCollapsibleState.None,
+      '$(layout)',
+      'charts.green'
+    );
+
+    item.description = layout.confidence ? `${layout.source}, ${layout.confidence}` : layout.source || '';
+    item.tooltip = `Layout: ${layout.name || layout.layout}\n${item.description}`;
+    item.command = {
+      command: 'phoenixPulse.goToItem',
+      title: 'Go to Layout',
+      arguments: [layout.filePath, layout.location]
+    };
+    item.data = {
+      ...layout,
+      name: layout.name || layout.layout,
+      filePath: layout.filePath,
+      location: layout.location
+    };
+    return item;
+  }
+
   private async getTemplateFiles(): Promise<PhoenixTreeItem[]> {
     try {
       const templates: TemplateInfo[] = await this.client.sendRequest('phoenix/listTemplates', {});
@@ -850,6 +1177,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Template',
         arguments: [template.filePath, template.location]
       };
+      item.data = template;
       return item;
     });
   }
@@ -1046,7 +1374,10 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       );
       item.description = liveViewModuleDescription(module.functions.length, assignsCount);
       item.tooltip = `${module.module}\n${item.description}\n${module.filePath}`;
-      item.data = module.module;
+      item.data = {
+        ...module,
+        name: module.module
+      };
       return item;
     });
   }
@@ -1087,6 +1418,13 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Assign',
         arguments: [assign.filePath || module.filePath, assign.location || module.location]
       };
+      item.data = {
+        ...assign,
+        name: assign.name,
+        filePath: assign.filePath || module.filePath,
+        location: assign.location || module.location,
+        module: module.module
+      };
       items.push(item);
     }
 
@@ -1122,6 +1460,12 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             title: 'Go to Function',
             arguments: [functionFilePath, func.location]
           };
+          item.data = {
+            ...func,
+            name: func.name,
+            filePath: functionFilePath,
+            module: module.module
+          };
           items.push(item);
         }
       }
@@ -1147,6 +1491,12 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             command: 'phoenixPulse.goToItem',
             title: 'Go to Function',
             arguments: [functionFilePath, func.location]
+          };
+          item.data = {
+            ...func,
+            name: func.name,
+            filePath: functionFilePath,
+            module: module.module
           };
           items.push(item);
         }
@@ -1440,6 +1790,21 @@ function routeTooltip(route: RouteInfo, target: string): string {
   return lines.join('\n');
 }
 
+function controllerActionDescription(
+  action: ControllerActionInfo,
+  plugAssigns: ControllerAssignInfo[]
+): string {
+  const parts: string[] = [];
+
+  if (action.routes.length > 0) parts.push(`${action.routes.length} routes`);
+  if (action.renders.length > 0) parts.push(`${action.renders.length} renders`);
+  if (action.assigns.length > 0) parts.push(`${action.assigns.length} assigns`);
+  if (action.layouts.length > 0) parts.push(`${action.layouts.length} layouts`);
+  if (plugAssigns.length > 0) parts.push(`${plugAssigns.length} plug assigns`);
+
+  return parts.join(', ');
+}
+
 function liveViewModuleDescription(functionsCount: number, assignsCount: number): string {
   const parts: string[] = [];
 
@@ -1452,6 +1817,14 @@ function liveViewModuleDescription(functionsCount: number, assignsCount: number)
   }
 
   return parts.join(', ');
+}
+
+function liveViewModuleName(data: unknown): string {
+  if (typeof data === 'string') return data;
+  if (data && typeof data === 'object' && 'module' in data && typeof data.module === 'string') {
+    return data.module;
+  }
+  return '';
 }
 
 class PhoenixTreeItem extends vscode.TreeItem {

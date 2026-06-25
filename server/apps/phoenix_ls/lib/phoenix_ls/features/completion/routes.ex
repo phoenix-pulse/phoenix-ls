@@ -5,7 +5,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   alias GenLSP.Enumerations.{CompletionItemKind, InsertTextFormat}
   alias GenLSP.Structures.CompletionItem
-  alias PhoenixLS.Features.RouteHelpers
+  alias PhoenixLS.Features.{Facts, RouteHelpers}
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
@@ -27,7 +27,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
     case route_prefix(prefix) do
       {:ok, typed_path} ->
         facts
-        |> facts_by_kind(:route)
+        |> Facts.by_kind(:route)
         |> Enum.map(&route_item/1)
         |> prefixed_items(typed_path)
 
@@ -38,9 +38,29 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   @spec complete(String.t(), Positions.lsp_position(), [Fact.t()]) :: [CompletionItem.t()]
   def complete(source, position, facts) when is_binary(source) and is_list(facts) do
+    complete(source, nil, position, facts)
+  end
+
+  @spec complete(String.t(), String.t() | nil, Positions.lsp_position(), [Fact.t()]) :: [
+          CompletionItem.t()
+        ]
+  def complete(source, uri, position, facts)
+      when is_binary(source) and (is_binary(uri) or is_nil(uri)) and is_list(facts) do
     case RouteHelpers.prefix(source, position) do
-      {:ok, helper_prefix} -> route_helper_items(facts, helper_prefix)
-      :error -> []
+      {:ok, helper_prefix} ->
+        route_helper_items(facts, helper_prefix)
+
+      :error ->
+        case verified_route_path_prefix(uri, source, position) do
+          {:ok, typed_path} ->
+            facts
+            |> Facts.by_kind(:route)
+            |> Enum.map(&route_item/1)
+            |> prefixed_items(typed_path)
+
+          :error ->
+            []
+        end
     end
   end
 
@@ -50,6 +70,36 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   defp route_helper_prefix("Routes." <> prefix), do: {:ok, prefix}
   defp route_helper_prefix(_prefix), do: :error
+
+  defp verified_route_path_prefix(uri, source, position) do
+    with {:ok, offset} <- Positions.lsp_position_to_offset(source, position),
+         true <- elixir_source_uri?(uri),
+         true <- offset <= byte_size(source),
+         source_before_cursor <- binary_part(source, 0, offset) do
+      route_sigil_tokenizer_rest(source_before_cursor)
+    else
+      _not_route_sigil -> :error
+    end
+  end
+
+  defp elixir_source_uri?(uri) when is_binary(uri), do: not String.ends_with?(uri, ".heex")
+  defp elixir_source_uri?(_uri), do: false
+
+  defp route_sigil_tokenizer_rest(source_before_cursor) do
+    case :elixir_tokenizer.tokenize(String.to_charlist(source_before_cursor), 1, []) do
+      {:error, _reason, rest, _warnings, _tokens} when is_list(rest) ->
+        route_prefix_from_sigil_rest(List.to_string(rest))
+
+      _complete_or_unusable ->
+        :error
+    end
+  end
+
+  defp route_prefix_from_sigil_rest("~p\"\"\"" <> path), do: {:ok, path}
+  defp route_prefix_from_sigil_rest("~p'''" <> path), do: {:ok, path}
+  defp route_prefix_from_sigil_rest("~p\"" <> path), do: {:ok, path}
+  defp route_prefix_from_sigil_rest("~p'" <> path), do: {:ok, path}
+  defp route_prefix_from_sigil_rest(_rest), do: :error
 
   defp route_item(fact) do
     path = fact.data.path
@@ -67,7 +117,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   defp route_helper_items(facts, helper_prefix) do
     facts
-    |> facts_by_kind(:route)
+    |> Facts.by_kind(:route)
     |> route_helper_groups()
     |> Enum.flat_map(&route_helper_group_items/1)
     |> prefixed_items(helper_prefix)
@@ -81,8 +131,8 @@ defmodule PhoenixLS.Features.Completion.Routes do
   end
 
   defp route_helper_group_items({helper_base, routes}) do
-    Enum.map(["path", "url"], fn variant ->
-      label = "#{helper_base}_#{variant}"
+    Enum.map([:path, :url], fn variant ->
+      label = RouteHelpers.helper_name(helper_base, variant)
 
       {label,
        %CompletionItem{
@@ -106,15 +156,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
   end
 
   defp action_snippet_args(routes, placeholder_index) do
-    actions =
-      routes
-      |> Enum.map(& &1.data.action)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(&Atom.to_string/1)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    case actions do
+    case RouteHelpers.actions(routes) do
       [] -> []
       [action] -> [":${#{placeholder_index}:#{action}}"]
       actions -> [":${#{placeholder_index}|#{Enum.join(actions, ",")}|}"]
@@ -123,9 +165,7 @@ defmodule PhoenixLS.Features.Completion.Routes do
 
   defp param_snippet_args(routes, first_placeholder_index) do
     routes
-    |> Enum.flat_map(& &1.data.path_params)
-    |> Enum.uniq()
-    |> Enum.sort()
+    |> RouteHelpers.path_parameter_labels()
     |> Enum.with_index(first_placeholder_index)
     |> Enum.map(fn {param, index} -> "${#{index}:#{param}}" end)
   end
@@ -143,10 +183,6 @@ defmodule PhoenixLS.Features.Completion.Routes do
     items
     |> Enum.filter(fn {label, _item} -> String.starts_with?(label, prefix || "") end)
     |> Enum.map(fn {_label, item} -> item end)
-  end
-
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
   end
 
   defp blank?(nil), do: true

@@ -1,6 +1,6 @@
 {
   "name": "phoenix-pulse-nvim",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "Neovim plugin for Phoenix LiveView development",
   "private": true,
   "scripts": {
@@ -8,7 +8,7 @@
     "update-lsp": "./install-lsp.sh",
     "dogfood:lsp": "./dogfood-lsp.sh",
     "test": "bash ./test-install-lsp.sh && bash ./test-dogfood-lsp.sh && npm run test:lua",
-    "test:lua": "cd ../.. && lua packages/nvim-plugin/test-explorer-definition-target.lua && lua packages/nvim-plugin/test-explorer-component-slot-attrs.lua && lua packages/nvim-plugin/test-explorer-events.lua && lua packages/nvim-plugin/test-explorer-routes.lua && lua packages/nvim-plugin/test-explorer-templates.lua && lua packages/nvim-plugin/test-erd-metadata.lua && lua packages/nvim-plugin/test-lsp-config.lua"
+    "test:lua": "cd ../.. && lua packages/nvim-plugin/test-explorer-definition-target.lua && lua packages/nvim-plugin/test-explorer-component-slot-attrs.lua && lua packages/nvim-plugin/test-explorer-events.lua && lua packages/nvim-plugin/test-explorer-routes.lua && lua packages/nvim-plugin/test-explorer-templates.lua && lua packages/nvim-plugin/test-explorer-controllers.lua && lua packages/nvim-plugin/test-erd-metadata.lua && lua packages/nvim-plugin/test-lsp-config.lua"
   },
   "author": {
     "name": "Onurcan Sever",

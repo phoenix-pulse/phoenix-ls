@@ -4,7 +4,9 @@ defmodule PhoenixLS.LSP.CodeAction do
   """
 
   alias GenLSP.Requests.TextDocumentCodeAction
+  alias GenLSP.Structures.Diagnostic
   alias PhoenixLS.Features.CodeAction, as: CodeActionFeature
+  alias PhoenixLS.Features.Policy
   alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Workspace.DocumentStore
@@ -20,10 +22,12 @@ defmodule PhoenixLS.LSP.CodeAction do
            {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
            {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
+        config = RequestContext.server_config!(context)
+
         CodeActionFeature.actions(
           document.text,
           uri,
-          action_context.diagnostics,
+          allowed_diagnostics(action_context.diagnostics, config),
           Snapshot.all(snapshot)
         )
       else
@@ -32,4 +36,42 @@ defmodule PhoenixLS.LSP.CodeAction do
 
     {:reply, actions, context.lsp}
   end
+
+  defp allowed_diagnostics(diagnostics, config) do
+    Enum.filter(diagnostics, &Policy.allow?(:code_action, diagnostic_feature_kind(&1), config))
+  end
+
+  defp diagnostic_feature_kind(%Diagnostic{
+         source: "PhoenixLS",
+         code: "phoenix.unknown_template"
+       }),
+       do: :template
+
+  defp diagnostic_feature_kind(%Diagnostic{source: "PhoenixLS", code: code})
+       when code in [
+              "phoenix.unknown_route",
+              "phoenix.unknown_route_helper",
+              "phoenix.unknown_route_helper_action",
+              "phoenix.route_helper_arity_mismatch"
+            ],
+       do: :route
+
+  defp diagnostic_feature_kind(%Diagnostic{source: "PhoenixLS", code: code})
+       when code in [
+              "phoenix.unknown_event",
+              "phoenix.invalid_phx_attr_value",
+              "phoenix.unknown_phx_attr"
+            ],
+       do: :live_view
+
+  defp diagnostic_feature_kind(%Diagnostic{source: "PhoenixLS", code: code})
+       when is_binary(code) do
+    cond do
+      String.starts_with?(code, "phoenix.stream_") -> :live_view
+      code == "phoenix.for_missing_key" -> :live_view
+      true -> :component
+    end
+  end
+
+  defp diagnostic_feature_kind(_diagnostic), do: :generic_elixir
 end

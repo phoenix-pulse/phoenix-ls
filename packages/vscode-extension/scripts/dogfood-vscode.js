@@ -16,14 +16,14 @@ function defaultProjectRoot(extensionDir) {
 function defaultFixtureRoot(projectRoot) {
   return path.join(
     projectRoot,
-    'server',
-    'apps',
-    'phoenix_ls',
-    'test',
-    'fixtures',
-    'liveview_components_app'
-  );
-}
+	    'server',
+	    'apps',
+	    'phoenix_ls',
+	    'test',
+	    'fixtures',
+	    'phoenix_1_8_complex_app'
+	  );
+	}
 
 async function dogfoodVSCode(options = {}) {
   const extensionDir = options.extensionDir || defaultExtensionDir();
@@ -352,6 +352,10 @@ function validateRequestSnapshot(snapshot) {
   const templates = snapshot.results?.['phoenix/listTemplates'] || [];
   const events = snapshot.results?.['phoenix/listEvents'] || [];
   const liveViews = snapshot.results?.['phoenix/listLiveView'] || [];
+  const uploads = snapshot.results?.['phoenix/listUploads'] || [];
+  const hooks = snapshot.results?.['phoenix/listHooks'] || [];
+  const colocatedAssets = snapshot.results?.['phoenix/listColocatedAssets'] || [];
+  const controllers = snapshot.results?.['phoenix/listControllers'] || [];
 
   const checks = {
     schemaPayloads: schemas.length > 0 && schemas.every(validSchemaPayload),
@@ -366,7 +370,12 @@ function validateRequestSnapshot(snapshot) {
     ),
     eventPayloads: events.length > 0 && events.every(validEventPayload),
     eventHandlers: events.every(event => event.handler === 'handle_event/3' && event.arity === 3),
-    liveViewPayloads: liveViews.length > 0 && liveViews.every(validLiveViewPayload)
+    liveViewPayloads: liveViews.length > 0 && liveViews.every(validLiveViewPayload),
+    uploadPayloads: uploads.length > 0 && uploads.every(validUploadPayload),
+    hookPayloads: hooks.length > 0 && hooks.every(validHookPayload),
+    colocatedAssetPayloads:
+      colocatedAssets.length > 0 && colocatedAssets.every(validColocatedAssetGroupPayload),
+    controllerPayloads: controllers.length > 0 && controllers.every(validControllerPayload)
   };
 
   const missing = Object.entries(checks)
@@ -451,8 +460,67 @@ function validLiveViewPayload(liveView) {
   );
 }
 
+function validUploadPayload(upload) {
+  return (
+    nonEmptyString(upload.name) &&
+    nonEmptyString(upload.module) &&
+    nonEmptyString(upload.filePath) &&
+    validLocation(upload.location) &&
+    plainObject(upload.options) &&
+    typeof upload.usagesCount === 'number' &&
+    Number.isFinite(upload.usagesCount) &&
+    Array.isArray(upload.usages)
+  );
+}
+
+function validHookPayload(hook) {
+  return (
+    nonEmptyString(hook.name) &&
+    typeof hook.defined === 'boolean' &&
+    nonEmptyString(hook.filePath) &&
+    validLocation(hook.location) &&
+    typeof hook.usagesCount === 'number' &&
+    Number.isFinite(hook.usagesCount) &&
+    Array.isArray(hook.usages)
+  );
+}
+
+function validColocatedAssetGroupPayload(group) {
+  return (
+    nonEmptyString(group.ownerModule) &&
+    typeof group.assetsCount === 'number' &&
+    Number.isFinite(group.assetsCount) &&
+    Array.isArray(group.assets) &&
+    group.assets.every(validColocatedAssetPayload)
+  );
+}
+
+function validColocatedAssetPayload(asset) {
+  return (
+    nonEmptyString(asset.kind) &&
+    nonEmptyString(asset.typeModule) &&
+    nonEmptyString(asset.generatedName) &&
+    nonEmptyString(asset.filePath) &&
+    validLocation(asset.location)
+  );
+}
+
+function validControllerPayload(controller) {
+  return (
+    nonEmptyString(controller.module) &&
+    nonEmptyString(controller.filePath) &&
+    validLocation(controller.location) &&
+    Array.isArray(controller.actions) &&
+    Array.isArray(controller.plugAssigns)
+  );
+}
+
 function nonEmptyString(value) {
   return typeof value === 'string' && value.length > 0;
+}
+
+function plainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function validLocation(location) {

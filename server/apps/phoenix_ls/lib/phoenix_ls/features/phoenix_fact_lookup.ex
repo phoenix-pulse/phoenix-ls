@@ -3,10 +3,11 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   Resolves cursor contexts to indexed Phoenix facts.
   """
 
-  alias PhoenixLS.Features.{AssignAccess, ComponentLookup, TemplateFacts}
+  alias PhoenixLS.Features.{AssignAccess, ComponentLookup, ControllerTemplate, TemplateFacts}
   alias PhoenixLS.Features.Completion.SchemaFacts
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.LiveView.Navigation
 
   @spec cursor_fact(String.t(), CursorContext.lsp_position(), [Fact.t()]) :: Fact.t() | nil
   def cursor_fact(source, position, facts) when is_binary(source) and is_list(facts) do
@@ -83,6 +84,16 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   end
 
   defp source_cursor_fact(
+         %CursorContext{kind: :tag_name} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.component_for_source_tag(context.prefix, source, position, facts) ||
+      cursor_fact(context, facts)
+  end
+
+  defp source_cursor_fact(
          %CursorContext{kind: :attribute_name, tag: ":" <> _} = context,
          source,
          position,
@@ -96,30 +107,102 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   end
 
   defp source_cursor_fact(
+         _uri,
+         %CursorContext{kind: :tag_name, prefix: ":" <> _} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.slot_for_source_tag(context.prefix, source, position, facts)
+  end
+
+  defp source_cursor_fact(
+         uri,
+         %CursorContext{kind: :tag_name} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.component_for_source_tag(uri, context.prefix, source, position, facts)
+  end
+
+  defp source_cursor_fact(
+         _uri,
+         %CursorContext{kind: :attribute_name, tag: ":" <> _} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.slot_attr_for_source_tag(context.tag, context.prefix, source, position, facts)
+  end
+
+  defp source_cursor_fact(
+         uri,
+         %CursorContext{kind: :attribute_name, tag: "." <> _ = tag, prefix: prefix},
+         _source,
+         _position,
+         facts
+       ) do
+    ComponentLookup.component_attr_for_tag(
+      tag,
+      prefix,
+      facts,
+      ComponentLookup.module_for_uri(facts, uri)
+    )
+  end
+
+  defp source_cursor_fact(
          uri,
          %CursorContext{kind: :expression, prefix: "@" <> assign_prefix} = context,
          source,
          position,
          facts
        ) do
-    case TemplateFacts.module_for_uri(facts, uri) do
-      {:ok, module} ->
-        find_assign_or_schema(facts, assign_prefix, module) ||
-          source_cursor_fact(context, source, position, facts)
+    find_controller_assign_schema_property(facts, uri, "@" <> assign_prefix) ||
+      find_controller_assign_for_template(facts, uri, assign_prefix) ||
+      case TemplateFacts.module_for_uri(facts, uri) do
+        {:ok, module} ->
+          find_assign_or_schema(facts, assign_prefix, module) ||
+            source_cursor_fact(context, source, position, facts)
 
-      :error ->
-        source_cursor_fact(context, source, position, facts)
-    end
+        :error ->
+          source_cursor_fact(context, source, position, facts)
+      end
   end
 
-  defp source_cursor_fact(uri, %CursorContext{} = context, source, position, facts)
-       when is_binary(uri) do
-    source_cursor_fact(context, source, position, facts)
+  defp source_cursor_fact(_uri, %CursorContext{} = context, _source, _position, facts) do
+    cursor_fact(context, facts)
   end
 
   defp find_route(facts, path_prefix) do
-    Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))
+    route_facts = Enum.filter(facts, &(&1.kind == :route))
+
+    Enum.find(route_facts, &Navigation.route_path_match?(&1.data.path, path_prefix)) ||
+      Enum.find(route_facts, &route_path_prefix_match?(&1.data.path, path_prefix))
   end
+
+  defp route_path_prefix_match?(route_path, path_prefix) do
+    match_route_prefix(path_segments(route_path), path_segments(path_prefix))
+  end
+
+  defp match_route_prefix(_route_segments, []), do: true
+  defp match_route_prefix(["*" <> _name], _prefix_segments), do: true
+
+  defp match_route_prefix([":" <> _name | route_rest], [_prefix_segment | prefix_rest]) do
+    match_route_prefix(route_rest, prefix_rest)
+  end
+
+  defp match_route_prefix([route_segment | route_rest], [route_segment | prefix_rest]) do
+    match_route_prefix(route_rest, prefix_rest)
+  end
+
+  defp match_route_prefix([route_segment | _route_rest], [prefix_segment]) do
+    String.starts_with?(route_segment, prefix_segment)
+  end
+
+  defp match_route_prefix(_route_segments, _prefix_segments), do: false
+
+  defp path_segments(path), do: String.split(path, "/", trim: true)
 
   defp find_route_helper(facts, helper_prefix) do
     Enum.find(facts, &route_helper_match?(&1, helper_prefix))
@@ -160,6 +243,22 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   defp find_assign_or_schema(facts, assign_prefix, module) do
     SchemaFacts.schema_for_assign_prefix(assign_prefix, facts) ||
       find_assign(facts, assign_prefix, module)
+  end
+
+  defp find_controller_assign_for_template(facts, uri, assign_prefix) do
+    ControllerTemplate.assign_fact_with_prefix(facts, uri, assign_prefix)
+  end
+
+  defp find_controller_assign_schema_property(facts, uri, prefix) do
+    with {:ok, assign, path, field_prefix} <- AssignAccess.field_access(prefix),
+         %Fact{data: %{schema_source: schema_source}} when is_binary(schema_source) <-
+           ControllerTemplate.assign_fact(facts, uri, assign),
+         {:ok, base_schema_id} <- SchemaFacts.schema_id_for_assign(schema_source, facts),
+         {:ok, schema_id} <- schema_id_for_path(base_schema_id, path, facts) do
+      SchemaFacts.schema_property(schema_id, field_prefix, facts)
+    else
+      _not_controller_assign_field -> nil
+    end
   end
 
   defp find_assign_schema_property(facts, prefix) do

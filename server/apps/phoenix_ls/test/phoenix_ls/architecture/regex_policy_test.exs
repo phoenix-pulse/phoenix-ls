@@ -9,8 +9,6 @@ defmodule PhoenixLS.Architecture.RegexPolicyTest do
     "lib/phoenix_ls/features"
   ]
 
-  @allowed_regex_files []
-
   @disallowed_regex_tokens [
     "Regex.",
     "~r/",
@@ -29,7 +27,6 @@ defmodule PhoenixLS.Architecture.RegexPolicyTest do
       |> Enum.flat_map(fn dir ->
         Path.wildcard(Path.join([@app_root, dir, "**/*.ex"]))
       end)
-      |> Enum.reject(&(&1 in @allowed_regex_files))
       |> Enum.filter(fn path ->
         path
         |> File.read!()

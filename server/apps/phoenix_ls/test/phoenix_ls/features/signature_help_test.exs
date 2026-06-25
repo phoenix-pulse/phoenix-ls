@@ -134,6 +134,30 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
     assert String.contains?(signature.documentation.value, "GET /users/:id")
   end
 
+  test "returns Phoenix.LiveView.JS command signature help in HEEx expressions" do
+    {source, position} = source_and_position(~s[<button phx-click={JS.show(to: |)} />])
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 0
+           } = SignatureHelpFeature.signature_help(source, position, [])
+
+    assert signature.label == "JS.show(to, transition, time, display, blocking)"
+
+    assert Enum.map(signature.parameters, & &1.label) == [
+             "to",
+             "transition",
+             "time",
+             "display",
+             "blocking"
+           ]
+
+    assert signature.documentation.kind == MarkupKind.markdown()
+    assert String.contains?(signature.documentation.value, "Phoenix.LiveView.JS.show")
+    assert String.contains?(signature.documentation.value, "Show elements")
+  end
+
   test "returns nil outside component attribute contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)

@@ -3,38 +3,92 @@ defmodule PhoenixLS.LSP.ServerConfig do
   Runtime options passed by editor launchers to the Elixir language server.
   """
 
+  alias PhoenixLS.LSP.Mode
+
   @enforce_keys [
     :source_only?,
     :project_indexing_enabled?,
     :project_compilation_enabled?,
-    :log_level
+    :log_level,
+    :mode,
+    :resolved_mode,
+    :detected_expert?,
+    :detected_companion_peer?,
+    :disable_generic_elixir?
   ]
-  defstruct [:source_only?, :project_indexing_enabled?, :project_compilation_enabled?, :log_level]
+  defstruct [
+    :source_only?,
+    :project_indexing_enabled?,
+    :project_compilation_enabled?,
+    :log_level,
+    :mode,
+    :resolved_mode,
+    :detected_expert?,
+    :detected_companion_peer?,
+    :disable_generic_elixir?
+  ]
 
   @type t :: %__MODULE__{
           source_only?: boolean(),
           project_indexing_enabled?: boolean(),
           project_compilation_enabled?: boolean(),
-          log_level: Logger.level()
+          log_level: Logger.level(),
+          mode: Mode.mode(),
+          resolved_mode: Mode.resolved_mode(),
+          detected_expert?: boolean(),
+          detected_companion_peer?: boolean(),
+          disable_generic_elixir?: boolean()
         }
 
   @spec default() :: t()
   def default do
-    %__MODULE__{
+    build(
       source_only?: true,
       project_indexing_enabled?: true,
       project_compilation_enabled?: false,
-      log_level: :info
-    }
+      log_level: :info,
+      mode: :auto,
+      detected_expert?: false,
+      detected_companion_peer?: false,
+      disable_generic_elixir?: true
+    )
   end
 
   @spec from_env(map()) :: t()
   def from_env(env \\ System.get_env()) when is_map(env) do
-    %__MODULE__{
+    mode = Mode.parse(Map.get(env, "PHOENIX_LS_MODE"))
+    detected_expert? = env_bool(env, "PHOENIX_LS_DETECTED_EXPERT", false)
+
+    detected_companion_peer? =
+      detected_expert? or env_bool(env, "PHOENIX_LS_DETECTED_COMPANION_PEER", detected_expert?)
+
+    build(
       source_only?: env_bool(env, "PHOENIX_LS_SOURCE_ONLY", true),
       project_indexing_enabled?: env_bool(env, "PHOENIX_LS_INDEXING", true),
       project_compilation_enabled?: env_bool(env, "PHOENIX_LS_COMPILATION", false),
-      log_level: env_log_level(env, "PHOENIX_LS_LOG_LEVEL", :info)
+      log_level: env_log_level(env, "PHOENIX_LS_LOG_LEVEL", :info),
+      mode: mode,
+      detected_expert?: detected_expert?,
+      detected_companion_peer?: detected_companion_peer?,
+      disable_generic_elixir?: env_bool(env, "PHOENIX_LS_DISABLE_GENERIC_ELIXIR", true)
+    )
+  end
+
+  defp build(opts) do
+    mode = Keyword.fetch!(opts, :mode)
+    detected_expert? = Keyword.fetch!(opts, :detected_expert?)
+    detected_companion_peer? = Keyword.fetch!(opts, :detected_companion_peer?)
+
+    %__MODULE__{
+      source_only?: Keyword.fetch!(opts, :source_only?),
+      project_indexing_enabled?: Keyword.fetch!(opts, :project_indexing_enabled?),
+      project_compilation_enabled?: Keyword.fetch!(opts, :project_compilation_enabled?),
+      log_level: Keyword.fetch!(opts, :log_level),
+      mode: mode,
+      resolved_mode: Mode.resolve(mode, detected_companion_peer?),
+      detected_expert?: detected_expert?,
+      detected_companion_peer?: detected_companion_peer?,
+      disable_generic_elixir?: Keyword.fetch!(opts, :disable_generic_elixir?)
     }
   end
 

@@ -3,6 +3,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Changeset
   alias PhoenixLS.Introspection.Component
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
@@ -202,6 +203,38 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
            }
   end
 
+  test "normalizes static component option values from sigils" do
+    source = """
+    defmodule AppWeb.CoreComponents do
+      attr :type, :string, values: ~w(text number)
+      attr :rest, :global, include: ~w(action method)
+
+      def input(assigns) do
+        ~H\"\"\"
+        <input {@rest} />
+        \"\"\"
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert [type_attr] =
+             Enum.filter(
+               facts,
+               &(&1.kind == :component_attr and &1.data.name == "type")
+             )
+
+    assert [rest_attr] =
+             Enum.filter(
+               facts,
+               &(&1.kind == :component_attr and &1.data.name == "rest")
+             )
+
+    assert Keyword.fetch!(type_attr.data.options, :values) == ["text", "number"]
+    assert Keyword.fetch!(rest_attr.data.options, :include) == ["action", "method"]
+  end
+
   test "extracts router schema and LiveView facts from Elixir modules" do
     source = """
     defmodule AppWeb.Router do
@@ -341,6 +374,73 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert [label_attr, kind_attr] = Enum.filter(facts, &(&1.kind == :component_attr))
     assert label_attr.data.options == [required: true, doc: "Visible label"]
     assert kind_attr.data.options == [default: :primary, values: [:primary, :secondary]]
+  end
+
+  test "extracts Phoenix web macro component availability facts" do
+    source = """
+    defmodule AppWeb.PageHTML do
+      use AppWeb, :html
+    end
+
+    defmodule AppWeb do
+      def html do
+        quote do
+          import AppWeb.CoreComponents, only: [button: 1]
+        end
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert [use_fact] = Enum.filter(facts, &(&1.kind == :component_use))
+    assert use_fact.id == "AppWeb.PageHTML:use:AppWeb:html"
+
+    assert use_fact.data == %Component.Use{
+             module: "AppWeb.PageHTML",
+             target: "AppWeb",
+             macro: :html
+           }
+
+    assert [macro_import] = Enum.filter(facts, &(&1.kind == :component_macro_import))
+    assert macro_import.id == "AppWeb:html:import:AppWeb.CoreComponents"
+
+    assert macro_import.data == %Component.MacroImport{
+             module: "AppWeb",
+             macro: :html,
+             target: "AppWeb.CoreComponents",
+             only: [button: 1],
+             except: nil
+           }
+  end
+
+  test "indexes changeset validation facts from Elixir modules" do
+    source = """
+    defmodule App.Catalog.Product do
+      import Ecto.Changeset
+
+      def changeset(product, attrs) do
+        product
+        |> cast(attrs, [:name])
+        |> validate_required([:name])
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source, version: 35)
+
+    assert [required] = Enum.filter(facts, &(&1.kind == :changeset_validation))
+
+    assert required.data == %Changeset.Validation{
+             module: "App.Catalog.Product",
+             field: "name",
+             validation: :validate_required,
+             options: [],
+             confidence: :exact
+           }
+
+    assert required.range.start.line == 6
+    assert required.provenance.document_version == 35
   end
 
   test "returns parse errors without raising" do

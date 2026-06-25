@@ -7,7 +7,11 @@ const dogfoodMethods = [
   'phoenix/listRoutes',
   'phoenix/listTemplates',
   'phoenix/listEvents',
-  'phoenix/listLiveView'
+  'phoenix/listLiveView',
+  'phoenix/listUploads',
+  'phoenix/listHooks',
+  'phoenix/listColocatedAssets',
+  'phoenix/listControllers'
 ];
 
 interface DogfoodClient {

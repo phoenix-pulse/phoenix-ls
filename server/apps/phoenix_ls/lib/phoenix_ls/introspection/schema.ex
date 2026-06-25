@@ -3,8 +3,8 @@ defmodule PhoenixLS.Introspection.Schema do
   Source-only extraction helpers for Ecto schema facts.
   """
 
-  alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Introspection.Source
 
   defmodule PrimaryKey do
     @moduledoc """
@@ -47,7 +47,7 @@ defmodule PhoenixLS.Introspection.Schema do
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
-    expressions = top_level_expressions(body_ast)
+    expressions = Source.top_level_expressions(body_ast)
     aliases = aliases(expressions)
 
     expressions
@@ -80,7 +80,7 @@ defmodule PhoenixLS.Introspection.Schema do
         kind: :schema,
         id: schema_id,
         uri: uri,
-        range: source_range(meta),
+        range: Source.source_range(meta),
         provenance: provenance,
         data: %Schema{
           module: module,
@@ -108,7 +108,7 @@ defmodule PhoenixLS.Introspection.Schema do
         kind: :schema,
         id: schema_id,
         uri: uri,
-        range: source_range(meta),
+        range: Source.source_range(meta),
         provenance: provenance,
         data: %Schema{
           module: module,
@@ -161,7 +161,7 @@ defmodule PhoenixLS.Introspection.Schema do
 
   defp schema_detail_facts(schema_id, module, block, uri, provenance, aliases) do
     block
-    |> top_level_expressions()
+    |> Source.top_level_expressions()
     |> Enum.flat_map(fn
       {:field, meta, args} ->
         case field_fact(schema_id, module, meta, args, uri, provenance) do
@@ -205,7 +205,7 @@ defmodule PhoenixLS.Introspection.Schema do
        kind: :schema_field,
        id: "#{schema_id}:field:#{name}",
        uri: uri,
-       range: source_range(meta),
+       range: Source.source_range(meta),
        provenance: provenance,
        data: %Field{
          schema: schema_id,
@@ -237,7 +237,7 @@ defmodule PhoenixLS.Introspection.Schema do
       kind: :schema_field,
       id: "#{schema_id}:field:#{name}",
       uri: uri,
-      range: source_range(meta),
+      range: Source.source_range(meta),
       provenance: provenance,
       data: %Field{
         schema: schema_id,
@@ -291,7 +291,7 @@ defmodule PhoenixLS.Introspection.Schema do
          kind: :schema_association,
          id: "#{schema_id}:association:#{name}",
          uri: uri,
-         range: source_range(meta),
+         range: Source.source_range(meta),
          provenance: provenance,
          data: %Association{
            schema: schema_id,
@@ -331,7 +331,7 @@ defmodule PhoenixLS.Introspection.Schema do
   end
 
   defp alias_mappings([target_ast]) do
-    with {:ok, target} <- alias_to_string(target_ast) do
+    with {:ok, target} <- Source.alias_to_string(target_ast) do
       %{alias_name(target) => target}
     else
       :error -> %{}
@@ -339,7 +339,7 @@ defmodule PhoenixLS.Introspection.Schema do
   end
 
   defp alias_mappings([target_ast, options]) when is_list(options) do
-    with {:ok, target} <- alias_to_string(target_ast),
+    with {:ok, target} <- Source.alias_to_string(target_ast),
          {:ok, as} <- alias_option(options, target) do
       %{as => target}
     else
@@ -351,13 +351,13 @@ defmodule PhoenixLS.Introspection.Schema do
 
   defp alias_option(options, target) do
     case Keyword.fetch(options, :as) do
-      {:ok, as_ast} -> alias_to_string(as_ast)
+      {:ok, as_ast} -> Source.alias_to_string(as_ast)
       :error -> {:ok, alias_name(target)}
     end
   end
 
   defp resolve_related(ast, module, association, aliases) do
-    with {:ok, related} <- alias_to_string(ast) do
+    with {:ok, related} <- Source.alias_to_string(ast) do
       cond do
         Map.has_key?(aliases, related) ->
           {:ok, Map.fetch!(aliases, related)}
@@ -373,17 +373,6 @@ defmodule PhoenixLS.Introspection.Schema do
       end
     end
   end
-
-  defp alias_to_string({:__aliases__, _meta, parts}) do
-    if Enum.all?(parts, &is_atom/1) do
-      {:ok, Enum.map_join(parts, ".", &Atom.to_string/1)}
-    else
-      :error
-    end
-  end
-
-  defp alias_to_string(atom) when is_atom(atom), do: {:ok, Atom.to_string(atom)}
-  defp alias_to_string(_ast), do: :error
 
   defp alias_name(alias) do
     alias
@@ -406,29 +395,4 @@ defmodule PhoenixLS.Introspection.Schema do
     |> Enum.drop(-1)
     |> Enum.join(".")
   end
-
-  defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
-  defp top_level_expressions(nil), do: []
-  defp top_level_expressions(expression), do: [expression]
-
-  defp source_range(meta) do
-    %Range{
-      start: position(meta),
-      end: position(end_meta(meta))
-    }
-  end
-
-  defp end_meta(meta) do
-    Keyword.get(meta, :end_of_expression) || Keyword.get(meta, :end) || meta
-  end
-
-  defp position(meta) do
-    %Position{
-      line: meta |> Keyword.get(:line, 1) |> zero_based(),
-      character: meta |> Keyword.get(:column, 1) |> zero_based()
-    }
-  end
-
-  defp zero_based(value) when is_integer(value) and value > 0, do: value - 1
-  defp zero_based(_value), do: 0
 end

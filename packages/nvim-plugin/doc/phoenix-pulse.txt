@@ -43,7 +43,7 @@ Code extension, providing:
 ==============================================================================
 2. REQUIREMENTS                                   *phoenix-pulse-requirements*
 
-  - Neovim 0.8+ (tested on 0.9 and 0.10)
+  - Neovim 0.10+ with nvim-lspconfig
   - Elixir/Mix 1.17+ when building from source, or a bundled executable
   - nvim-lspconfig plugin
   - nvim-web-devicons (optional, for icons)
@@ -95,6 +95,13 @@ Configure Phoenix Pulse with setup(): >lua
 
       -- Phoenix LS Elixir executable path (auto-detected)
       lsp_server_path = nil,
+
+      -- Runtime mode: "auto", "companion", or "full"
+      mode = "auto",
+      companion = {
+        detect_expert = true,
+        disable_generic_elixir = true,
+      },
 
       source_only_mode = true,
       log_level = "info",

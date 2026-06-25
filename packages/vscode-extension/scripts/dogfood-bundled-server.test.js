@@ -9,6 +9,21 @@ const require = createRequire(import.meta.url);
 const { dogfoodBundledServer, defaultMethods } = require('./dogfood-bundled-server');
 
 describe('dogfoodBundledServer', () => {
+  test('default methods include the complete Phoenix explorer graph', () => {
+    expect(defaultMethods).toEqual([
+      'phoenix/listSchemas',
+      'phoenix/listComponents',
+      'phoenix/listRoutes',
+      'phoenix/listTemplates',
+      'phoenix/listEvents',
+      'phoenix/listLiveView',
+      'phoenix/listUploads',
+      'phoenix/listHooks',
+      'phoenix/listColocatedAssets',
+      'phoenix/listControllers'
+    ]);
+  });
+
   test('drives raw phoenix requests through a bundled stdio server', async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
     const serverPath = path.join(rootDir, 'phoenix_ls');
@@ -180,6 +195,26 @@ describe('dogfoodBundledServer', () => {
       'phoenix/listLiveView[0] missing contract fields: module, filePath, location, assigns, functions'
     );
   });
+
+  test('fails when listControllers omits controller contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listControllers'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listControllers[0] missing contract fields: module, filePath, location, actions, plugAssigns'
+    );
+  });
 });
 
 function completeExplorerResults() {
@@ -251,6 +286,51 @@ function completeExplorerResults() {
         location: { line: 1, character: 2 },
         assigns: [],
         functions: []
+      }
+    ],
+    'phoenix/listUploads': [
+      {
+        name: 'avatar',
+        module: 'AppWeb.ProductLive.Index',
+        filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+        location: { line: 12, character: 4 },
+        options: {},
+        usagesCount: 0,
+        usages: []
+      }
+    ],
+    'phoenix/listHooks': [
+      {
+        name: 'Sortable',
+        defined: true,
+        filePath: '/workspace/priv/static/assets/app.js',
+        location: { line: 2, character: 6 },
+        usagesCount: 0,
+        usages: []
+      }
+    ],
+    'phoenix/listColocatedAssets': [
+      {
+        ownerModule: 'AppWeb.ProductLive.Index',
+        assetsCount: 1,
+        assets: [
+          {
+            kind: 'colocated_js',
+            typeModule: 'Phoenix.LiveView.ColocatedJS',
+            generatedName: 'AppWeb.ProductLive.Index.ColocatedJS',
+            filePath: '/workspace/lib/app_web/live/product_live/index.html.heex',
+            location: { line: 20, character: 2 }
+          }
+        ]
+      }
+    ],
+    'phoenix/listControllers': [
+      {
+        module: 'AppWeb.ProductController',
+        filePath: '/workspace/lib/app_web/controllers/product_controller.ex',
+        location: { line: 1, character: 2 },
+        actions: [],
+        plugAssigns: []
       }
     ]
   };

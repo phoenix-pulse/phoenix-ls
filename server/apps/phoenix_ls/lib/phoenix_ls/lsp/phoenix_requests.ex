@@ -12,7 +12,11 @@ defmodule PhoenixLS.LSP.PhoenixRequests do
                    "phoenix/listRoutes",
                    "phoenix/listTemplates",
                    "phoenix/listEvents",
-                   "phoenix/listLiveView"
+                   "phoenix/listLiveView",
+                   "phoenix/listControllers",
+                   "phoenix/listUploads",
+                   "phoenix/listHooks",
+                   "phoenix/listColocatedAssets"
                  ])
 
   @spec handle(CustomRequest.t(), RequestContext.t()) ::

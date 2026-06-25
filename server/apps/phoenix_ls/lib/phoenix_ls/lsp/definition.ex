@@ -5,6 +5,7 @@ defmodule PhoenixLS.LSP.Definition do
 
   alias GenLSP.Requests.TextDocumentDefinition
   alias PhoenixLS.Features.Definition, as: DefinitionFeature
+  alias PhoenixLS.Features.Policy
   alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Workspace.DocumentStore
@@ -21,15 +22,30 @@ defmodule PhoenixLS.LSP.Definition do
            {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         facts = Snapshot.all(snapshot)
+        config = RequestContext.server_config!(context)
 
-        case DefinitionFeature.reference_definition(uri, position, facts) do
+        case reference_definition(uri, position, facts, config) do
           {:ok, definition} -> definition
-          :not_found -> DefinitionFeature.definition_source(uri, document.text, position, facts)
+          :not_found -> source_definition(uri, document.text, position, facts, config)
         end
       else
         _missing_or_invalid -> nil
       end
 
     {:reply, definition, context.lsp}
+  end
+
+  defp reference_definition(uri, position, facts, config) do
+    if Policy.allow?(:definition, :navigation, config) do
+      DefinitionFeature.reference_definition(uri, position, facts)
+    else
+      :not_found
+    end
+  end
+
+  defp source_definition(uri, source, position, facts, config) do
+    if Policy.allow?(:definition, :phoenix, config) do
+      DefinitionFeature.definition_source(uri, source, position, facts)
+    end
   end
 end

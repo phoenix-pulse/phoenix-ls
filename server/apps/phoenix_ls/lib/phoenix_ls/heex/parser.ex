@@ -5,82 +5,147 @@ defmodule PhoenixLS.HEEx.Parser do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.HEEx.Document
-  alias PhoenixLS.HEEx.Document.{Attribute, Tag}
+  alias PhoenixLS.HEEx.Document.{Attribute, Expression, StructuralIssue, Tag}
   alias PhoenixLS.Support.Positions
 
   @spec parse(String.t()) :: {:ok, Document.t()} | {:error, atom()}
   def parse(source) when is_binary(source) do
-    with {:ok, events} <- scan(source, 0, []) do
-      tags =
-        events
-        |> Enum.reverse()
+    with {:ok, entries} <- scan(source, 0, []) do
+      entries = Enum.reverse(entries)
+
+      {tags, structure_issues} =
+        entries
         |> tags_with_closings()
 
-      {:ok, %Document{tags: tags}}
+      expressions =
+        entries
+        |> Enum.flat_map(fn
+          {:expression, expression} -> [expression]
+          _entry -> []
+        end)
+
+      {:ok, %Document{tags: tags, expressions: expressions, structure_issues: structure_issues}}
     end
   end
 
-  defp scan(source, offset, tags) do
+  defp scan(source, offset, entries) do
     case next_at(source, offset, "<") do
       :none ->
-        {:ok, tags}
+        {:ok, entries}
 
       {:ok, tag_start} ->
         cond do
           starts_at?(source, tag_start, "<%") ->
-            scan(source, skip_heex_expression(source, tag_start), tags)
+            with {:ok, expression, next_offset} <- parse_heex_expression(source, tag_start) do
+              scan(source, next_offset, [{:expression, expression} | entries])
+            end
 
           starts_at?(source, tag_start, "</") ->
             with {:ok, closing_tag, next_offset} <- parse_closing_tag(source, tag_start) do
-              scan(source, next_offset, [{:close, closing_tag} | tags])
+              scan(source, next_offset, [{:close, closing_tag} | entries])
             end
 
           starts_at?(source, tag_start, "<!") ->
             with {:ok, tag_end} <- tag_end(source, tag_start + 2) do
-              scan(source, tag_end + 1, tags)
+              scan(source, tag_end + 1, entries)
             end
 
           true ->
             with {:ok, tag, next_offset} <- parse_tag(source, tag_start) do
-              scan(source, next_offset, [{:open, tag} | tags])
+              scan(source, next_offset, [{:open, tag} | entries])
             end
         end
     end
   end
 
   defp tags_with_closings(events) do
-    {tags, _stack} =
-      Enum.reduce(events, {[], []}, fn
-        {:open, %Tag{self_closing?: true} = tag}, {tags, stack} ->
-          {[tag | tags], stack}
+    closing_seen? = Enum.any?(events, &match?({:close, _closing_tag}, &1))
 
-        {:open, %Tag{} = tag}, {tags, stack} ->
-          {[tag | tags], [tag | stack]}
+    {tags, stack, issues} =
+      Enum.reduce(events, {[], [], []}, fn
+        {:open, %Tag{self_closing?: true} = tag}, {tags, stack, issues} ->
+          {[tag | tags], stack, issues}
 
-        {:close, closing_tag}, {tags, stack} ->
-          case pop_matching_open_tag(stack, closing_tag.name) do
-            {:ok, tag, remaining_stack} ->
-              updated_tag = %{
-                tag
-                | closing_range: closing_tag.range,
-                  closing_name_range: closing_tag.name_range
-              }
+        {:open, %Tag{} = tag}, {tags, stack, issues} ->
+          {[tag | tags], [tag | stack], issues}
 
-              {replace_tag(tags, tag, updated_tag), remaining_stack}
+        {:close, closing_tag}, {tags, stack, issues} ->
+          close_tag(tags, stack, issues, closing_tag)
 
-            :error ->
-              {tags, stack}
-          end
+        {:expression, _expression}, {tags, stack, issues} ->
+          {tags, stack, issues}
       end)
 
-    Enum.reverse(tags)
+    structure_issues =
+      issues
+      |> Enum.reverse()
+      |> Kernel.++(unclosed_tag_issues(stack, closing_seen?))
+
+    {Enum.reverse(tags), structure_issues}
   end
 
-  defp pop_matching_open_tag([%Tag{name: open_name} = tag | rest], close_name)
-       when open_name == close_name,
-       do: {:ok, tag, rest}
+  defp close_tag(tags, [], issues, _closing_tag) do
+    {tags, [], issues}
+  end
 
-  defp pop_matching_open_tag(_stack, _name), do: :error
+  defp close_tag(
+         tags,
+         [%Tag{name: close_name} = tag | rest],
+         issues,
+         %{name: close_name} = closing_tag
+       ) do
+    {replace_tag(tags, tag, close_open_tag(tag, closing_tag)), rest, issues}
+  end
+
+  defp close_tag(tags, [%Tag{} = expected_tag | rest] = stack, issues, closing_tag) do
+    issue = mismatched_closing_tag_issue(expected_tag, closing_tag)
+
+    case split_matching_open_tag(stack, closing_tag.name, []) do
+      {:ok, tag, remaining_stack} ->
+        {replace_tag(tags, tag, close_open_tag(tag, closing_tag)), remaining_stack,
+         [issue | issues]}
+
+      :error ->
+        {tags, rest, [issue | issues]}
+    end
+  end
+
+  defp split_matching_open_tag([%Tag{name: name} = tag | rest], name, _skipped) do
+    {:ok, tag, rest}
+  end
+
+  defp split_matching_open_tag([_tag | rest], name, skipped) do
+    split_matching_open_tag(rest, name, skipped)
+  end
+
+  defp split_matching_open_tag([], _name, _skipped), do: :error
+
+  defp close_open_tag(%Tag{} = tag, closing_tag) do
+    %{tag | closing_range: closing_tag.range, closing_name_range: closing_tag.name_range}
+  end
+
+  defp mismatched_closing_tag_issue(%Tag{} = expected_tag, closing_tag) do
+    %StructuralIssue{
+      kind: :mismatched_closing_tag,
+      range: closing_tag.name_range,
+      name: closing_tag.name,
+      expected_name: expected_tag.name
+    }
+  end
+
+  defp unclosed_tag_issues(_stack, false), do: []
+
+  defp unclosed_tag_issues(stack, true) do
+    stack
+    |> Enum.reverse()
+    |> Enum.map(fn tag ->
+      %StructuralIssue{
+        kind: :unclosed_tag,
+        range: tag.name_range,
+        name: tag.name
+      }
+    end)
+  end
 
   defp replace_tag(tags, original_tag, updated_tag) do
     Enum.map(tags, fn
@@ -363,10 +428,65 @@ defmodule PhoenixLS.HEEx.Parser do
 
   defp scan_unquoted_value(_source, offset, _tag_end), do: offset
 
-  defp skip_heex_expression(source, tag_start) do
+  defp parse_heex_expression(source, tag_start) do
     case next_at(source, tag_start + 2, "%>") do
-      {:ok, close_start} -> close_start + 2
-      :none -> byte_size(source)
+      {:ok, close_start} ->
+        with value_start <- expression_value_start(source, tag_start + 2, close_start),
+             value_end <- expression_value_end(source, value_start, close_start),
+             {:ok, expression_range} <- range(source, tag_start, close_start + 2),
+             {:ok, value_range} <- range(source, value_start, value_end) do
+          {:ok,
+           %Expression{
+             kind: expression_kind(source, tag_start + 2, close_start),
+             range: expression_range,
+             value_range: value_range,
+             value: source_slice(source, value_start, value_end)
+           }, close_start + 2}
+        end
+
+      :none ->
+        close_start = byte_size(source)
+
+        with value_start <- expression_value_start(source, tag_start + 2, close_start),
+             value_end <- expression_value_end(source, value_start, close_start),
+             {:ok, expression_range} <- range(source, tag_start, close_start),
+             {:ok, value_range} <- range(source, value_start, value_end) do
+          {:ok,
+           %Expression{
+             kind: expression_kind(source, tag_start + 2, close_start),
+             range: expression_range,
+             value_range: value_range,
+             value: source_slice(source, value_start, value_end)
+           }, close_start}
+        end
+    end
+  end
+
+  defp expression_value_start(source, offset, close_start) do
+    offset =
+      if byte_at(source, offset) == "=" do
+        offset + 1
+      else
+        offset
+      end
+
+    skip_whitespace(source, offset, close_start)
+  end
+
+  defp expression_value_end(source, value_start, close_start) do
+    case previous_non_whitespace(source, close_start - 1) do
+      {:ok, offset} when offset >= value_start -> offset + 1
+      _none_or_before_value -> value_start
+    end
+  end
+
+  defp expression_kind(source, offset, close_start) do
+    offset = skip_whitespace(source, offset, close_start)
+
+    if byte_at(source, offset) == "=" do
+      :output
+    else
+      :control
     end
   end
 

@@ -5,6 +5,7 @@ defmodule PhoenixLS.Introspection.Asset do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Introspection.Asset.Hooks, as: AssetHooks
 
   defmodule Asset do
     @moduledoc """
@@ -44,21 +45,25 @@ defmodule PhoenixLS.Introspection.Asset do
     with true <- static_asset_path?(path, root_path),
          {:ok, public_path} <- public_path(path, root_path),
          {:ok, stat} <- File.stat(path) do
-      [
+      type = asset_type(path)
+      asset_provenance = provenance(opts)
+
+      asset_fact =
         Fact.new!(
           kind: :asset,
           id: public_path,
           uri: uri,
           range: zero_range(),
-          provenance: provenance(opts),
+          provenance: asset_provenance,
           data: %Asset{
             public_path: public_path,
             file_path: path,
-            type: asset_type(path),
+            type: type,
             size: stat.size
           }
         )
-      ]
+
+      [asset_fact | script_hook_facts(type, uri, path, asset_provenance)]
     else
       _ignored -> []
     end
@@ -121,6 +126,15 @@ defmodule PhoenixLS.Introspection.Asset do
       extension in @font_extensions -> :font
     end
   end
+
+  defp script_hook_facts(:script, uri, path, provenance) do
+    case File.read(path) do
+      {:ok, source} -> AssetHooks.facts(uri, source, provenance)
+      {:error, _reason} -> []
+    end
+  end
+
+  defp script_hook_facts(_type, _uri, _path, _provenance), do: []
 
   defp zero_range do
     %Range{

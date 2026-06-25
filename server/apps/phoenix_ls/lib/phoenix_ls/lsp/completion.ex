@@ -13,24 +13,33 @@ defmodule PhoenixLS.LSP.Completion do
   @spec handle(TextDocumentCompletion.t(), RequestContext.t()) :: {:reply, list(), GenLSP.LSP.t()}
   def handle(
         %TextDocumentCompletion{params: %{text_document: text_document, position: position}},
-        %RequestContext{} = context
+        %RequestContext{} = request_context
       ) do
     items =
       with uri when is_binary(uri) <- text_document.uri,
-           {:ok, engine} <- RequestContext.project_engine_for_uri(context, uri),
-           {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(context, uri),
+           {:ok, engine} <- RequestContext.project_engine_for_uri(request_context, uri),
+           {:ok, snapshot} <- RequestContext.project_snapshot_for_uri(request_context, uri),
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri),
-           {:ok, context} <- CursorContext.at(document.text, position) do
+           {:ok, cursor_context} <- CursorContext.at(document.text, position) do
         facts = Snapshot.all(snapshot)
+        config = RequestContext.server_config!(request_context)
 
-        Components.complete(document.text, position, facts) ++
-          context_completion_items(context, facts) ++
-          Phoenix.complete(uri, document.text, position, facts)
+        Components.complete(uri, document.text, position, cursor_context, facts) ++
+          context_completion_items(cursor_context, facts, config) ++
+          Phoenix.complete_source_only(
+            uri,
+            document.text,
+            position,
+            cursor_context,
+            facts,
+            config
+          )
       else
         _missing_or_invalid -> []
       end
+      |> uniq_by_label()
 
-    {:reply, items, context.lsp}
+    {:reply, items, request_context.lsp}
   end
 
   @spec resolve(CompletionItemResolve.t(), RequestContext.t()) ::
@@ -40,24 +49,34 @@ defmodule PhoenixLS.LSP.Completion do
   end
 
   defp context_completion_items(
+         %CursorContext{kind: :attribute_value, attribute: "phx-hook"} = context,
+         facts,
+         config
+       ) do
+    Phoenix.complete(context, facts, config)
+  end
+
+  defp context_completion_items(
          %CursorContext{kind: :attribute_value, attribute: "phx-" <> _event},
-         _facts
+         _facts,
+         _config
        ),
        do: []
 
   defp context_completion_items(
          %CursorContext{kind: :expression, prefix: "@" <> prefix} = context,
-         facts
+         facts,
+         config
        ) do
     if String.contains?(prefix, ".") do
-      Phoenix.complete(context, facts)
+      Phoenix.complete(context, facts, config)
     else
       []
     end
   end
 
-  defp context_completion_items(%CursorContext{} = context, facts),
-    do: Phoenix.complete(context, facts)
+  defp context_completion_items(%CursorContext{} = context, facts, config),
+    do: Phoenix.complete(context, facts, config)
 
   defp known_project_facts(%RequestContext{} = context) do
     context
@@ -69,5 +88,9 @@ defmodule PhoenixLS.LSP.Completion do
       end
     end)
     |> Enum.uniq_by(&{&1.kind, &1.uri, &1.id})
+  end
+
+  defp uniq_by_label(items) do
+    Enum.uniq_by(items, & &1.label)
   end
 end

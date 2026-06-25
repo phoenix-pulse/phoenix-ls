@@ -1,0 +1,9 @@
+<Phoenix18ComplexAppWeb.CoreComponents.header title={@page_title}>
+  <:subtitle>Generated-style product index</:subtitle>
+</Phoenix18ComplexAppWeb.CoreComponents.header>
+
+<ul id="products">
+  <li :for={product <- @products} :key={product.id} phx-value-id={product.id}>
+    <.link navigate={~p"/products/#{product.id}"}><%= product.name %></.link>
+  </li>
+</ul>
