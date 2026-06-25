@@ -88,6 +88,18 @@ local function generate_component_slot_id(component, slot)
   return "component-slot:" .. file .. ":" .. (component.name or "unknown") .. ":" .. (slot.name or "unknown")
 end
 
+-- Generate unique ID for component slot attribute
+local function generate_component_slot_attr_id(component, slot, attr)
+  local file = component.filePath or component.file or "unknown"
+  return string.format(
+    "component-slot-attr:%s:%s:%s:%s",
+    file,
+    component.name or "unknown",
+    slot.name or "unknown",
+    attr.name or "unknown"
+  )
+end
+
 -- Generate unique ID for route
 local function generate_route_id(route)
   local method = route.verb or route.method or "GET"
@@ -268,19 +280,50 @@ local function render_component_children(component, parent_id, depth)
   if component.slots and #component.slots > 0 then
     for _, slot in ipairs(component.slots) do
       local slot_id = generate_component_slot_id(component, slot)
-      local slot_line = get_indentation(depth) .. string.format("🎰 :%s", slot.name or "unknown")
+      local slot_attrs = slot.attributes or {}
+      local has_slot_attrs = #slot_attrs > 0
+      local expanded_icon = has_slot_attrs and (is_expanded(slot_id) and "▼ " or "▶ ") or ""
+      local slot_line = get_indentation(depth) .. expanded_icon .. string.format("🎰 :%s", slot.name or "unknown")
 
       -- Add slot details (required, attributes count)
       local details = {}
       if slot.required then table.insert(details, "required") end
-      if slot.attributes and #slot.attributes > 0 then
-        table.insert(details, #slot.attributes .. " attrs")
+      if has_slot_attrs then
+        table.insert(details, #slot_attrs .. " attrs")
       end
       if #details > 0 then
         slot_line = slot_line .. " (" .. table.concat(details, ", ") .. ")"
       end
 
-      add_line(slot_line, slot_id, depth, "component-slot", { component = component, slot = slot }, parent_id, false)
+      add_line(slot_line, slot_id, depth, "component-slot", { component = component, slot = slot }, parent_id, has_slot_attrs)
+
+      if has_slot_attrs and is_expanded(slot_id) then
+        for _, attr in ipairs(slot_attrs) do
+          local attr_id = generate_component_slot_attr_id(component, slot, attr)
+          local attr_type = attr.rawType or (":" .. (attr.type or "unknown"))
+          local attr_line = get_indentation(depth + 1) .. string.format("⚙️ %s: %s", attr.name or "unknown", attr_type)
+
+          local attr_details = {}
+          if attr.required then table.insert(attr_details, "required") end
+          if attr.default then table.insert(attr_details, "default: " .. attr.default) end
+          if attr.values and #attr.values > 0 then
+            table.insert(attr_details, "values: " .. table.concat(attr.values, ", "))
+          end
+          if #attr_details > 0 then
+            attr_line = attr_line .. " (" .. table.concat(attr_details, ", ") .. ")"
+          end
+
+          add_line(
+            attr_line,
+            attr_id,
+            depth + 1,
+            "component-slot-attribute",
+            { component = component, slot = slot, attribute = attr },
+            slot_id,
+            false
+          )
+        end
+      end
     end
   end
 end
@@ -806,8 +849,8 @@ local function definition_target(item)
 
   if item.attribute then
     return {
-      file = item_file(item.attribute) or item_file(item.component),
-      line = item_line(item.attribute) or item_line(item.component),
+      file = item_file(item.attribute) or item_file(item.slot) or item_file(item.component),
+      line = item_line(item.attribute) or item_line(item.slot) or item_line(item.component),
     }
   end
 

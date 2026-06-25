@@ -70,6 +70,8 @@ interface ComponentInfo {
       values?: string[];
       doc?: string;
       rawType?: string;
+      filePath?: string;
+      location?: { line: number; character: number };
     }>;
   }>;
 }
@@ -279,6 +281,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           return this.getComponentsInFile(element.data);
         case 'component-expandable':
           return this.getComponentAttributes(element.data);
+        case 'component-slot-expandable':
+          return this.getComponentSlotAttributes(element.data);
         case 'category-routes':
           return this.getRouteScopes();
         case 'route-scope':
@@ -571,17 +575,19 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     // Add slots
     component.slots.forEach(slot => {
       const label = `:${slot.name}`;
+      const slotAttributes = slot.attributes || [];
+      const hasSlotAttributes = slotAttributes.length > 0;
 
       const details: string[] = [];
       if (slot.required) details.push('required');
-      if (slot.attributes.length > 0) {
-        details.push(`${slot.attributes.length} attrs`);
+      if (hasSlotAttributes) {
+        details.push(`${slotAttributes.length} attrs`);
       }
 
       const item = new PhoenixTreeItem(
         label,
-        'component-slot',
-        vscode.TreeItemCollapsibleState.None,
+        hasSlotAttributes ? 'component-slot-expandable' : 'component-slot',
+        hasSlotAttributes ? this.getCollapsibleState() : vscode.TreeItemCollapsibleState.None,
         '$(symbol-interface)',
         'terminal.ansiMagenta'
       );
@@ -592,10 +598,49 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Slot',
         arguments: [slot.filePath || component.filePath, slot.location || component.location]
       };
+      item.data = { component, slot };
       items.push(item);
     });
 
     return items;
+  }
+
+  private getComponentSlotAttributes(data: {
+    component: ComponentInfo;
+    slot: ComponentInfo['slots'][number];
+  }): PhoenixTreeItem[] {
+    return (data.slot.attributes || []).map(attr => {
+      const typeDisplay = attr.rawType || `:${attr.type}`;
+      const label = `${attr.name}: ${typeDisplay}`;
+      const details: string[] = [];
+
+      if (attr.required) details.push('required');
+      if (attr.default) details.push(`default: ${attr.default}`);
+      if (attr.values && attr.values.length > 0) {
+        details.push(`values: [${attr.values.join(', ')}]`);
+      }
+
+      const item = new PhoenixTreeItem(
+        label,
+        'component-slot-attribute',
+        vscode.TreeItemCollapsibleState.None,
+        '$(symbol-property)',
+        'terminal.ansiCyan'
+      );
+
+      item.description = details.length > 0 ? details.join(', ') : '';
+      item.tooltip = `Slot Attribute: ${attr.name}\nType: ${typeDisplay}${attr.doc ? `\n\n${attr.doc}` : ''}`;
+      item.command = {
+        command: 'phoenixPulse.goToItem',
+        title: 'Go to Slot Attribute',
+        arguments: [
+          attr.filePath || data.slot.filePath || data.component.filePath,
+          attr.location || data.slot.location || data.component.location
+        ]
+      };
+
+      return item;
+    });
   }
 
   private async getRouteScopes(): Promise<PhoenixTreeItem[]> {

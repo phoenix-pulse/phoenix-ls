@@ -246,6 +246,60 @@ describe('PhoenixPulseTreeProvider', () => {
     });
   });
 
+  it('navigates component slot attrs to nested source locations', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listComponents') {
+          return [
+            {
+              name: 'table',
+              module: 'AppWeb.CoreComponents',
+              filePath: '/workspace/lib/app_web/components/core_components.ex',
+              location: { line: 20, character: 2 },
+              attributesCount: 0,
+              slotsCount: 1,
+              attributes: [],
+              slots: [
+                {
+                  name: 'col',
+                  required: false,
+                  filePath: '/workspace/lib/app_web/components/core_components.ex',
+                  location: { line: 31, character: 2 },
+                  attributes: [
+                    {
+                      name: 'label',
+                      type: 'string',
+                      required: true,
+                      filePath: '/workspace/lib/app_web/components/core_components.ex',
+                      location: { line: 32, character: 4 }
+                    }
+                  ]
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const componentsCategory = roots.find(item => item.label === 'Components');
+    const files = await provider.getChildren(componentsCategory);
+    const components = await provider.getChildren(files[0]);
+    const componentChildren = await provider.getChildren(components[0]);
+    const slot = componentChildren.find(item => item.label === ':col');
+    const slotAttrs = await provider.getChildren(slot);
+
+    expect(slotAttrs[0].label).toBe('label: :string');
+    expect(slotAttrs[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/components/core_components.ex', { line: 32, character: 4 }]
+    });
+  });
+
   it('shows LiveView assigns and navigates to assign source locations', async () => {
     const client = {
       sendRequest: vi.fn(async method => {
