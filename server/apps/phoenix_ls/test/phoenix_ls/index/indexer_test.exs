@@ -527,6 +527,52 @@ defmodule PhoenixLS.Index.IndexerTest do
                     %{uri: "file:///tmp/app/lib/app_web/live/telemetry_live.ex"}}
   end
 
+  test "telemetry includes duration and performance budget metadata" do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach_many(
+      handler_id,
+      [[:phoenix_ls, :indexer, :document]],
+      &__MODULE__.handle_telemetry/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    store = Module.concat(__MODULE__, :"BudgetStore#{System.unique_integer([:positive])}")
+    indexer = Module.concat(__MODULE__, :"BudgetIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: store}, id: {Store, store})
+
+    start_supervised!(
+      {Indexer, name: indexer, index_store: store, performance_budgets_ms: %{document: 75}},
+      id: {Indexer, indexer}
+    )
+
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/budget_live.ex",
+        "elixir",
+        1,
+        "defmodule AppWeb.BudgetLive do\nend\n"
+      )
+
+    assert Indexer.schedule_document(indexer, document) == :ok
+
+    assert_receive {:indexer_telemetry, [:phoenix_ls, :indexer, :document],
+                    %{count: 1, duration_ms: duration_ms},
+                    %{
+                      uri: "file:///tmp/app/lib/app_web/live/budget_live.ex",
+                      budget_ms: 75,
+                      over_budget?: over_budget?
+                    }},
+                   500
+
+    assert is_integer(duration_ms)
+    assert duration_ms >= 0
+    assert is_boolean(over_budget?)
+  end
+
   test "project engines expose a named background indexer" do
     root_uri = "file:///tmp/phoenix-ls-indexer-engine"
 

@@ -13,6 +13,13 @@ defmodule PhoenixLS.Index.Indexer do
   alias PhoenixLS.Support.Telemetry
   alias PhoenixLS.Workspace.Document
 
+  @default_performance_budgets_ms %{
+    document: 100,
+    uri: 250,
+    project: 2_000,
+    delete: 50
+  }
+
   @type server :: GenServer.server()
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -49,7 +56,8 @@ defmodule PhoenixLS.Index.Indexer do
       root_uri: Keyword.get(opts, :root_uri),
       status_target: Keyword.get(opts, :status_target),
       project_indexing_enabled: Keyword.get(opts, :project_indexing_enabled, true),
-      compile_runner: Keyword.get(opts, :compile_runner)
+      compile_runner: Keyword.get(opts, :compile_runner),
+      performance_budgets_ms: performance_budgets(opts)
     }
 
     case Keyword.fetch(opts, :root_uri) do
@@ -86,7 +94,7 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     before_facts = Store.by_uri(state.index_store, document.uri)
-    result = DocumentIndexer.index(state.index_store, document)
+    {result, duration_ms} = timed(fn -> DocumentIndexer.index(state.index_store, document) end)
     after_facts = Store.by_uri(state.index_store, document.uri)
     changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
 
@@ -94,11 +102,8 @@ defmodule PhoenixLS.Index.Indexer do
 
     Telemetry.execute(
       [:indexer, :document],
-      %{count: fact_count(state.index_store, document.uri)},
-      %{
-        uri: document.uri,
-        result: result
-      }
+      %{count: fact_count(state.index_store, document.uri), duration_ms: duration_ms},
+      telemetry_metadata(state, :document, %{uri: document.uri, result: result}, duration_ms)
     )
 
     notify_status(
@@ -124,16 +129,22 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     before_facts = Store.by_uri(state.index_store, uri)
-    result = index_uri(state.index_store, uri, state.root_uri, state.project_indexing_enabled)
+
+    {result, duration_ms} =
+      timed(fn ->
+        index_uri(state.index_store, uri, state.root_uri, state.project_indexing_enabled)
+      end)
+
     after_facts = Store.by_uri(state.index_store, uri)
     changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
 
     maybe_notify_index_changed(opts, uri, changed_kinds)
 
-    Telemetry.execute([:indexer, :uri], %{count: fact_count(state.index_store, uri)}, %{
-      uri: uri,
-      result: result
-    })
+    Telemetry.execute(
+      [:indexer, :uri],
+      %{count: fact_count(state.index_store, uri), duration_ms: duration_ms},
+      telemetry_metadata(state, :uri, %{uri: uri, result: result}, duration_ms)
+    )
 
     notify_status(
       state,
@@ -172,13 +183,17 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     before_facts = Store.by_uri(state.index_store, uri)
-    :ok = Invalidation.invalidate_uri(state.index_store, uri)
+    {:ok, duration_ms} = timed(fn -> Invalidation.invalidate_uri(state.index_store, uri) end)
     after_facts = Store.by_uri(state.index_store, uri)
     changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
 
     maybe_notify_index_changed(opts, uri, changed_kinds)
 
-    Telemetry.execute([:indexer, :delete], %{count: 1}, %{uri: uri, result: :ok})
+    Telemetry.execute(
+      [:indexer, :delete],
+      %{count: 1, duration_ms: duration_ms},
+      telemetry_metadata(state, :delete, %{uri: uri, result: :ok}, duration_ms)
+    )
 
     notify_status(
       state,
@@ -252,22 +267,24 @@ defmodule PhoenixLS.Index.Indexer do
     end
   end
 
-  defp emit_project_indexed(%{project_indexing_enabled: false}, root_uri) do
-    Telemetry.execute([:indexer, :project], %{count: 0}, %{
-      root_uri: root_uri,
-      result: :disabled
-    })
+  defp emit_project_indexed(%{project_indexing_enabled: false} = state, root_uri) do
+    Telemetry.execute(
+      [:indexer, :project],
+      %{count: 0, duration_ms: 0},
+      telemetry_metadata(state, :project, %{root_uri: root_uri, result: :disabled}, 0)
+    )
 
     {:disabled, 0}
   end
 
-  defp emit_project_indexed(%{index_store: index_store}, root_uri) do
-    {result, count} = index_project(index_store, root_uri)
+  defp emit_project_indexed(%{index_store: index_store} = state, root_uri) do
+    {{result, count}, duration_ms} = timed(fn -> index_project(index_store, root_uri) end)
 
-    Telemetry.execute([:indexer, :project], %{count: count}, %{
-      root_uri: root_uri,
-      result: result
-    })
+    Telemetry.execute(
+      [:indexer, :project],
+      %{count: count, duration_ms: duration_ms},
+      telemetry_metadata(state, :project, %{root_uri: root_uri, result: result}, duration_ms)
+    )
 
     {result, count}
   end
@@ -297,6 +314,41 @@ defmodule PhoenixLS.Index.Indexer do
       send(pid, {:phoenix_ls_index_changed, uri, changed_kinds, document_store, project_engine})
     else
       _ignored -> :ok
+    end
+  end
+
+  defp timed(fun) when is_function(fun, 0) do
+    started_at = System.monotonic_time()
+    result = fun.()
+    finished_at = System.monotonic_time()
+
+    duration_ms =
+      finished_at
+      |> Kernel.-(started_at)
+      |> System.convert_time_unit(:native, :millisecond)
+
+    {result, duration_ms}
+  end
+
+  defp telemetry_metadata(state, job, metadata, duration_ms) do
+    budget_ms = Map.get(state.performance_budgets_ms, job)
+
+    metadata
+    |> Map.put(:budget_ms, budget_ms)
+    |> Map.put(:over_budget?, over_budget?(duration_ms, budget_ms))
+  end
+
+  defp over_budget?(duration_ms, budget_ms)
+       when is_integer(duration_ms) and is_integer(budget_ms) do
+    duration_ms > budget_ms
+  end
+
+  defp over_budget?(_duration_ms, _budget_ms), do: false
+
+  defp performance_budgets(opts) do
+    case Keyword.get(opts, :performance_budgets_ms, %{}) do
+      budgets when is_map(budgets) -> Map.merge(@default_performance_budgets_ms, budgets)
+      _invalid -> @default_performance_budgets_ms
     end
   end
 
