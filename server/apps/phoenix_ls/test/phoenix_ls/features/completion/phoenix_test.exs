@@ -149,16 +149,41 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
 
     phx_items = complete("<button phx-|>")
 
-    assert Enum.map(phx_items, & &1.label) == [
-             "phx-click",
-             "phx-change",
-             "phx-submit",
-             "phx-target",
-             "phx-value-"
-           ]
+    phx_labels = Enum.map(phx_items, & &1.label)
+
+    assert "phx-click" in phx_labels
+    assert "phx-target" in phx_labels
+    assert "phx-value-" in phx_labels
+    assert "phx-mounted" in phx_labels
+    assert "phx-window-keydown" in phx_labels
 
     phx_item = hd(phx_items)
     assert phx_item.kind == CompletionItemKind.property()
+  end
+
+  test "completes HEEx special attributes" do
+    items = complete("<div :|>")
+
+    assert Enum.map(items, & &1.label) == [":for", ":if", ":let", ":key"]
+
+    for_item = hd(items)
+
+    assert for_item.kind == CompletionItemKind.property()
+    assert for_item.detail == "HEEx comprehension"
+    assert for_item.insert_text == ":for={${1:item} <- ${2:@items}}"
+    assert for_item.insert_text_format == 2
+    assert for_item.data == %{"kind" => "heex_special_attr", "id" => ":for"}
+  end
+
+  test "completes window-level LiveView bindings by prefix" do
+    items = complete("<div phx-w|>")
+
+    assert Enum.map(items, & &1.label) == [
+             "phx-window-focus",
+             "phx-window-blur",
+             "phx-window-keydown",
+             "phx-window-keyup"
+           ]
   end
 
   test "falls back to a narrow generic Elixir completion list" do
