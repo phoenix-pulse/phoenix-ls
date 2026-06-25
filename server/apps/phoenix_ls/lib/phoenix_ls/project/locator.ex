@@ -5,21 +5,18 @@ defmodule PhoenixLS.Project.Locator do
 
   alias PhoenixLS.Support.URI, as: SupportURI
 
-  @phoenix_dependencies MapSet.new([:phoenix, :phoenix_live_view])
-
   defmodule Result do
     @moduledoc """
-    Located Mix project metadata.
+    Located Mix project paths.
     """
 
-    @enforce_keys [:root_path, :root_uri, :mix_exs_path, :phoenix?]
+    @enforce_keys [:root_path, :root_uri, :mix_exs_path]
     defstruct [
       :root_path,
       :root_uri,
       :mix_exs_path,
       :umbrella_root_path,
-      :umbrella_root_uri,
-      phoenix?: false
+      :umbrella_root_uri
     ]
 
     @type t :: %__MODULE__{
@@ -27,8 +24,7 @@ defmodule PhoenixLS.Project.Locator do
             root_uri: String.t(),
             mix_exs_path: String.t(),
             umbrella_root_path: String.t() | nil,
-            umbrella_root_uri: String.t() | nil,
-            phoenix?: boolean()
+            umbrella_root_uri: String.t() | nil
           }
   end
 
@@ -83,8 +79,7 @@ defmodule PhoenixLS.Project.Locator do
       root_uri: SupportURI.path_to_file_uri!(root_path),
       mix_exs_path: mix_exs_path,
       umbrella_root_path: umbrella_root_path,
-      umbrella_root_uri: umbrella_root_uri,
-      phoenix?: phoenix_dependency?(mix_exs_path)
+      umbrella_root_uri: umbrella_root_uri
     }
   end
 
@@ -99,34 +94,4 @@ defmodule PhoenixLS.Project.Locator do
       {nil, nil}
     end
   end
-
-  defp phoenix_dependency?(mix_exs_path) do
-    with {:ok, source} <- File.read(mix_exs_path),
-         {:ok, quoted} <- Code.string_to_quoted(source) do
-      {_quoted, found?} = Macro.prewalk(quoted, false, &detect_phoenix_dependency/2)
-
-      found?
-    else
-      _error -> false
-    end
-  end
-
-  defp detect_phoenix_dependency(node, true), do: {node, true}
-
-  defp detect_phoenix_dependency({dependency, requirement} = node, false)
-       when is_atom(dependency) and is_binary(requirement) do
-    {node, MapSet.member?(@phoenix_dependencies, dependency)}
-  end
-
-  defp detect_phoenix_dependency({dependency, requirement, opts} = node, false)
-       when is_atom(dependency) and is_binary(requirement) and is_list(opts) do
-    {node, MapSet.member?(@phoenix_dependencies, dependency)}
-  end
-
-  defp detect_phoenix_dependency({:{}, _meta, [dependency | _rest]} = node, false)
-       when is_atom(dependency) do
-    {node, MapSet.member?(@phoenix_dependencies, dependency)}
-  end
-
-  defp detect_phoenix_dependency(node, false), do: {node, false}
 end

@@ -14,19 +14,19 @@ defmodule PhoenixLS.Project.LocatorTest do
     assert result.root_path == root
     assert result.root_uri == SupportURI.path_to_file_uri!(root)
     assert result.mix_exs_path == Path.join(root, "mix.exs")
-    assert result.phoenix? == false
+    refute Map.has_key?(Map.from_struct(result), :phoenix?)
     assert result.umbrella_root_path == nil
     assert result.umbrella_root_uri == nil
   end
 
-  test "detects Phoenix dependency from mix.exs AST", context do
+  test "does not inspect Phoenix dependency metadata during location", context do
     root = fixture_project(context, "phoenix_project", phoenix?: true)
     lib_dir = Path.join(root, "lib")
     File.mkdir_p!(lib_dir)
 
     assert {:ok, result} = Locator.locate(SupportURI.path_to_file_uri!(lib_dir))
     assert result.root_path == root
-    assert result.phoenix? == true
+    refute Map.has_key?(Map.from_struct(result), :phoenix?)
   end
 
   test "locates umbrella child projects and records umbrella root", context do
@@ -43,7 +43,7 @@ defmodule PhoenixLS.Project.LocatorTest do
     assert result.root_uri == SupportURI.path_to_file_uri!(child_root)
     assert result.umbrella_root_path == umbrella_root
     assert result.umbrella_root_uri == SupportURI.path_to_file_uri!(umbrella_root)
-    assert result.phoenix? == true
+    refute Map.has_key?(Map.from_struct(result), :phoenix?)
   end
 
   test "returns error when no Mix project ancestor exists", context do

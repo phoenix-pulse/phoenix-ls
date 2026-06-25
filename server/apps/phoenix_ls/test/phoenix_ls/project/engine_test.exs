@@ -3,7 +3,7 @@ defmodule PhoenixLS.Project.EngineTest do
 
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.{Fact, Store}
-  alias PhoenixLS.Project.{Engine, Names}
+  alias PhoenixLS.Project.{Engine, Metadata, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
 
@@ -80,6 +80,29 @@ defmodule PhoenixLS.Project.EngineTest do
     end)
   end
 
+  test "starts engine-owned project metadata", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :app, version: "0.1.0", deps: [{:phoenix_live_view, "~> 1.0"}]]
+      end
+    end
+    """)
+
+    assert {:ok, _pid} = Engine.start_link(root_uri: root_uri)
+
+    assert %Metadata{
+             root_uri: ^root_uri,
+             root_path: ^root,
+             phoenix?: true
+           } = Metadata.fetch(Names.metadata(root_uri))
+  end
+
   test "builds a handle with the engine pid and document store" do
     pid = self()
 
@@ -87,11 +110,13 @@ defmodule PhoenixLS.Project.EngineTest do
              root_uri: @root_uri,
              pid: ^pid,
              document_store: document_store,
-             index_store: index_store
+             index_store: index_store,
+             metadata: metadata
            } = Engine.handle(@root_uri, pid)
 
     assert document_store == Names.document_store(@root_uri)
     assert index_store == Names.index_store(@root_uri)
+    assert metadata == Names.metadata(@root_uri)
   end
 
   defp ensure_project_registry_started do

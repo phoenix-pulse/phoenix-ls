@@ -1,7 +1,7 @@
 defmodule PhoenixLS.FixturesTest do
   use ExUnit.Case, async: true
 
-  alias PhoenixLS.Project.Locator
+  alias PhoenixLS.Project.{Locator, Metadata}
   alias PhoenixLS.Support.URI, as: SupportURI
 
   @fixtures Path.expand("../fixtures", __DIR__)
@@ -52,7 +52,7 @@ defmodule PhoenixLS.FixturesTest do
            )
   end
 
-  test "umbrella fixture locates child app and records umbrella root" do
+  test "umbrella fixture locates child app and engine metadata detects Phoenix dependency" do
     umbrella_root = fixture("umbrella_app")
     child_root = Path.join([umbrella_root, "apps", "shop"])
     child_file = Path.join([child_root, "lib", "shop_web", "router.ex"])
@@ -60,7 +60,9 @@ defmodule PhoenixLS.FixturesTest do
     assert {:ok, result} = Locator.locate(SupportURI.path_to_file_uri!(child_file))
     assert result.root_path == child_root
     assert result.umbrella_root_path == umbrella_root
-    assert result.phoenix? == true
+
+    metadata = start_supervised!({Metadata, root_uri: result.root_uri})
+    assert Metadata.fetch(metadata).phoenix? == true
   end
 
   test "broken and non-compiling fixtures exercise different degraded modes" do

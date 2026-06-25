@@ -7,16 +7,34 @@ defmodule PhoenixLS.Project.Engine do
 
   alias PhoenixLS.Index.Indexer
   alias PhoenixLS.Index.Store, as: IndexStore
+  alias PhoenixLS.Project.Metadata
   alias PhoenixLS.Project.Names
   alias PhoenixLS.Workspace.DocumentStore
 
-  @enforce_keys [:root_uri, :pid, :document_store, :index_store, :indexer, :source_only?]
-  defstruct [:root_uri, :pid, :document_store, :index_store, :indexer, source_only?: true]
+  @enforce_keys [
+    :root_uri,
+    :pid,
+    :document_store,
+    :metadata,
+    :index_store,
+    :indexer,
+    :source_only?
+  ]
+  defstruct [
+    :root_uri,
+    :pid,
+    :document_store,
+    :metadata,
+    :index_store,
+    :indexer,
+    source_only?: true
+  ]
 
   @type t :: %__MODULE__{
           root_uri: String.t(),
           pid: pid(),
           document_store: GenServer.server(),
+          metadata: GenServer.server(),
           index_store: GenServer.server(),
           indexer: GenServer.server(),
           source_only?: boolean()
@@ -36,6 +54,7 @@ defmodule PhoenixLS.Project.Engine do
       root_uri: root_uri,
       pid: pid,
       document_store: Names.document_store(root_uri),
+      metadata: Names.metadata(root_uri),
       index_store: Names.index_store(root_uri),
       indexer: Names.indexer(root_uri),
       source_only?: Keyword.get(opts, :source_only?, true)
@@ -46,6 +65,7 @@ defmodule PhoenixLS.Project.Engine do
   def init(opts) do
     root_uri = Keyword.fetch!(opts, :root_uri)
     document_store = Keyword.get(opts, :document_store, Names.document_store(root_uri))
+    metadata = Keyword.get(opts, :metadata, Names.metadata(root_uri))
     index_store = Keyword.get(opts, :index_store, Names.index_store(root_uri))
     indexer = Keyword.get(opts, :indexer, Names.indexer(root_uri))
     status_target = Keyword.get(opts, :status_target)
@@ -53,6 +73,7 @@ defmodule PhoenixLS.Project.Engine do
 
     children = [
       {DocumentStore, name: document_store},
+      {Metadata, name: metadata, root_uri: root_uri},
       {IndexStore, name: index_store},
       {Indexer,
        name: indexer,

@@ -11,6 +11,9 @@ defmodule PhoenixLS.Project.Names do
   @spec document_store(String.t()) :: GenServer.server()
   def document_store(root_uri), do: via({:document_store, root_uri})
 
+  @spec metadata(String.t()) :: GenServer.server()
+  def metadata(root_uri), do: via({:metadata, root_uri})
+
   @spec index_store(String.t()) :: GenServer.server()
   def index_store(root_uri), do: via({:index_store, root_uri})
 
