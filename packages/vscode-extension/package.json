@@ -257,14 +257,15 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "node esbuild.js --production",
+    "bundle:server": "node scripts/bundle-elixir-server.js",
+    "vscode:prepublish": "npm run bundle:server && node esbuild.js --production",
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish",
     "test": "vitest run",
     "test:watch": "vitest --watch",
-    "clean": "rm -rf out/"
+    "clean": "rm -rf out/ server/phoenix_ls"
   },
   "dependencies": {
     "vscode-languageclient": "^8.1.0",

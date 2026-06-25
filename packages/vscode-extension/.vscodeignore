@@ -4,6 +4,7 @@
 .git/**
 .github/**
 src/**
+scripts/**
 tsconfig.json
 .eslintrc.json
 .gitignore
@@ -12,8 +13,7 @@ vsc-extension-quickstart.md
 *.vsix
 esbuild.js
 
-# Dependencies (bundled via node_modules)
-# Keep node_modules for bundled LSP
+# Dependencies required by the extension runtime stay included.
 
 # AI assistant state
 .lexical/**
@@ -35,3 +35,4 @@ CLAUDE.md
 !resources/**
 !images/**
 !syntaxes/**
+!server/**

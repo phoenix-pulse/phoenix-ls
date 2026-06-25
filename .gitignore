@@ -8,6 +8,7 @@ packages/language-server/dist/
 packages/vscode-extension/out/
 server/_build/
 server/apps/phoenix_ls/phoenix_ls
+packages/vscode-extension/server/phoenix_ls
 packages/nvim-plugin/server/phoenix_ls
 *.vsix
 *.tgz
