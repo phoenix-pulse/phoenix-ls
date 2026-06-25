@@ -21,8 +21,8 @@ defmodule PhoenixLS.Features.SignatureHelp do
   @spec signature_help(CursorContext.t(), [Fact.t()]) :: SignatureHelp.t() | nil
   def signature_help(%CursorContext{} = context, facts) do
     with tag when is_binary(tag) <- component_tag(context),
-         %Fact{} = component <- ComponentLookup.component_for_tag(tag, facts) do
-      signature_help_for_component(component, tag, context, facts)
+         %Fact{} = fact <- component_or_slot_for_tag(tag, facts) do
+      signature_help_for_fact(fact, tag, context, facts)
     end
   end
 
@@ -45,12 +45,36 @@ defmodule PhoenixLS.Features.SignatureHelp do
   defp component_tag(%CursorContext{kind: :attribute_value, tag: tag}), do: tag
   defp component_tag(_context), do: nil
 
+  defp component_or_slot_for_tag(tag, facts) do
+    ComponentLookup.component_for_tag(tag, facts) ||
+      ComponentLookup.slot_for_tag(tag, facts)
+  end
+
+  defp signature_help_for_fact(%Fact{kind: :component} = component, tag, context, facts) do
+    signature_help_for_component(component, tag, context, facts)
+  end
+
+  defp signature_help_for_fact(%Fact{kind: :component_slot} = slot, tag, context, facts) do
+    signature_help_for_slot(slot, tag, context, facts)
+  end
+
   defp signature_help_for_component(component, tag, context, facts) do
     attrs = component_attrs(component, facts)
     tag_label = tag_label(tag)
 
     %SignatureHelp{
       signatures: [signature(component, tag_label, attrs)],
+      active_signature: 0,
+      active_parameter: active_parameter(attrs, context)
+    }
+  end
+
+  defp signature_help_for_slot(slot, tag, context, facts) do
+    attrs = slot_attrs(slot, facts)
+    tag_label = tag_label(tag)
+
+    %SignatureHelp{
+      signatures: [slot_signature(slot, tag_label, attrs)],
       active_signature: 0,
       active_parameter: active_parameter(attrs, context)
     }
@@ -65,10 +89,27 @@ defmodule PhoenixLS.Features.SignatureHelp do
     |> Enum.map(fn {fact, _index} -> fact end)
   end
 
+  defp slot_attrs(slot, facts) do
+    facts
+    |> facts_by_kind(:component_slot_attr)
+    |> Enum.filter(&(&1.data.component == slot.data.component and &1.data.slot == slot.data.name))
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {fact, index} -> {not required?(fact), index} end)
+    |> Enum.map(fn {fact, _index} -> fact end)
+  end
+
   defp signature(component, tag_label, attrs) do
     %SignatureInformation{
       label: signature_label(tag_label, attrs),
       documentation: component_documentation(component),
+      parameters: Enum.map(attrs, &parameter_information/1)
+    }
+  end
+
+  defp slot_signature(slot, tag_label, attrs) do
+    %SignatureInformation{
+      label: signature_label(tag_label, attrs),
+      documentation: slot_documentation(slot),
       parameters: Enum.map(attrs, &parameter_information/1)
     }
   end
@@ -99,6 +140,13 @@ defmodule PhoenixLS.Features.SignatureHelp do
     markdown([
       "Component `#{component.id}`",
       component.data.doc
+    ])
+  end
+
+  defp slot_documentation(slot) do
+    markdown([
+      "Slot `:#{slot.data.name}`",
+      "Component `#{slot.data.component}`"
     ])
   end
 

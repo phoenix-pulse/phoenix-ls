@@ -76,6 +76,29 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
     assert signature.label == "<.button label kind disabled>"
   end
 
+  test "returns slot attribute signature help for slot tags" do
+    {source, position} = source_and_position("<:inner_block cl| />")
+    {:ok, context} = CursorContext.at(source, position)
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 0
+           } = SignatureHelpFeature.signature_help(context, facts())
+
+    assert signature.label == "<:inner_block class>"
+    assert String.contains?(signature.documentation.value, "Slot `:inner_block`")
+    assert String.contains?(signature.documentation.value, "AppWeb.CoreComponents.button/1")
+    assert Enum.map(signature.parameters, & &1.label) == ["class"]
+    assert String.contains?(Enum.at(signature.parameters, 0).documentation.value, "Optional")
+    assert String.contains?(Enum.at(signature.parameters, 0).documentation.value, ":string")
+
+    assert String.contains?(
+             Enum.at(signature.parameters, 0).documentation.value,
+             "Slot CSS class"
+           )
+  end
+
   test "returns route helper signature help for Elixir calls" do
     {source, position} = source_and_position("Routes.user_path(conn, :show, |)")
 
@@ -105,6 +128,10 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
         attr :label, :string, required: true, doc: "Visible label"
         attr :kind, :atom, default: :primary
         attr :disabled, :boolean, default: false
+
+        slot :inner_block do
+          attr :class, :string, doc: "Slot CSS class"
+        end
 
         @doc "Renders a button."
         def button(assigns) do
