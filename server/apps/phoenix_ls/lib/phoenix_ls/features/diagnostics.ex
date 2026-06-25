@@ -75,7 +75,8 @@ defmodule PhoenixLS.Features.Diagnostics do
   end
 
   defp tag_diagnostics(%Tag{} = tag, indexes) do
-    route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
+    for_tracking_diagnostics(tag) ++
+      route_diagnostics(tag, indexes) ++ event_diagnostics(tag, indexes)
   end
 
   defp known_component_diagnostics(%Tag{} = tag, %Fact{} = component, indexes) do
@@ -241,6 +242,76 @@ defmodule PhoenixLS.Features.Diagnostics do
     end)
   end
 
+  defp for_tracking_diagnostics(%Tag{kind: :html} = tag) do
+    case find_attr(tag, ":for") do
+      %Attribute{} = for_attr ->
+        if tracked_for?(tag) or stream_for?(for_attr) do
+          []
+        else
+          item = for_item(for_attr)
+
+          [
+            diagnostic(
+              for_attr.range,
+              "phoenix.for_missing_key",
+              ~s(HTML element "#{tag.name}" with :for should have DOM tracking. Add id={#{item}.id} or :key={#{item}.id}.),
+              %{
+                "kind" => "for_missing_key",
+                "tag" => tag.name,
+                "item" => item
+              },
+              DiagnosticSeverity.warning()
+            )
+          ]
+        end
+
+      nil ->
+        []
+    end
+  end
+
+  defp tracked_for?(%Tag{} = tag) do
+    match?(%Attribute{}, find_attr(tag, "id")) or match?(%Attribute{}, find_attr(tag, ":key"))
+  end
+
+  defp stream_for?(%Attribute{value: value}) when is_binary(value) do
+    String.contains?(value, "@streams.")
+  end
+
+  defp stream_for?(_attr), do: false
+
+  defp for_item(%Attribute{value: value}) when is_binary(value) do
+    with {:ok, {:for, _meta, clauses}} <- Code.string_to_quoted("for #{value}, do: nil"),
+         {:<-, _generator_meta, [pattern, _enumerable]} <- Enum.find(clauses, &generator?/1),
+         {:ok, item} <- first_variable_name(pattern) do
+      item
+    else
+      _unparseable -> "item"
+    end
+  end
+
+  defp for_item(_attr), do: "item"
+
+  defp generator?({:<-, _meta, [_pattern, _enumerable]}), do: true
+  defp generator?(_clause), do: false
+
+  defp first_variable_name(pattern) do
+    {_ast, variable} =
+      Macro.prewalk(pattern, nil, fn
+        {name, _meta, context} = node, nil
+        when is_atom(name) and (is_atom(context) or is_nil(context)) ->
+          {node, Atom.to_string(name)}
+
+        node, variable ->
+          {node, variable}
+      end)
+
+    case variable do
+      nil -> :error
+      name -> {:ok, name}
+    end
+  end
+
   defp known_template_reference?(%Fact{data: %{candidate_uris: candidate_uris}}, template_uris) do
     Enum.any?(candidate_uris, &MapSet.member?(template_uris, &1))
   end
@@ -322,10 +393,10 @@ defmodule PhoenixLS.Features.Diagnostics do
     Enum.filter(facts, &(&1.kind == kind))
   end
 
-  defp diagnostic(range, code, message, data \\ nil) do
+  defp diagnostic(range, code, message, data \\ nil, severity \\ DiagnosticSeverity.error()) do
     %Diagnostic{
       range: range,
-      severity: DiagnosticSeverity.error(),
+      severity: severity,
       code: code,
       source: @source,
       message: message,

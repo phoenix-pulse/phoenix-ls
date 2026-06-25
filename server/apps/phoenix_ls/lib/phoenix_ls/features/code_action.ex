@@ -116,6 +116,36 @@ defmodule PhoenixLS.Features.CodeAction do
   end
 
   defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.for_missing_key",
+           data: %{"kind" => "for_missing_key", "item" => item}
+         } = diagnostic,
+         _source,
+         uri,
+         _tags,
+         _facts
+       ) do
+    [
+      %CodeAction{
+        title: "Add :key={#{item}.id}",
+        kind: CodeActionKind.quick_fix(),
+        diagnostics: [diagnostic],
+        edit: %WorkspaceEdit{
+          changes: %{
+            uri => [
+              %TextEdit{
+                range: zero_width_range(diagnostic.range.end),
+                new_text: " :key={#{item}.id}"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  end
+
+  defp action_for_diagnostic(
          %Diagnostic{} = diagnostic,
          source,
          uri,
@@ -271,6 +301,8 @@ defmodule PhoenixLS.Features.CodeAction do
   defp position(%{line: line, character: character}) do
     %Position{line: line, character: character}
   end
+
+  defp zero_width_range(%Position{} = position), do: %Range{start: position, end: position}
 
   defp default_value(%Fact{data: %{type: :string}}), do: ~s("")
   defp default_value(%Fact{data: %{type: :boolean}}), do: "{false}"

@@ -115,6 +115,35 @@ defmodule PhoenixLS.Features.CodeActionTest do
            end) == [~s( id=""), " module={Module}"]
   end
 
+  test "adds :key for HTML :for loops without DOM tracking" do
+    source = ~s(<div :for={item <- @items}>{item.name}</div>)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: "Add :key={item.id}",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 26},
+                         end: %Position{line: 0, character: 26}
+                       },
+                       new_text: " :key={item.id}"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """

@@ -117,6 +117,27 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown LiveView event "missing")
   end
 
+  test "reports HTML :for loops without DOM tracking" do
+    [diagnostic] = diagnostics(~s(<div :for={item <- @items}>{item.name}</div>))
+
+    assert diagnostic.code == "phoenix.for_missing_key"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+    assert diagnostic.message =~ ~s(HTML element "div" with :for should have DOM tracking)
+
+    assert diagnostic.data == %{
+             "kind" => "for_missing_key",
+             "tag" => "div",
+             "item" => "item"
+           }
+  end
+
+  test "does not require :key for tracked or component :for loops" do
+    assert diagnostics(~s(<div :for={item <- @items} :key={item.id}>{item.name}</div>)) == []
+    assert diagnostics(~s(<div :for={item <- @items} id={item.id}>{item.name}</div>)) == []
+    assert diagnostics(~s(<div :for={{dom_id, item} <- @streams.items}>{item.name}</div>)) == []
+    assert diagnostics(~s(<.card :for={item <- @items} />)) == []
+  end
+
   test "reports unknown verified routes" do
     [diagnostic] = diagnostics(~s(<.link navigate={~p"/missing"} />))
 
