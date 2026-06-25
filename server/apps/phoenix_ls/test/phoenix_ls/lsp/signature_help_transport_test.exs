@@ -82,6 +82,56 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
     assert String.contains?(label_documentation, "Visible label")
   end
 
+  test "GenLSP transport does not return global slot signature help outside component scope",
+       context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "standalone_slot_signature_help_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    {heex_source, position} = source_and_position("<:item cl| />")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", slot_component_source())
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(component_uri, 5)
+    assert_indexed(heex_uri, 1)
+
+    GenLSP.Test.request(test_client, %{
+      id: 4,
+      jsonrpc: "2.0",
+      method: "textDocument/signatureHelp",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 4,
+                     "result" => nil
+                   },
+                   500
+  end
+
   test "GenLSP transport returns route helper signature help from indexed router facts",
        context do
     handler_id = {__MODULE__, self(), make_ref()}
@@ -242,6 +292,22 @@ defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
       def button(assigns) do
         ~H\"\"\"
         <button><%= @label %></button>
+        \"\"\"
+      end
+    end
+    """
+  end
+
+  defp slot_component_source do
+    """
+    defmodule AppWeb.CoreComponents do
+      slot :item do
+        attr :class, :string
+      end
+
+      def button(assigns) do
+        ~H\"\"\"
+        <button><%= render_slot(@item) %></button>
         \"\"\"
       end
     end

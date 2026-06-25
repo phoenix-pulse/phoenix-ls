@@ -5,7 +5,6 @@ defmodule PhoenixLS.LSP.SignatureHelp do
 
   alias GenLSP.Requests.TextDocumentSignatureHelp
   alias PhoenixLS.Features.SignatureHelp, as: SignatureHelpFeature
-  alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Workspace.DocumentStore
@@ -32,15 +31,6 @@ defmodule PhoenixLS.LSP.SignatureHelp do
   end
 
   defp signature_help(facts, source, position) do
-    SignatureHelpFeature.signature_help(source, position, facts) ||
-      component_signature_help(source, position, facts)
-  end
-
-  defp component_signature_help(source, position, facts) do
-    with {:ok, cursor_context} <- CursorContext.at(source, position) do
-      SignatureHelpFeature.signature_help(cursor_context, facts)
-    else
-      _invalid_context -> nil
-    end
+    SignatureHelpFeature.signature_help(source, position, facts)
   end
 end
