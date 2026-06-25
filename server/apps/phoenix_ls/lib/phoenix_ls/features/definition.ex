@@ -20,8 +20,8 @@ defmodule PhoenixLS.Features.Definition do
         ]) :: Location.t() | nil
   def definition(uri, position, facts) when is_binary(uri) and is_list(facts) do
     facts
-    |> Enum.find(&template_reference_at?(&1, uri, position))
-    |> template_location(facts)
+    |> Enum.find(&source_reference_at?(&1, uri, position))
+    |> source_reference_location(facts)
   end
 
   defp location(nil), do: nil
@@ -33,30 +33,47 @@ defmodule PhoenixLS.Features.Definition do
     }
   end
 
-  defp template_location(nil, _facts), do: nil
+  defp source_reference_location(nil, _facts), do: nil
 
-  defp template_location(%Fact{kind: :template_reference, data: reference}, facts) do
+  defp source_reference_location(%Fact{kind: :template_reference, data: reference}, facts) do
     facts
     |> Enum.find(&template_match?(&1, reference))
     |> location()
   end
 
-  defp template_reference_at?(
-         %Fact{kind: :template_reference, uri: fact_uri, range: range},
+  defp source_reference_location(%Fact{kind: :route_helper_reference, data: reference}, facts) do
+    facts
+    |> Enum.find(&route_helper_match?(&1, reference))
+    |> location()
+  end
+
+  defp source_reference_location(_reference, _facts), do: nil
+
+  defp source_reference_at?(
+         %Fact{kind: kind, uri: fact_uri, range: range},
          uri,
          position
        )
-       when fact_uri == uri do
+       when fact_uri == uri and kind in [:template_reference, :route_helper_reference] do
     contains_position?(range, position)
   end
 
-  defp template_reference_at?(_fact, _uri, _position), do: false
+  defp source_reference_at?(_fact, _uri, _position), do: false
 
   defp template_match?(%Fact{kind: :template, uri: uri}, %{candidate_uris: candidate_uris}) do
     uri in candidate_uris
   end
 
   defp template_match?(_fact, _reference), do: false
+
+  defp route_helper_match?(
+         %Fact{kind: :route, data: %{helper_base: helper_base}},
+         %{helper_base: helper_base}
+       )
+       when is_binary(helper_base),
+       do: true
+
+  defp route_helper_match?(_fact, _reference), do: false
 
   defp contains_position?(%{start: start, end: finish}, position) do
     compare_position(start, position) != :gt and compare_position(position, finish) == :lt

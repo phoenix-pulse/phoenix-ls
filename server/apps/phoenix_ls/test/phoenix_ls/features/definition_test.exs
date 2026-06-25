@@ -114,6 +114,24 @@ defmodule PhoenixLS.Features.DefinitionTest do
              Definition.definition(@controller_uri, position, controller_facts ++ template_facts)
   end
 
+  test "goes from controller route helpers to router definitions" do
+    {controller_source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_pa|th(conn, :show, 1)
+        end
+      end
+      """)
+
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, controller_source)
+    router_facts = facts()
+    route_fact = Enum.find(router_facts, &(&1.kind == :route))
+
+    assert %Location{uri: @uri, range: route_fact.range} ==
+             Definition.definition(@controller_uri, position, controller_facts ++ router_facts)
+  end
+
   test "returns nil outside supported definition contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)
