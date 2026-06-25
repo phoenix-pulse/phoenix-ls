@@ -281,6 +281,36 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "removes slots not declared by the active component" do
+    source = "<.button><:footer /></.button>"
+    facts = slot_scope_facts()
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Remove unknown slot ":footer"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 9},
+                         end: %Position{line: 0, character: 20}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "adds missing LiveComponent attrs" do
     source = "<.live_component />"
     {:ok, document} = Parser.parse(source)
@@ -306,7 +336,7 @@ defmodule PhoenixLS.Features.CodeActionTest do
   end
 
   test "adds missing required attrs on slot tags" do
-    source = "<:item />"
+    source = "<.list><:item /></.list>"
     facts = required_slot_attr_facts()
     {:ok, document} = Parser.parse(source)
     [diagnostic] = Diagnostics.diagnostics(document, facts)
@@ -321,8 +351,8 @@ defmodule PhoenixLS.Features.CodeActionTest do
                    @uri => [
                      %TextEdit{
                        range: %Range{
-                         start: %Position{line: 0, character: 6},
-                         end: %Position{line: 0, character: 6}
+                         start: %Position{line: 0, character: 13},
+                         end: %Position{line: 0, character: 13}
                        },
                        new_text: ~s( label="")
                      }
@@ -781,6 +811,37 @@ defmodule PhoenixLS.Features.CodeActionTest do
         def list(assigns) do
           ~H\"\"\"
           <div><%= render_slot(@item) %></div>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp slot_scope_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
+      defmodule AppWeb.CoreComponents do
+        slot :item do
+          attr :class, :string
+        end
+
+        def button(assigns) do
+          ~H\"\"\"
+          <button><%= render_slot(@item) %></button>
+          \"\"\"
+        end
+
+        slot :item do
+          attr :role, :string
+        end
+
+        slot :footer
+
+        def card(assigns) do
+          ~H\"\"\"
+          <section><%= render_slot(@item) %><%= render_slot(@footer) %></section>
           \"\"\"
         end
       end

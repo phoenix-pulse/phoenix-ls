@@ -55,14 +55,31 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   end
 
   test "reports unknown slot attrs" do
-    [diagnostic] = diagnostics(~s(<:inner_block unknown="x" />))
+    [diagnostic] = diagnostics(~s(<.button label="Save"><:inner_block unknown="x" /></.button>))
 
     assert diagnostic.code == "phoenix.unknown_attr"
     assert diagnostic.message == ~s(Unknown attr "unknown" for :inner_block)
   end
 
+  test "reports slots not declared by the active component" do
+    [diagnostic] = diagnostics("<.button><:footer /></.button>", slot_scope_facts())
+
+    assert diagnostic.code == "phoenix.unknown_slot"
+    assert diagnostic.message == ~s(Unknown slot ":footer")
+  end
+
+  test "reports slot attrs not declared by the active component slot" do
+    [diagnostic] =
+      diagnostics(~s(<.button><:item role="navigation" /></.button>), slot_scope_facts())
+
+    assert diagnostic.code == "phoenix.unknown_attr"
+    assert diagnostic.message == ~s(Unknown attr "role" for :item)
+
+    assert diagnostics(~s(<.card><:item role="navigation" /></.card>), slot_scope_facts()) == []
+  end
+
   test "reports missing required slot attrs" do
-    [diagnostic] = diagnostics("<:item />", required_slot_attr_facts())
+    [diagnostic] = diagnostics("<.list><:item /></.list>", required_slot_attr_facts())
 
     assert diagnostic.code == "phoenix.missing_required_attr"
     assert diagnostic.severity == DiagnosticSeverity.error()
@@ -400,8 +417,11 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
 
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
-    assert diagnostics(~s(<:inner_block />)) == []
-    assert diagnostics(~s(<:inner_block class="p-2" />)) == []
+
+    assert diagnostics(~s(<.button label="Save"><:inner_block /></.button>)) == []
+
+    assert diagnostics(~s(<.button label="Save"><:inner_block class="p-2" /></.button>)) == []
+
     assert diagnostics(~s(<button phx-click="save">)) == []
     assert diagnostics(~s(<.link navigate={~p"/products"} />)) == []
   end
@@ -514,6 +534,37 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
         def list(assigns) do
           ~H\"\"\"
           <div><%= render_slot(@item) %></div>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp slot_scope_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.CoreComponents do
+        slot :item do
+          attr :class, :string
+        end
+
+        def button(assigns) do
+          ~H\"\"\"
+          <button><%= render_slot(@item) %></button>
+          \"\"\"
+        end
+
+        slot :item do
+          attr :role, :string
+        end
+
+        slot :footer
+
+        def card(assigns) do
+          ~H\"\"\"
+          <section><%= render_slot(@item) %><%= render_slot(@footer) %></section>
           \"\"\"
         end
       end

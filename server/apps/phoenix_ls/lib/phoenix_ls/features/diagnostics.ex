@@ -111,16 +111,18 @@ defmodule PhoenixLS.Features.Diagnostics do
     slot_name = trim_leading(tag.name, ":")
 
     diagnostics =
-      if MapSet.member?(indexes.slots, slot_name) do
-        known_slot_diagnostics(tag, slot_name, indexes)
+      with %Fact{} = component <- parent_component(tag, tags, indexes.facts),
+           %Fact{} = slot <- slot_for_component(component, slot_name, indexes) do
+        known_slot_diagnostics(tag, slot, indexes)
       else
-        [
-          diagnostic(
-            tag.name_range,
-            "phoenix.unknown_slot",
-            ~s(Unknown slot "#{tag.name}")
-          )
-        ]
+        _unknown_slot ->
+          [
+            diagnostic(
+              tag.name_range,
+              "phoenix.unknown_slot",
+              ~s(Unknown slot "#{tag.name}")
+            )
+          ]
       end
 
     diagnostics ++
@@ -151,8 +153,8 @@ defmodule PhoenixLS.Features.Diagnostics do
       invalid_value_diagnostics(tag, attrs)
   end
 
-  defp known_slot_diagnostics(%Tag{} = tag, slot_name, indexes) do
-    attrs = Map.get(indexes.attrs_by_slot, slot_name, [])
+  defp known_slot_diagnostics(%Tag{} = tag, %Fact{} = slot, indexes) do
+    attrs = slot_attrs(slot, indexes)
     declared_attr_names = MapSet.new(attrs, & &1.data.name)
     present_attr_names = MapSet.new(tag.attrs, & &1.name)
 
@@ -198,6 +200,26 @@ defmodule PhoenixLS.Features.Diagnostics do
         }
       )
     end)
+  end
+
+  defp parent_component(%Tag{} = slot_tag, tags, facts) do
+    tags
+    |> Enum.filter(&(&1.kind in [:component, :remote_component]))
+    |> Enum.filter(&tag_inside?(slot_tag, &1))
+    |> Enum.reverse()
+    |> Enum.find_value(&ComponentLookup.component_for_tag(&1.name, facts))
+  end
+
+  defp slot_for_component(%Fact{} = component, slot_name, indexes) do
+    indexes.slots_by_component
+    |> Map.get(component.id, [])
+    |> Enum.find(&(&1.data.name == slot_name))
+  end
+
+  defp slot_attrs(%Fact{} = slot, indexes) do
+    indexes.attrs_by_slot
+    |> Map.get(slot.data.name, [])
+    |> Enum.filter(&(&1.data.component == slot.data.component))
   end
 
   defp present_slot_names(%Tag{} = component_tag, tags) do
