@@ -186,6 +186,93 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
                    500
   end
 
+  test "GenLSP transport returns invalid route helper action quick fixes", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "route_helper_code_action_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+
+    controller_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/controllers/page_controller.ex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", router_source())
+    assert_indexed(router_uri, 2)
+    open_document(test_client, controller_uri, "elixir", route_helper_controller_source())
+    assert_indexed(controller_uri, 3)
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "method" => "textDocument/publishDiagnostics",
+                     "params" => %{
+                       "uri" => ^controller_uri,
+                       "diagnostics" => [
+                         %{
+                           "code" => "phoenix.unknown_route_helper_action",
+                           "data" => %{
+                             "kind" => "unknown_route_helper_action",
+                             "helper" => "product_path",
+                             "action" => "edit",
+                             "validActions" => ["index"]
+                           },
+                           "range" => diagnostic_range
+                         } = diagnostic
+                       ]
+                     }
+                   },
+                   500
+
+    GenLSP.Test.request(test_client, %{
+      id: 2,
+      jsonrpc: "2.0",
+      method: "textDocument/codeAction",
+      params: %{
+        textDocument: %{uri: controller_uri},
+        range: diagnostic_range,
+        context: %{diagnostics: [diagnostic]}
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 2,
+                     "result" => [
+                       %{
+                         "title" => "Change route action to :index",
+                         "kind" => "quickfix",
+                         "edit" => %{
+                           "changes" => %{
+                             ^controller_uri => [
+                               %{
+                                 "newText" => ":index",
+                                 "range" => %{
+                                   "start" => %{"line" => 2, "character" => 30},
+                                   "end" => %{"line" => 2, "character" => 35}
+                                 }
+                               }
+                             ]
+                           }
+                         }
+                       }
+                     ]
+                   },
+                   500
+  end
+
   def handle_indexer_event(event, measurements, metadata, parent) do
     send(parent, {:indexer_event, event, measurements, metadata})
   end
@@ -232,6 +319,28 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
         ~H\"\"\"
         <button><%= @label %></button>
         \"\"\"
+      end
+    end
+    """
+  end
+
+  defp router_source do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products", ProductLive.Index, :index
+      end
+    end
+    """
+  end
+
+  defp route_helper_controller_source do
+    """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :edit)
       end
     end
     """

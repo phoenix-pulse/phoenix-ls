@@ -15,6 +15,7 @@ defmodule PhoenixLS.Features.CodeAction do
   }
 
   alias PhoenixLS.Features.ComponentLookup
+  alias PhoenixLS.Features.CodeAction.RouteHelpers
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.Fact
@@ -25,10 +26,15 @@ defmodule PhoenixLS.Features.CodeAction do
   @spec actions(String.t(), String.t(), [Diagnostic.t()], [Fact.t()]) :: [CodeAction.t()]
   def actions(source, uri, diagnostics, facts)
       when is_binary(source) and is_binary(uri) and is_list(diagnostics) and is_list(facts) do
-    with {:ok, document} <- Parser.parse(source) do
-      diagnostics
-      |> Enum.flat_map(&action_for_diagnostic(&1, source, uri, document.tags, facts))
-    else
+    tags = source_tags(source)
+
+    diagnostics
+    |> Enum.flat_map(&action_for_diagnostic(&1, source, uri, tags, facts))
+  end
+
+  defp source_tags(source) do
+    case Parser.parse(source) do
+      {:ok, document} -> document.tags
       _error -> []
     end
   end
@@ -114,6 +120,20 @@ defmodule PhoenixLS.Features.CodeAction do
         }
       }
     end)
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.unknown_route_helper_action",
+           data: %{"kind" => "unknown_route_helper_action"}
+         } = diagnostic,
+         _source,
+         uri,
+         _tags,
+         facts
+       ) do
+    RouteHelpers.actions(diagnostic, uri, facts)
   end
 
   defp action_for_diagnostic(

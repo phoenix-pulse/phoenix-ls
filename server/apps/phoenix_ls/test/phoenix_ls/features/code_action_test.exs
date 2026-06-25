@@ -9,6 +9,7 @@ defmodule PhoenixLS.Features.CodeActionTest do
   alias PhoenixLS.Index.ElixirSource
 
   @uri "file:///tmp/app/lib/app_web/live/page.html.heex"
+  @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
 
   test "adds a missing required attr before a self-closing component tag closes" do
     source = "<.button />"
@@ -330,6 +331,42 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "replaces invalid route helper actions with valid actions" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :edit)
+      end
+    end
+    """
+
+    facts = route_helper_facts(source)
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert [
+             %CodeAction{
+               title: "Change route action to :index",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @controller_uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 2, character: 30},
+                         end: %Position{line: 2, character: 35}
+                       },
+                       new_text: ":index"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
@@ -346,5 +383,22 @@ defmodule PhoenixLS.Features.CodeActionTest do
       """)
 
     facts
+  end
+
+  defp route_helper_facts(source) do
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+
+    {:ok, router_facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/", AppWeb do
+          live "/products", ProductLive.Index, :index
+        end
+      end
+      """)
+
+    controller_facts ++ router_facts
   end
 end

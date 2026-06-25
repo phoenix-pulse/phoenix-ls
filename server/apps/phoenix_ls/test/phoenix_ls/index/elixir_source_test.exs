@@ -275,6 +275,7 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert reference.data.helper_base == "product"
     assert reference.data.variant == :path
     assert reference.data.action == :show
+    assert reference.data.action_range == range(2, 30, 2, 35)
     assert reference.data.arity == 3
   end
 

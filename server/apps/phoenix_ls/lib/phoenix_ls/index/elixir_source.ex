@@ -18,7 +18,7 @@ defmodule PhoenixLS.Index.ElixirSource do
         {:ok,
          collect(quoted, [], uri, opts) ++
            Template.render_reference_facts(uri, source, opts) ++
-           HelperReferences.facts(quoted, uri, opts)}
+           HelperReferences.facts(quoted, uri, source, opts)}
 
       {:error, reason} ->
         {:error, {:parse_error, reason}}
