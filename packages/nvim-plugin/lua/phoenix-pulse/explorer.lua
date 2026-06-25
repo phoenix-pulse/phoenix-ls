@@ -734,35 +734,79 @@ local function toggle_category(category)
   M.render()
 end
 
--- Jump to definition
-local function jump_to_definition(item)
-  -- Handle schema field/association - jump to parent schema
+local function item_file(item)
+  return item and (item.filePath or item.file) or nil
+end
+
+local function item_line(item)
+  if not item then
+    return nil
+  end
+
+  if item.location and item.location.line then
+    return item.location.line + 1  -- LSP returns 0-based, Neovim uses 1-based
+  end
+
+  return item.line
+end
+
+local function definition_target(item)
+  if item.field then
+    return {
+      file = item_file(item.field) or item_file(item.schema),
+      line = item_line(item.field) or item_line(item.schema),
+    }
+  end
+
+  if item.association then
+    return {
+      file = item_file(item.association) or item_file(item.schema),
+      line = item_line(item.association) or item_line(item.schema),
+    }
+  end
+
+  if item.attribute then
+    return {
+      file = item_file(item.attribute) or item_file(item.component),
+      line = item_line(item.attribute) or item_line(item.component),
+    }
+  end
+
+  if item.slot then
+    return {
+      file = item_file(item.slot) or item_file(item.component),
+      line = item_line(item.slot) or item_line(item.component),
+    }
+  end
+
+  if item.func then
+    return {
+      file = item_file(item.func) or item_file(item.module),
+      line = item_line(item.func) or item_line(item.module),
+    }
+  end
+
   if item.schema then
     item = item.schema
-  end
-
-  -- Handle component attribute/slot - jump to parent component
-  if item.component then
+  elseif item.component then
     item = item.component
-  end
-
-  -- Handle LiveView function - jump to parent module
-  if item.module then
+  elseif item.module then
     item = item.module
   end
 
-  -- Map LSP response fields to what we need
-  local file = item.filePath or item.file
-  local line = nil
+  return {
+    file = item_file(item),
+    line = item_line(item),
+  }
+end
 
-  -- For LiveView functions, check func.location
-  if item.func and item.func.location then
-    line = item.func.location.line + 1
-  elseif item.location and item.location.line then
-    line = item.location.line + 1  -- LSP returns 0-based, Neovim uses 1-based
-  elseif item.line then
-    line = item.line
-  end
+M._definition_target = definition_target
+
+-- Jump to definition
+local function jump_to_definition(item)
+  local target = definition_target(item)
+  local file = target.file
+  local line = target.line
 
   if not file then
     vim.notify("[Phoenix Pulse] No file information available", vim.log.levels.WARN)
