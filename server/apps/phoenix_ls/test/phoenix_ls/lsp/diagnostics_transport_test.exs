@@ -63,6 +63,132 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     )
   end
 
+  test "GenLSP transport publishes HEEx parser diagnostics", context do
+    root = fixture_project(context, "parser_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, heex_uri, "phoenix-heex", "<.button")
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.heex_parse_error",
+            "message" => "Unable to parse HEEx document: unterminated_tag",
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+  end
+
+  test "GenLSP transport publishes invalid component attr value diagnostics", context do
+    root = fixture_project(context, "invalid_attr_value_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source_with_values())
+
+    assert_eventually(fn ->
+      attrs = IndexStore.by_kind(Names.index_store(root_uri), :component_attr)
+      assert Enum.any?(attrs, &(&1.data.name == "kind"))
+    end)
+
+    open_document(
+      test_client,
+      heex_uri,
+      "phoenix-heex",
+      ~s(<.button label="Save" kind="danger" />)
+    )
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.invalid_attr_value",
+            "message" => "Invalid value \"danger\" for .button kind",
+            "data" => %{
+              "kind" => "invalid_attr_value",
+              "tag" => ".button",
+              "attr" => "kind",
+              "value" => "danger",
+              "values" => ["primary", "secondary"]
+            },
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+  end
+
+  test "GenLSP transport publishes unknown slot diagnostics", context do
+    root = fixture_project(context, "unknown_slot_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    component_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/components/core_components.ex"))
+
+    heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, component_uri, "elixir", component_source())
+
+    assert_eventually(fn ->
+      assert [_component] = IndexStore.by_kind(Names.index_store(root_uri), :component)
+    end)
+
+    open_document(
+      test_client,
+      heex_uri,
+      "phoenix-heex",
+      ~s(<.button label="Save"><:footer /></.button>)
+    )
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.unknown_slot",
+            "message" => "Unknown slot \":footer\"",
+            "severity" => 1,
+            "source" => "PhoenixLS"
+          }
+        ]
+      },
+      500
+    )
+  end
+
   test "GenLSP transport refreshes open HEEx diagnostics after component dependency changes",
        context do
     root = fixture_project(context, "dependent_diagnostics_project")
@@ -375,6 +501,21 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     """
     defmodule AppWeb.CoreComponents do
       attr :label, :string, required: true
+
+      def button(assigns) do
+        ~H\"\"\"
+        <button><%= @label %></button>
+        \"\"\"
+      end
+    end
+    """
+  end
+
+  defp component_source_with_values do
+    """
+    defmodule AppWeb.CoreComponents do
+      attr :label, :string, required: true
+      attr :kind, :string, values: ["primary", "secondary"]
 
       def button(assigns) do
         ~H\"\"\"
