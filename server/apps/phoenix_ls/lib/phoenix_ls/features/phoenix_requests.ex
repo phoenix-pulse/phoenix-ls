@@ -283,7 +283,9 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       "name" => fact.data.name,
       "type" => type_string(fact.data.type),
       "required" => required?(fact.data.options),
-      "rawType" => inspect(fact.data.type)
+      "rawType" => inspect(fact.data.type),
+      "filePath" => file_path(fact.uri),
+      "location" => location(fact)
     })
   end
 
@@ -298,6 +300,8 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> Map.merge(%{
       "name" => slot.data.name,
       "required" => required?(slot.data.options),
+      "filePath" => file_path(slot.uri),
+      "location" => location(slot),
       "attributes" => attrs
     })
   end

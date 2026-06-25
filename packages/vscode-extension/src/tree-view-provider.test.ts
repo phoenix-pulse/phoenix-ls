@@ -138,4 +138,59 @@ describe('PhoenixPulseTreeProvider', () => {
       arguments: ['/workspace/lib/app/catalog/product.ex', { line: 18, character: 6 }]
     });
   });
+
+  it('navigates component attrs and slots to nested source locations', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listComponents') {
+          return [
+            {
+              name: 'button',
+              filePath: '/workspace/lib/app_web/components/core_components.ex',
+              location: { line: 20, character: 2 },
+              attributesCount: 1,
+              slotsCount: 1,
+              attributes: [
+                {
+                  name: 'label',
+                  type: 'string',
+                  required: true,
+                  filePath: '/workspace/lib/app_web/components/core_components.ex',
+                  location: { line: 12, character: 2 }
+                }
+              ],
+              slots: [
+                {
+                  name: 'inner_block',
+                  required: false,
+                  filePath: '/workspace/lib/app_web/components/core_components.ex',
+                  location: { line: 15, character: 2 },
+                  attributes: []
+                }
+              ]
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const componentsCategory = roots.find(item => item.label === 'Components');
+    const files = await provider.getChildren(componentsCategory);
+    const components = await provider.getChildren(files[0]);
+    const children = await provider.getChildren(components[0]);
+
+    expect(children[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/components/core_components.ex', { line: 12, character: 2 }]
+    });
+
+    expect(children[1].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/components/core_components.ex', { line: 15, character: 2 }]
+    });
+  });
 });

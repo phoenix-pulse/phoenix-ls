@@ -49,11 +49,15 @@ interface ComponentInfo {
     values?: string[];
     doc?: string;
     rawType?: string;
+    filePath?: string;
+    location?: { line: number; character: number };
   }>;
   slots: Array<{
     name: string;
     required: boolean;
     doc?: string;
+    filePath?: string;
+    location?: { line: number; character: number };
     attributes: Array<{
       name: string;
       type: string;
@@ -554,8 +558,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       item.tooltip = `Attribute: ${attr.name}\nType: ${typeDisplay}${attr.doc ? `\n\n${attr.doc}` : ''}`;
       item.command = {
         command: 'phoenixPulse.goToItem',
-        title: 'Go to Component',
-        arguments: [component.filePath, component.location]
+        title: 'Go to Attribute',
+        arguments: [attr.filePath || component.filePath, attr.location || component.location]
       };
       items.push(item);
     });
@@ -581,8 +585,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       item.tooltip = `Slot: ${slot.name}${slot.doc ? `\n\n${slot.doc}` : ''}`;
       item.command = {
         command: 'phoenixPulse.goToItem',
-        title: 'Go to Component',
-        arguments: [component.filePath, component.location]
+        title: 'Go to Slot',
+        arguments: [slot.filePath || component.filePath, slot.location || component.location]
       };
       items.push(item);
     });

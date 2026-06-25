@@ -87,20 +87,26 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                    "type" => "string",
                    "required" => true,
                    "doc" => "Visible label",
-                   "rawType" => ":string"
+                   "rawType" => ":string",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _attr_line, "character" => 2}
                  }
                ],
                "slots" => [
                  %{
                    "name" => "inner_block",
                    "required" => true,
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _slot_line, "character" => 2},
                    "attributes" => [
                      %{
                        "name" => "class",
                        "type" => "string",
                        "required" => false,
                        "default" => "\"p-2\"",
-                       "rawType" => ":string"
+                       "rawType" => ":string",
+                       "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                       "location" => %{"line" => _slot_attr_line, "character" => 4}
                      }
                    ]
                  }
