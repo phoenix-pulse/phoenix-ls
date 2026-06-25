@@ -391,6 +391,9 @@ describe('PhoenixPulseTreeProvider', () => {
               controller: 'AppWeb.ProductController',
               action: 'show',
               helperBase: 'product',
+              helperName: 'product_path',
+              helperPrefix: null,
+              helperVariants: ['path', 'url'],
               pathParams: ['id'],
               pipelines: ['browser', 'load_account'],
               pipeline: 'browser, load_account',
@@ -413,11 +416,13 @@ describe('PhoenixPulseTreeProvider', () => {
     const routes = await provider.getChildren(controllers[0]);
 
     expect(routes[0].label).toBe('GET /products/:id');
-    expect(routes[0].tooltip).toContain('Helper: product');
+    expect(routes[0].tooltip).toContain('Helper: product_path');
     expect(routes[0].tooltip).toContain('Params: id');
     expect(routes[0].tooltip).toContain('Pipelines: browser, load_account');
     expect(routes[0].data).toMatchObject({
       helperBase: 'product',
+      helperName: 'product_path',
+      helperVariants: ['path', 'url'],
       pathParams: ['id'],
       pipelines: ['browser', 'load_account'],
       path: '/products/:id',

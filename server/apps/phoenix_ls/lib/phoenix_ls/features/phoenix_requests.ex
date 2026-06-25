@@ -105,6 +105,9 @@ defmodule PhoenixLS.Features.PhoenixRequests do
         "filePath" => file_path(fact.uri),
         "location" => location(fact),
         "helperBase" => fact.data.helper_base,
+        "helperName" => helper_name(fact.data.helper_base),
+        "helperPrefix" => Map.get(fact.data, :helper_prefix),
+        "helperVariants" => ["path", "url"],
         "pathParams" => fact.data.path_params,
         "scopePath" => fact.data.scope_path || "/",
         "pipeline" => Enum.join(pipelines, ", "),
@@ -405,6 +408,12 @@ defmodule PhoenixLS.Features.PhoenixRequests do
 
   defp live_action(%Fact{data: %{verb: :live, action: action}}), do: optional_atom_string(action)
   defp live_action(_fact), do: nil
+
+  defp helper_name(helper_base) when is_binary(helper_base) and helper_base != "" do
+    helper_base <> "_path"
+  end
+
+  defp helper_name(_helper_base), do: nil
 
   defp facts_by_kind(%Snapshot{} = snapshot, kind) do
     Snapshot.by_kind(snapshot, kind)

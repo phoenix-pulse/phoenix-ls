@@ -128,6 +128,8 @@ function validateRoutePayloads(routes) {
     if (!nonEmptyString(route.filePath)) missing.push('filePath');
     if (!validLocation(route.location)) missing.push('location');
     if (!nonEmptyString(route.helperBase)) missing.push('helperBase');
+    if (!nonEmptyString(route.helperName)) missing.push('helperName');
+    if (!Array.isArray(route.helperVariants)) missing.push('helperVariants');
     if (!Array.isArray(route.pathParams)) missing.push('pathParams');
     if (!Array.isArray(route.pipelines)) missing.push('pipelines');
 

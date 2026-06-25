@@ -169,6 +169,30 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
     assert Enum.find(routes, &(&1["verb"] == "live"))["liveSession"] == "authenticated"
   end
 
+  test "lists route helper metadata for editor grouping and copy commands" do
+    {:ok, facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/backoffice", AppWeb, as: :admin do
+          get "/reports", ReportController, :index
+        end
+      end
+      """)
+
+    assert [
+             %{
+               "path" => "/backoffice/reports",
+               "controller" => "AppWeb.ReportController",
+               "helperBase" => "admin_report",
+               "helperName" => "admin_report_path",
+               "helperPrefix" => "admin",
+               "helperVariants" => ["path", "url"]
+             }
+           ] = PhoenixRequests.handle("phoenix/listRoutes", Snapshot.new(facts))
+  end
+
   test "lists templates" do
     facts =
       [

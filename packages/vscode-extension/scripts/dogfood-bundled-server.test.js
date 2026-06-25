@@ -77,7 +77,7 @@ describe('dogfoodBundledServer', () => {
         spawn: createFakeServerSpawn({ results })
       })
     ).rejects.toThrow(
-      'phoenix/listRoutes[0] missing contract fields: verb, path, filePath, location, helperBase, pathParams, pipelines'
+      'phoenix/listRoutes[0] missing contract fields: verb, path, filePath, location, helperBase, helperName, helperVariants, pathParams, pipelines'
     );
   });
 
@@ -133,6 +133,9 @@ function completeExplorerResults() {
         controller: 'AppWeb.ProductController',
         action: 'show',
         helperBase: 'product',
+        helperName: 'product_path',
+        helperPrefix: null,
+        helperVariants: ['path', 'url'],
         pathParams: ['id'],
         pipelines: ['browser'],
         pipeline: 'browser',

@@ -87,6 +87,9 @@ interface RouteInfo {
   pipelines?: string[];
   scopePath?: string;
   helperBase?: string;
+  helperName?: string;
+  helperPrefix?: string | null;
+  helperVariants?: string[];
   pathParams?: string[];
   liveModule?: string;
   liveAction?: string;
@@ -1390,8 +1393,10 @@ function routeTooltip(route: RouteInfo, target: string): string {
     `→ ${target}`
   ];
 
-  if (route.helperBase) {
-    lines.push(`Helper: ${route.helperBase}`);
+  const helper = route.helperName || route.helperBase;
+
+  if (helper) {
+    lines.push(`Helper: ${helper}`);
   }
 
   if (route.pathParams && route.pathParams.length > 0) {

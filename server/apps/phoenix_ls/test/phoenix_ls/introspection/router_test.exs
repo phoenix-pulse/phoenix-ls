@@ -193,6 +193,124 @@ defmodule PhoenixLS.Introspection.RouterTest do
     assert fact.data.path_params == ["slug"]
   end
 
+  test "uses scope as helper prefixes independently from URL path segments" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/backoffice", AppWeb, as: :admin do
+        get "/reports", ReportController, :index
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    assert [fact] = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert fact.data.path == "/backoffice/reports"
+    assert fact.data.scope_path == "/backoffice"
+    assert fact.data.helper_base == "admin_report"
+    assert fact.data.helper_prefix == "admin"
+  end
+
+  test "respects alias false when resolving route plug modules" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/internal", AppWeb, alias: false do
+        get "/health", HealthPlug, :show
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    assert [fact] = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert fact.data.path == "/internal/health"
+    assert fact.data.plug == "HealthPlug"
+    assert fact.data.scope_module == nil
+    assert fact.data.helper_base == "internal_health"
+  end
+
+  test "expands nested resources with parent params and helper prefixes" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/admin", AppWeb, as: :admin do
+        resources "/users", UserController, only: [:index, :show] do
+          resources "/posts", PostController, only: [:index, :show, :create]
+        end
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert facts
+           |> Enum.map(&{&1.data.verb, &1.data.path, &1.data.helper_base, &1.data.path_params})
+           |> Enum.sort() ==
+             [
+               {:get, "/admin/users", "admin_user", []},
+               {:get, "/admin/users/:id", "admin_user", ["id"]},
+               {:get, "/admin/users/:user_id/posts", "admin_user_post", ["user_id"]},
+               {:get, "/admin/users/:user_id/posts/:id", "admin_user_post", ["user_id", "id"]},
+               {:post, "/admin/users/:user_id/posts", "admin_user_post", ["user_id"]}
+             ]
+             |> Enum.sort()
+
+    nested_show =
+      Enum.find(
+        facts,
+        &(&1.data.path == "/admin/users/:user_id/posts/:id" and &1.data.action == :show)
+      )
+
+    assert nested_show.data.plug == "AppWeb.PostController"
+    assert nested_show.data.helper_prefix == "admin_user"
+  end
+
+  test "expands singleton resources without member id params" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        resources "/users", UserController, only: [:show] do
+          resources "/profile", ProfileController, singleton: true
+        end
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert Enum.any?(
+             facts,
+             &(&1.data.verb == :get and &1.data.path == "/users/:user_id/profile" and
+                 &1.data.action == :show and &1.data.path_params == ["user_id"])
+           )
+
+    assert Enum.any?(
+             facts,
+             &(&1.data.verb == :get and &1.data.path == "/users/:user_id/profile/edit" and
+                 &1.data.action == :edit and &1.data.path_params == ["user_id"])
+           )
+
+    refute Enum.any?(facts, &(&1.data.helper_base == "user_profile" and &1.data.action == :index))
+    refute Enum.any?(facts, &(&1.data.path == "/users/:user_id/profile/:id"))
+  end
+
   test "ignores dynamic route paths without raising" do
     source = """
     defmodule AppWeb.Router do

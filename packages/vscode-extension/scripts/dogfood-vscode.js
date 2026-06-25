@@ -381,6 +381,8 @@ function validRoutePayload(route) {
     nonEmptyString(route.filePath) &&
     validLocation(route.location) &&
     nonEmptyString(route.helperBase) &&
+    nonEmptyString(route.helperName) &&
+    Array.isArray(route.helperVariants) &&
     Array.isArray(route.pathParams) &&
     Array.isArray(route.pipelines)
   );

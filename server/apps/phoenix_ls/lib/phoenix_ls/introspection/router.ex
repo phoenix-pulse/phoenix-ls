@@ -30,6 +30,7 @@ defmodule PhoenixLS.Introspection.Router do
       :scope_path,
       :scope_module,
       :helper_base,
+      :helper_prefix,
       :path_params,
       :pipelines,
       :live_session
@@ -38,13 +39,14 @@ defmodule PhoenixLS.Introspection.Router do
 
   @route_macros [:connect, :delete, :get, :head, :live, :options, :patch, :post, :put, :trace]
   @resource_actions [:index, :new, :edit, :show, :create, :update, :delete]
+  @singleton_resource_actions [:show, :new, :edit, :create, :update, :delete]
 
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
     |> top_level_expressions()
-    |> collect_expressions(module, uri, provenance, nil, "", [], nil)
+    |> collect_expressions(module, uri, provenance, nil, "", [], [], nil)
   end
 
   defp collect_expressions(
@@ -54,6 +56,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        ) do
@@ -67,6 +70,7 @@ defmodule PhoenixLS.Introspection.Router do
           provenance,
           scope_module,
           scope_path,
+          helper_segments,
           current_pipelines,
           live_session
         )
@@ -83,11 +87,12 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        ) do
-    case scope_context(args, scope_path, scope_module) do
-      {:ok, next_scope_module, next_scope_path, block} ->
+    case scope_context(args, scope_path, scope_module, helper_segments) do
+      {:ok, next_scope_module, next_scope_path, next_helper_segments, block} ->
         facts =
           block
           |> top_level_expressions()
@@ -97,6 +102,7 @@ defmodule PhoenixLS.Introspection.Router do
             provenance,
             next_scope_module,
             next_scope_path,
+            next_helper_segments,
             pipelines,
             live_session
           )
@@ -115,6 +121,7 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
+         _helper_segments,
          pipelines,
          _live_session
        ) do
@@ -131,6 +138,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          _live_session
        ) do
@@ -145,6 +153,7 @@ defmodule PhoenixLS.Introspection.Router do
             provenance,
             scope_module,
             scope_path,
+            helper_segments,
             pipelines,
             next_live_session
           )
@@ -163,6 +172,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        ) do
@@ -175,6 +185,7 @@ defmodule PhoenixLS.Introspection.Router do
         provenance,
         scope_module,
         scope_path,
+        helper_segments,
         pipelines,
         live_session
       ),
@@ -189,6 +200,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        ) do
@@ -201,6 +213,7 @@ defmodule PhoenixLS.Introspection.Router do
            provenance,
            scope_module,
            scope_path,
+           helper_segments,
            pipelines,
            live_session
          ) do
@@ -216,6 +229,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        )
@@ -229,6 +243,7 @@ defmodule PhoenixLS.Introspection.Router do
            provenance,
            scope_module,
            scope_path,
+           helper_segments,
            pipelines,
            live_session
          ) do
@@ -244,6 +259,7 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
+         _helper_segments,
          pipelines,
          _live_session
        ),
@@ -283,18 +299,72 @@ defmodule PhoenixLS.Introspection.Router do
   defp pipeline_name(atom) when is_atom(atom), do: Atom.to_string(atom)
   defp pipeline_name(_pipeline), do: nil
 
-  defp scope_context([path, [do: block]], current_path, current_module) when is_binary(path) do
-    {:ok, current_module, join_paths(current_path, path), block}
-  end
-
-  defp scope_context([path, module_ast, [do: block]], current_path, current_module)
-       when is_binary(path) do
-    with {:ok, module} <- scoped_alias(module_ast, current_module) do
-      {:ok, module, join_paths(current_path, path), block}
+  defp scope_context(args, current_path, current_module, helper_segments) do
+    with {:ok, path, module_ast, opts, block} <- parse_scope_args(args),
+         {:ok, module} <- scope_module(module_ast, current_module, opts) do
+      {:ok, module, join_paths(current_path, path),
+       scope_helper_segments(helper_segments, path, opts), block}
     end
   end
 
-  defp scope_context(_args, _current_path, _current_module), do: :error
+  defp parse_scope_args([path, [do: block]]) when is_binary(path) do
+    {:ok, path, :inherit_scope_module, [], block}
+  end
+
+  defp parse_scope_args([path, opts, [do: block]]) when is_binary(path) and is_list(opts) do
+    if options_arg?(opts) do
+      {:ok, path, :inherit_scope_module, opts, block}
+    else
+      :error
+    end
+  end
+
+  defp parse_scope_args([path, module_ast, [do: block]]) when is_binary(path) do
+    {:ok, path, module_ast, [], block}
+  end
+
+  defp parse_scope_args([path, module_ast, opts, [do: block]])
+       when is_binary(path) and is_list(opts) do
+    if options_arg?(opts) do
+      {:ok, path, module_ast, opts, block}
+    else
+      :error
+    end
+  end
+
+  defp parse_scope_args([opts, [do: block]]) when is_list(opts) do
+    if options_arg?(opts) do
+      {:ok, Keyword.get(opts, :path, ""), :inherit_scope_module, opts, block}
+    else
+      :error
+    end
+  end
+
+  defp parse_scope_args(_args), do: :error
+
+  defp scope_module(:inherit_scope_module, current_module, opts) do
+    case Keyword.fetch(opts, :alias) do
+      {:ok, false} -> {:ok, nil}
+      {:ok, module_ast} -> scoped_alias(module_ast, current_module)
+      :error -> {:ok, current_module}
+    end
+  end
+
+  defp scope_module(module_ast, current_module, opts) do
+    case Keyword.get(opts, :alias, true) do
+      false -> {:ok, nil}
+      _other -> scoped_alias(module_ast, current_module)
+    end
+  end
+
+  defp scope_helper_segments(current_segments, path, opts) do
+    case Keyword.fetch(opts, :as) do
+      {:ok, false} -> current_segments
+      {:ok, nil} -> current_segments
+      {:ok, helper} -> current_segments ++ helper_segments_from_value(helper)
+      :error -> current_segments ++ helper_segments_from_path(path)
+    end
+  end
 
   defp route_fact(
          verb,
@@ -305,6 +375,7 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        )
@@ -312,6 +383,7 @@ defmodule PhoenixLS.Introspection.Router do
     with {:ok, plug} <- scoped_alias(plug_ast, scope_module),
          {:ok, action} <- route_action(verb, rest) do
       full_path = join_paths(scope_path, path)
+      helper_base = helper_base(helper_segments, path)
 
       {:ok,
        route_fact!(
@@ -325,6 +397,8 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_path,
          scope_module,
+         helper_base,
+         helper_prefix(helper_segments),
          pipelines,
          live_session
        )}
@@ -340,6 +414,7 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
+         _helper_segments,
          _pipelines,
          _live_session
        ) do
@@ -354,32 +429,53 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
+         helper_segments,
          pipelines,
          live_session
        )
        when is_binary(path) do
     with {:ok, controller} <- scoped_alias(controller_ast, scope_module),
-         {:ok, actions, param} <- resource_options(rest) do
+         {:ok, actions, param, singleton?, resource_helper_segments, block} <-
+           resource_options(path, rest) do
       base_path = join_paths(scope_path, path)
+      route_helper_segments = helper_segments ++ resource_helper_segments
+      helper_base = helper_base_from_segments(route_helper_segments)
+      helper_prefix = helper_prefix(helper_segments)
 
-      actions
-      |> Enum.flat_map(&resource_route_specs(base_path, &1, param))
-      |> Enum.map(fn {verb, route_path, action} ->
-        route_fact!(
+      route_facts =
+        actions
+        |> Enum.flat_map(&resource_route_specs(base_path, &1, param, singleton?))
+        |> Enum.map(fn {verb, route_path, action} ->
+          route_fact!(
+            router,
+            verb,
+            route_path,
+            controller,
+            action,
+            uri,
+            meta,
+            provenance,
+            scope_path,
+            scope_module,
+            helper_base,
+            helper_prefix,
+            pipelines,
+            live_session
+          )
+        end)
+
+      route_facts ++
+        nested_resource_facts(
+          block,
           router,
-          verb,
-          route_path,
-          controller,
-          action,
           uri,
-          meta,
           provenance,
-          scope_path,
           scope_module,
+          nested_resource_scope_path(base_path, resource_helper_segments, param, singleton?),
+          route_helper_segments,
           pipelines,
           live_session
         )
-      end)
     else
       :error -> []
     end
@@ -393,6 +489,7 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
+         _helper_segments,
          _pipelines,
          _live_session
        ),
@@ -409,6 +506,8 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_path,
          scope_module,
+         helper_base,
+         helper_prefix,
          pipelines,
          live_session
        ) do
@@ -426,7 +525,8 @@ defmodule PhoenixLS.Introspection.Router do
         action: action,
         scope_path: scope_path,
         scope_module: scope_module,
-        helper_base: helper_base(full_path),
+        helper_base: helper_base,
+        helper_prefix: helper_prefix,
         path_params: path_params(full_path),
         pipelines: pipelines,
         live_session: live_session
@@ -434,27 +534,56 @@ defmodule PhoenixLS.Introspection.Router do
     )
   end
 
-  defp resource_options([]), do: {:ok, @resource_actions, "id"}
+  defp resource_options(path, rest) do
+    with {:ok, opts, block} <- resource_args(rest) do
+      singleton? = Keyword.get(opts, :singleton, false) == true
+      valid_actions = if singleton?, do: @singleton_resource_actions, else: @resource_actions
 
-  defp resource_options([opts | _rest]) when is_list(opts) do
+      {:ok, actions(opts, valid_actions), resource_param(opts), singleton?,
+       resource_helper_segments(path, opts), block}
+    end
+  end
+
+  defp resource_args([]), do: {:ok, [], nil}
+
+  defp resource_args([[do: block]]), do: {:ok, [], block}
+
+  defp resource_args([opts]) when is_list(opts) do
+    if options_arg?(opts) do
+      {:ok, opts, nil}
+    else
+      :error
+    end
+  end
+
+  defp resource_args([opts, [do: block]]) when is_list(opts) do
+    if options_arg?(opts) do
+      {:ok, opts, block}
+    else
+      :error
+    end
+  end
+
+  defp resource_args(_rest), do: :error
+
+  defp actions(opts, valid_actions) do
     only = Keyword.get(opts, :only)
     except = Keyword.get(opts, :except, [])
-    param = resource_param(opts)
 
-    actions =
+    requested_actions =
       case only do
         actions when is_list(actions) -> actions
-        nil -> @resource_actions
+        nil -> valid_actions
         _other -> []
       end
 
-    {:ok,
-     actions
-     |> Enum.filter(&(&1 in @resource_actions))
-     |> Enum.reject(&(&1 in except)), param}
+    requested_actions
+    |> Enum.filter(&(&1 in valid_actions))
+    |> Enum.reject(&(&1 in except_actions(except)))
   end
 
-  defp resource_options(_rest), do: :error
+  defp except_actions(except) when is_list(except), do: except
+  defp except_actions(_except), do: []
 
   defp resource_param(opts) do
     case Keyword.get(opts, :param, "id") do
@@ -464,26 +593,106 @@ defmodule PhoenixLS.Introspection.Router do
     end
   end
 
-  defp resource_route_specs(base_path, :index, _param), do: [{:get, base_path, :index}]
+  defp resource_helper_segments(path, opts) do
+    case Keyword.fetch(opts, :as) do
+      {:ok, nil} -> []
+      {:ok, false} -> []
+      {:ok, helper} -> helper_segments_from_value(helper)
+      :error -> helper_segments_from_path(path)
+    end
+  end
 
-  defp resource_route_specs(base_path, :new, _param),
+  defp resource_route_specs(base_path, :index, _param, false), do: [{:get, base_path, :index}]
+  defp resource_route_specs(_base_path, :index, _param, true), do: []
+
+  defp resource_route_specs(base_path, :new, _param, _singleton?),
     do: [{:get, join_paths(base_path, "new"), :new}]
 
-  defp resource_route_specs(base_path, :edit, param),
+  defp resource_route_specs(base_path, :edit, _param, true),
+    do: [{:get, join_paths(base_path, "edit"), :edit}]
+
+  defp resource_route_specs(base_path, :edit, param, false),
     do: [{:get, join_paths(base_path, ":#{param}/edit"), :edit}]
 
-  defp resource_route_specs(base_path, :show, param),
+  defp resource_route_specs(base_path, :show, _param, true),
+    do: [{:get, base_path, :show}]
+
+  defp resource_route_specs(base_path, :show, param, false),
     do: [{:get, join_paths(base_path, ":#{param}"), :show}]
 
-  defp resource_route_specs(base_path, :create, _param), do: [{:post, base_path, :create}]
+  defp resource_route_specs(base_path, :create, _param, _singleton?),
+    do: [{:post, base_path, :create}]
 
-  defp resource_route_specs(base_path, :update, param) do
+  defp resource_route_specs(base_path, :update, _param, true) do
+    [{:patch, base_path, :update}, {:put, base_path, :update}]
+  end
+
+  defp resource_route_specs(base_path, :update, param, false) do
     path = join_paths(base_path, ":#{param}")
     [{:patch, path, :update}, {:put, path, :update}]
   end
 
-  defp resource_route_specs(base_path, :delete, param),
+  defp resource_route_specs(base_path, :delete, _param, true), do: [{:delete, base_path, :delete}]
+
+  defp resource_route_specs(base_path, :delete, param, false),
     do: [{:delete, join_paths(base_path, ":#{param}"), :delete}]
+
+  defp nested_resource_facts(
+         nil,
+         _router,
+         _uri,
+         _provenance,
+         _scope_module,
+         _scope_path,
+         _helper_segments,
+         _pipelines,
+         _live_session
+       ),
+       do: []
+
+  defp nested_resource_facts(
+         block,
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         helper_segments,
+         pipelines,
+         live_session
+       ) do
+    block
+    |> top_level_expressions()
+    |> collect_expressions(
+      router,
+      uri,
+      provenance,
+      scope_module,
+      scope_path,
+      helper_segments,
+      pipelines,
+      live_session
+    )
+  end
+
+  defp nested_resource_scope_path(base_path, _resource_helper_segments, _param, true),
+    do: base_path
+
+  defp nested_resource_scope_path(base_path, resource_helper_segments, param, false) do
+    join_paths(base_path, ":#{nested_resource_param(resource_helper_segments, param)}")
+  end
+
+  defp nested_resource_param(resource_helper_segments, param) do
+    resource_name =
+      resource_helper_segments
+      |> List.last()
+      |> case do
+        nil -> "resource"
+        name -> name
+      end
+
+    "#{resource_name}_#{param}"
+  end
 
   defp route_action(:forward, _rest), do: {:ok, nil}
   defp route_action(_verb, [action | _rest]) when is_atom(action), do: {:ok, action}
@@ -532,18 +741,59 @@ defmodule PhoenixLS.Introspection.Router do
   defp normalize_path("/" <> _rest = path), do: path
   defp normalize_path(path), do: "/" <> path
 
-  defp helper_base(path) do
+  defp helper_base(helper_segments, path) do
+    helper_base_from_segments(helper_segments ++ helper_segments_from_path(path))
+  end
+
+  defp helper_base_from_segments([]), do: "root"
+
+  defp helper_base_from_segments(segments) do
+    Enum.join(segments, "_")
+  end
+
+  defp helper_prefix([]), do: nil
+  defp helper_prefix(segments), do: Enum.join(segments, "_")
+
+  defp helper_segments_from_path(path) do
     path
     |> path_segments()
     |> Enum.reject(&dynamic_path_segment?/1)
     |> Enum.map(&normalize_helper_segment/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(&singularize/1)
+  end
+
+  defp helper_segments_from_value(value) when is_atom(value) do
+    value
+    |> Atom.to_string()
+    |> helper_segment_from_value()
+  end
+
+  defp helper_segments_from_value(value) when is_binary(value) do
+    helper_segment_from_value(value)
+  end
+
+  defp helper_segments_from_value(_value), do: []
+
+  defp helper_segment_from_value(value) do
+    value
+    |> normalize_helper_segment()
     |> case do
-      [] -> "root"
-      segments -> Enum.join(segments, "_")
+      "" -> []
+      segment -> [segment]
     end
   end
+
+  defp options_arg?(opts) when is_list(opts) do
+    not block_arg?(opts) and
+      Enum.all?(opts, fn
+        {key, _value} when is_atom(key) -> true
+        _other -> false
+      end)
+  end
+
+  defp block_arg?([{:do, _block}]), do: true
+  defp block_arg?(_opts), do: false
 
   defp path_params(path) do
     path
