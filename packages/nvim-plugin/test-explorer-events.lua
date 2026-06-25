@@ -21,6 +21,8 @@ package.preload["phoenix-pulse.lsp"] = function()
           {
             name = "save",
             type = "handle_event",
+            handler = "handle_event/3",
+            arity = 3,
             module = "AppWeb.ProductLive.Index",
             filePath = "/workspace/lib/app_web/live/product_live/index.ex",
             location = { line = 48, character = 4 },
@@ -82,7 +84,7 @@ explorer.state.expanded.events = true
 explorer.refresh()
 
 assert_line_contains(rendered_lines, "Events (1)", "event category")
-assert_line_contains(rendered_lines, "save (AppWeb.ProductLive.Index)", "event module context")
+assert_line_contains(rendered_lines, "save (AppWeb.ProductLive.Index - handle_event/3)", "event module context")
 
 local target = explorer._definition_target(explorer.state.data.events[1])
 assert_equal(target.file, "/workspace/lib/app_web/live/product_live/index.ex", "event target file")

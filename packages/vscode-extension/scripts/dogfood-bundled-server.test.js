@@ -80,6 +80,46 @@ describe('dogfoodBundledServer', () => {
       'phoenix/listRoutes[0] missing contract fields: verb, path, filePath, location, helperBase, pathParams, pipelines'
     );
   });
+
+  test('fails when listTemplates omits template contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listTemplates'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listTemplates[0] missing contract fields: name, format, kind, module, filePath, location'
+    );
+  });
+
+  test('fails when listEvents omits event contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listEvents'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listEvents[0] missing contract fields: name, type, handler, arity, module, filePath, location'
+    );
+  });
 });
 
 function completeExplorerResults() {
@@ -101,8 +141,27 @@ function completeExplorerResults() {
         scopePath: '/'
       }
     ],
-    'phoenix/listTemplates': [{ method: 'phoenix/listTemplates' }],
-    'phoenix/listEvents': [{ method: 'phoenix/listEvents' }],
+    'phoenix/listTemplates': [
+      {
+        name: 'index.html',
+        format: 'heex',
+        kind: 'controller',
+        module: 'AppWeb.PageHTML',
+        filePath: '/workspace/lib/app_web/controllers/page_html/index.html.heex',
+        location: { line: 0, character: 0 }
+      }
+    ],
+    'phoenix/listEvents': [
+      {
+        name: 'save',
+        type: 'handle_event',
+        handler: 'handle_event/3',
+        arity: 3,
+        module: 'AppWeb.ProductLive.Index',
+        filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+        location: { line: 48, character: 4 }
+      }
+    ],
     'phoenix/listLiveView': [{ method: 'phoenix/listLiveView' }]
   };
 }

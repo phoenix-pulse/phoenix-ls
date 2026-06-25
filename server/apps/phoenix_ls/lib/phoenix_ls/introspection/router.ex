@@ -31,18 +31,20 @@ defmodule PhoenixLS.Introspection.Router do
       :scope_module,
       :helper_base,
       :path_params,
-      :pipelines
+      :pipelines,
+      :live_session
     ]
   end
 
   @route_macros [:connect, :delete, :get, :head, :live, :options, :patch, :post, :put, :trace]
+  @resource_actions [:index, :new, :edit, :show, :create, :update, :delete]
 
   @spec facts_for_module_body(String.t(), term(), String.t(), map()) :: [Fact.t()]
   def facts_for_module_body(module, body_ast, uri, provenance)
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
     |> top_level_expressions()
-    |> collect_expressions(module, uri, provenance, nil, "", [])
+    |> collect_expressions(module, uri, provenance, nil, "", [], nil)
   end
 
   defp collect_expressions(
@@ -52,7 +54,8 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
-         pipelines
+         pipelines,
+         live_session
        ) do
     expressions
     |> Enum.reduce({[], pipelines}, fn expression, {facts, current_pipelines} ->
@@ -64,7 +67,8 @@ defmodule PhoenixLS.Introspection.Router do
           provenance,
           scope_module,
           scope_path,
-          current_pipelines
+          current_pipelines,
+          live_session
         )
 
       {facts ++ new_facts, next_pipelines}
@@ -79,7 +83,8 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
-         pipelines
+         pipelines,
+         live_session
        ) do
     case scope_context(args, scope_path, scope_module) do
       {:ok, next_scope_module, next_scope_path, block} ->
@@ -92,7 +97,8 @@ defmodule PhoenixLS.Introspection.Router do
             provenance,
             next_scope_module,
             next_scope_path,
-            pipelines
+            pipelines,
+            live_session
           )
 
         {facts, pipelines}
@@ -109,10 +115,96 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
-         pipelines
+         pipelines,
+         _live_session
        ) do
     case pipe_through_pipelines(args) do
       {:ok, next_pipelines} -> {[], pipelines ++ next_pipelines}
+      :error -> {[], pipelines}
+    end
+  end
+
+  defp collect_expression(
+         {:live_session, _meta, args},
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines,
+         _live_session
+       ) do
+    case live_session_context(args) do
+      {:ok, next_live_session, block} ->
+        facts =
+          block
+          |> top_level_expressions()
+          |> collect_expressions(
+            router,
+            uri,
+            provenance,
+            scope_module,
+            scope_path,
+            pipelines,
+            next_live_session
+          )
+
+        {facts, pipelines}
+
+      :error ->
+        {[], pipelines}
+    end
+  end
+
+  defp collect_expression(
+         {:resources, meta, args},
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines,
+         live_session
+       ) do
+    {
+      resource_facts(
+        meta,
+        args,
+        router,
+        uri,
+        provenance,
+        scope_module,
+        scope_path,
+        pipelines,
+        live_session
+      ),
+      pipelines
+    }
+  end
+
+  defp collect_expression(
+         {:forward, meta, args},
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines,
+         live_session
+       ) do
+    case route_fact(
+           :forward,
+           meta,
+           args,
+           router,
+           uri,
+           provenance,
+           scope_module,
+           scope_path,
+           pipelines,
+           live_session
+         ) do
+      {:ok, fact} -> {[fact], pipelines}
       :error -> {[], pipelines}
     end
   end
@@ -124,7 +216,8 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
-         pipelines
+         pipelines,
+         live_session
        )
        when verb in @route_macros do
     case route_fact(
@@ -136,7 +229,8 @@ defmodule PhoenixLS.Introspection.Router do
            provenance,
            scope_module,
            scope_path,
-           pipelines
+           pipelines,
+           live_session
          ) do
       {:ok, fact} -> {[fact], pipelines}
       :error -> {[], pipelines}
@@ -150,9 +244,24 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
-         pipelines
+         pipelines,
+         _live_session
        ),
        do: {[], pipelines}
+
+  defp live_session_context([name, [do: block]]) do
+    {:ok, session_name(name), block}
+  end
+
+  defp live_session_context([name, opts, [do: block]]) when is_list(opts) do
+    {:ok, session_name(name), block}
+  end
+
+  defp live_session_context(_args), do: :error
+
+  defp session_name(name) when is_atom(name), do: Atom.to_string(name)
+  defp session_name(name) when is_binary(name), do: name
+  defp session_name(name), do: inspect(name)
 
   defp pipe_through_pipelines([pipeline_ast]) do
     case pipeline_names(pipeline_ast) do
@@ -196,32 +305,28 @@ defmodule PhoenixLS.Introspection.Router do
          provenance,
          scope_module,
          scope_path,
-         pipelines
+         pipelines,
+         live_session
        )
        when is_binary(path) do
     with {:ok, plug} <- scoped_alias(plug_ast, scope_module),
-         {:ok, action} <- route_action(rest) do
+         {:ok, action} <- route_action(verb, rest) do
       full_path = join_paths(scope_path, path)
 
       {:ok,
-       Fact.new!(
-         kind: :route,
-         id: route_id(router, verb, full_path, plug, action),
-         uri: uri,
-         range: source_range(meta),
-         provenance: provenance,
-         data: %Route{
-           router: router,
-           verb: verb,
-           path: full_path,
-           plug: plug,
-           action: action,
-           scope_path: scope_path,
-           scope_module: scope_module,
-           helper_base: helper_base(full_path),
-           path_params: path_params(full_path),
-           pipelines: pipelines
-         }
+       route_fact!(
+         router,
+         verb,
+         full_path,
+         plug,
+         action,
+         uri,
+         meta,
+         provenance,
+         scope_path,
+         scope_module,
+         pipelines,
+         live_session
        )}
     end
   end
@@ -235,14 +340,155 @@ defmodule PhoenixLS.Introspection.Router do
          _provenance,
          _scope_module,
          _scope_path,
-         _pipelines
+         _pipelines,
+         _live_session
        ) do
     :error
   end
 
-  defp route_action([action | _rest]) when is_atom(action), do: {:ok, action}
-  defp route_action([]), do: {:ok, nil}
-  defp route_action(_rest), do: :error
+  defp resource_facts(
+         meta,
+         [path, controller_ast | rest],
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines,
+         live_session
+       )
+       when is_binary(path) do
+    with {:ok, controller} <- scoped_alias(controller_ast, scope_module),
+         {:ok, actions, param} <- resource_options(rest) do
+      base_path = join_paths(scope_path, path)
+
+      actions
+      |> Enum.flat_map(&resource_route_specs(base_path, &1, param))
+      |> Enum.map(fn {verb, route_path, action} ->
+        route_fact!(
+          router,
+          verb,
+          route_path,
+          controller,
+          action,
+          uri,
+          meta,
+          provenance,
+          scope_path,
+          scope_module,
+          pipelines,
+          live_session
+        )
+      end)
+    else
+      :error -> []
+    end
+  end
+
+  defp resource_facts(
+         _meta,
+         _args,
+         _router,
+         _uri,
+         _provenance,
+         _scope_module,
+         _scope_path,
+         _pipelines,
+         _live_session
+       ),
+       do: []
+
+  defp route_fact!(
+         router,
+         verb,
+         full_path,
+         plug,
+         action,
+         uri,
+         meta,
+         provenance,
+         scope_path,
+         scope_module,
+         pipelines,
+         live_session
+       ) do
+    Fact.new!(
+      kind: :route,
+      id: route_id(router, verb, full_path, plug, action),
+      uri: uri,
+      range: source_range(meta),
+      provenance: provenance,
+      data: %Route{
+        router: router,
+        verb: verb,
+        path: full_path,
+        plug: plug,
+        action: action,
+        scope_path: scope_path,
+        scope_module: scope_module,
+        helper_base: helper_base(full_path),
+        path_params: path_params(full_path),
+        pipelines: pipelines,
+        live_session: live_session
+      }
+    )
+  end
+
+  defp resource_options([]), do: {:ok, @resource_actions, "id"}
+
+  defp resource_options([opts | _rest]) when is_list(opts) do
+    only = Keyword.get(opts, :only)
+    except = Keyword.get(opts, :except, [])
+    param = resource_param(opts)
+
+    actions =
+      case only do
+        actions when is_list(actions) -> actions
+        nil -> @resource_actions
+        _other -> []
+      end
+
+    {:ok,
+     actions
+     |> Enum.filter(&(&1 in @resource_actions))
+     |> Enum.reject(&(&1 in except)), param}
+  end
+
+  defp resource_options(_rest), do: :error
+
+  defp resource_param(opts) do
+    case Keyword.get(opts, :param, "id") do
+      param when is_binary(param) -> param
+      param when is_atom(param) -> Atom.to_string(param)
+      _other -> "id"
+    end
+  end
+
+  defp resource_route_specs(base_path, :index, _param), do: [{:get, base_path, :index}]
+
+  defp resource_route_specs(base_path, :new, _param),
+    do: [{:get, join_paths(base_path, "new"), :new}]
+
+  defp resource_route_specs(base_path, :edit, param),
+    do: [{:get, join_paths(base_path, ":#{param}/edit"), :edit}]
+
+  defp resource_route_specs(base_path, :show, param),
+    do: [{:get, join_paths(base_path, ":#{param}"), :show}]
+
+  defp resource_route_specs(base_path, :create, _param), do: [{:post, base_path, :create}]
+
+  defp resource_route_specs(base_path, :update, param) do
+    path = join_paths(base_path, ":#{param}")
+    [{:patch, path, :update}, {:put, path, :update}]
+  end
+
+  defp resource_route_specs(base_path, :delete, param),
+    do: [{:delete, join_paths(base_path, ":#{param}"), :delete}]
+
+  defp route_action(:forward, _rest), do: {:ok, nil}
+  defp route_action(_verb, [action | _rest]) when is_atom(action), do: {:ok, action}
+  defp route_action(_verb, []), do: {:ok, nil}
+  defp route_action(_verb, _rest), do: :error
 
   defp route_id(router, verb, path, plug, nil), do: "#{router}:#{verb}:#{path}:#{plug}"
 

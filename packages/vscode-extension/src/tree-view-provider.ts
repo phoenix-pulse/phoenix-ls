@@ -103,6 +103,8 @@ interface TemplateInfo {
 interface EventInfo {
   name: string;
   type: string;
+  handler?: string;
+  arity?: number;
   module?: string;
   filePath: string;
   location: { line: number; character: number };
@@ -853,32 +855,33 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       const filtered = events.filter(event =>
         this.matchesSearch(event.name) ||
         this.matchesSearch(event.type) ||
+        this.matchesSearch(event.handler || '') ||
         this.matchesSearch(event.module || '') ||
         this.matchesSearch(event.filePath)
       );
 
-      // Group filtered events by file
-      const fileMap = new Map<string, EventInfo[]>();
+      // Group filtered events by LiveView module so same-named files do not collapse together.
+      const eventMap = new Map<string, { label: string; events: EventInfo[] }>();
       for (const event of filtered) {
-        const fileName = event.filePath.split('/').pop() || event.filePath;
-        if (!fileMap.has(fileName)) {
-          fileMap.set(fileName, []);
+        const groupKey = this.eventGroupKey(event);
+        if (!eventMap.has(groupKey)) {
+          eventMap.set(groupKey, { label: this.eventGroupLabel(event), events: [] });
         }
-        fileMap.get(fileName)!.push(event);
+        eventMap.get(groupKey)!.events.push(event);
       }
 
-      // Create file nodes
-      return Array.from(fileMap.entries()).map(([fileName, fileEvents]) => {
+      return Array.from(eventMap.entries()).map(([groupKey, group]) => {
+        const paths = Array.from(new Set(group.events.map(event => event.filePath)));
         const item = new PhoenixTreeItem(
-          fileName,
+          group.label,
           'event-file',
           this.getCollapsibleState(),
           '$(file-code)',
           'charts.red'
         );
-        item.description = `${fileEvents.length} events`;
-        item.tooltip = `${fileName}\n${fileEvents.length} events\n${fileEvents[0].filePath}`;
-        item.data = fileName;
+        item.description = `${group.events.length} events`;
+        item.tooltip = `${group.label}\n${group.events.length} events\n${paths.join('\n')}`;
+        item.data = groupKey;
         return item;
       });
     } catch (error) {
@@ -887,12 +890,13 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     }
   }
 
-  private getEventsInFile(fileName: string): PhoenixTreeItem[] {
+  private getEventsInFile(groupKey: string): PhoenixTreeItem[] {
     const events = this.eventsCache.filter(e =>
-      e.filePath.split('/').pop() === fileName
+      this.eventGroupKey(e) === groupKey
     );
 
     return events.map(event => {
+      const handler = event.handler || event.type;
       const item = new PhoenixTreeItem(
         event.name,
         'event',
@@ -900,8 +904,8 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         '$(zap)',
         'charts.red'
       );
-      item.description = event.module || event.type;
-      item.tooltip = `Event: ${event.name}\nType: ${event.type}${event.module ? `\nModule: ${event.module}` : ''}\n${event.filePath}`;
+      item.description = handler;
+      item.tooltip = `Event: ${event.name}\nHandler: ${handler}\nType: ${event.type}${event.module ? `\nModule: ${event.module}` : ''}\n${event.filePath}`;
       item.command = {
         command: 'phoenixPulse.goToItem',
         title: 'Go to Event',
@@ -910,6 +914,14 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       item.data = event;
       return item;
     });
+  }
+
+  private eventGroupKey(event: EventInfo): string {
+    return event.module || event.filePath;
+  }
+
+  private eventGroupLabel(event: EventInfo): string {
+    return event.module || event.filePath.split('/').pop() || event.filePath;
   }
 
   // LiveView methods

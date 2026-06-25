@@ -47,7 +47,8 @@ defmodule PhoenixLS.Introspection.RouterTest do
              scope_module: "AppWeb",
              helper_base: "product",
              path_params: ["id"],
-             pipelines: ["browser"]
+             pipelines: ["browser"],
+             live_session: nil
            }
 
     assert get_route.kind == :route
@@ -117,6 +118,79 @@ defmodule PhoenixLS.Introspection.RouterTest do
              "AppWeb.DashboardController",
              "AppWeb.UserLive.Show"
            ]
+  end
+
+  test "extracts resource, forward, and live_session route facts" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/admin", AppWeb do
+        pipe_through [:browser, :admin]
+
+        resources "/products", ProductController, only: [:index, :show, :create]
+        forward "/graphiql", GraphiQLPlug, schema: AppWeb.Schema
+
+        live_session :authenticated do
+          live "/products/:id/live", ProductLive.Show, :show
+        end
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert facts
+           |> Enum.map(&{&1.data.verb, &1.data.path, &1.data.plug, &1.data.action})
+           |> Enum.sort() ==
+             [
+               {:forward, "/admin/graphiql", "AppWeb.GraphiQLPlug", nil},
+               {:get, "/admin/products", "AppWeb.ProductController", :index},
+               {:get, "/admin/products/:id", "AppWeb.ProductController", :show},
+               {:live, "/admin/products/:id/live", "AppWeb.ProductLive.Show", :show},
+               {:post, "/admin/products", "AppWeb.ProductController", :create}
+             ]
+             |> Enum.sort()
+
+    assert facts
+           |> Enum.map(&{&1.data.verb, &1.data.path, &1.data.helper_base, &1.data.path_params})
+           |> Enum.sort() ==
+             [
+               {:forward, "/admin/graphiql", "admin_graphiql", []},
+               {:get, "/admin/products", "admin_product", []},
+               {:get, "/admin/products/:id", "admin_product", ["id"]},
+               {:live, "/admin/products/:id/live", "admin_product_live", ["id"]},
+               {:post, "/admin/products", "admin_product", []}
+             ]
+             |> Enum.sort()
+
+    assert Enum.map(facts, & &1.data.pipelines) ==
+             List.duplicate(["browser", "admin"], 5)
+
+    assert facts |> List.last() |> then(& &1.data.live_session) == "authenticated"
+  end
+
+  test "extracts resource path params from param option" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        resources "/products", ProductController, only: [:show], param: "slug"
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    assert [fact] = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert fact.data.path == "/products/:slug"
+    assert fact.data.path_params == ["slug"]
   end
 
   test "ignores dynamic route paths without raising" do

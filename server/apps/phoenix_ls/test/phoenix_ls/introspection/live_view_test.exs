@@ -38,9 +38,12 @@ defmodule PhoenixLS.Introspection.LiveViewTest do
     assert event.kind == :live_event
     assert event.range.start.line == 3
 
-    assert event.data == %LiveView.Event{
+    assert Map.take(Map.from_struct(event.data), [:module, :event, :type, :handler, :arity]) == %{
              module: "AppWeb.ProductLive",
-             event: "select-product"
+             event: "select-product",
+             type: :handle_event,
+             handler: "handle_event/3",
+             arity: 3
            }
 
     assert assign.kind == :assign
@@ -49,6 +52,30 @@ defmodule PhoenixLS.Introspection.LiveViewTest do
              module: "AppWeb.ProductLive",
              name: "selected_id"
            }
+  end
+
+  test "extracts literal handle_event facts from guarded clauses" do
+    source = """
+    defmodule AppWeb.ProductLive do
+      use Phoenix.LiveView
+
+      def handle_event("validate", params, socket) when is_map(params) do
+        {:noreply, socket}
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = LiveView.facts_for_module_body("AppWeb.ProductLive", body, @uri, @provenance)
+
+    assert [%{data: event}] = Enum.filter(facts, &(&1.kind == :live_event))
+
+    assert event.event == "validate"
+    assert event.type == :handle_event
+    assert event.handler == "handle_event/3"
+    assert event.arity == 3
   end
 
   test "recognizes project-style live_view use macros" do

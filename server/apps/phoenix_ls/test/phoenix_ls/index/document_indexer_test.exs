@@ -165,7 +165,14 @@ defmodule PhoenixLS.Index.DocumentIndexerTest do
     assert %Position{} = template_fact.range.end
     assert template_fact.range.start.line == 0
     assert template_fact.range.end.line == 3
-    assert template_fact.data == %Template.Template{format: :heex}
+
+    assert template_fact.data == %Template.Template{
+             format: :heex,
+             name: "index.html",
+             module: "AppWeb.PageHTML",
+             kind: :controller
+           }
+
     assert template_fact.provenance.document_version == 4
   end
 

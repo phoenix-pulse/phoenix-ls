@@ -109,6 +109,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
         "scopePath" => fact.data.scope_path || "/",
         "pipeline" => Enum.join(pipelines, ", "),
         "pipelines" => pipelines,
+        "liveSession" => Map.get(fact.data, :live_session),
         "liveModule" => live_module(fact),
         "liveAction" => live_action(fact)
       }
@@ -123,11 +124,12 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       path = file_path(fact.uri)
 
       %{
-        "name" => template_name(path),
+        "name" => Map.get(fact.data, :name) || template_name(path),
         "format" => format_string(fact.data.format),
+        "kind" => template_kind(fact),
         "filePath" => path,
         "location" => location(fact),
-        "module" => template_module(path)
+        "module" => Map.get(fact.data, :module) || template_module(path)
       }
     end)
     |> Enum.sort_by(& &1["filePath"])
@@ -139,7 +141,9 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> Enum.map(fn fact ->
       %{
         "name" => fact.data.event,
-        "type" => "handle_event",
+        "type" => event_type(fact),
+        "handler" => Map.get(fact.data, :handler) || event_type(fact),
+        "arity" => Map.get(fact.data, :arity),
         "module" => fact.data.module,
         "filePath" => file_path(fact.uri),
         "location" => location(fact)
@@ -337,8 +341,10 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   defp live_event_function_payload(fact) do
     %{
       "name" => "handle_event",
-      "type" => "handle_event",
+      "type" => event_type(fact),
       "eventName" => fact.data.event,
+      "handler" => Map.get(fact.data, :handler) || event_type(fact),
+      "arity" => Map.get(fact.data, :arity),
       "filePath" => file_path(fact.uri),
       "location" => location(fact)
     }
@@ -389,6 +395,10 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   defp live_view_function_rank("handle_event"), do: 3
   defp live_view_function_rank("handle_info"), do: 4
   defp live_view_function_rank(_type), do: 5
+
+  defp event_type(%Fact{data: %{type: type}}) when is_atom(type), do: Atom.to_string(type)
+  defp event_type(%Fact{data: %{type: type}}) when is_binary(type), do: type
+  defp event_type(_fact), do: "handle_event"
 
   defp live_module(%Fact{data: %{verb: :live, plug: plug}}), do: plug
   defp live_module(_fact), do: nil
@@ -471,6 +481,10 @@ defmodule PhoenixLS.Features.PhoenixRequests do
 
   defp format_string(format) when is_atom(format), do: Atom.to_string(format)
   defp format_string(format), do: to_string(format)
+
+  defp template_kind(%Fact{data: %{kind: kind}}) when is_atom(kind), do: Atom.to_string(kind)
+  defp template_kind(%Fact{data: %{kind: kind}}) when is_binary(kind), do: kind
+  defp template_kind(_fact), do: "template"
 
   defp template_name(path) do
     path

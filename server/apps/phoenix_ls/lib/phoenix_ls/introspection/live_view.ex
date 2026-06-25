@@ -20,8 +20,8 @@ defmodule PhoenixLS.Introspection.LiveView do
     Typed LiveView event fact payload.
     """
 
-    @enforce_keys [:module, :event]
-    defstruct [:module, :event]
+    @enforce_keys [:module, :event, :type, :handler, :arity]
+    defstruct [:module, :event, :type, :handler, :arity]
   end
 
   defmodule Assign do
@@ -102,21 +102,29 @@ defmodule PhoenixLS.Introspection.LiveView do
   defp event_facts(module, expressions, uri, provenance) do
     expressions
     |> Enum.flat_map(fn
-      {:def, meta, [{:handle_event, _head_meta, [event, _params, _socket]}, _body]}
-      when is_binary(event) ->
-        [
-          Fact.new!(
-            kind: :live_event,
-            id: "#{module}:event:#{event}",
-            uri: uri,
-            range: source_range(meta),
-            provenance: provenance,
-            data: %Event{
-              module: module,
-              event: event
-            }
-          )
-        ]
+      {:def, meta, [head, _body]} ->
+        case live_event(head) do
+          {:ok, event, type, arity} ->
+            [
+              Fact.new!(
+                kind: :live_event,
+                id: "#{module}:event:#{event}",
+                uri: uri,
+                range: source_range(meta),
+                provenance: provenance,
+                data: %Event{
+                  module: module,
+                  event: event,
+                  type: type,
+                  handler: "#{type}/#{arity}",
+                  arity: arity
+                }
+              )
+            ]
+
+          :error ->
+            []
+        end
 
       _expression ->
         []
@@ -175,6 +183,13 @@ defmodule PhoenixLS.Introspection.LiveView do
     do: callback(:render, args, 1)
 
   defp live_view_function(_head), do: :error
+
+  defp live_event({:when, _meta, [head | _guards]}), do: live_event(head)
+
+  defp live_event({:handle_event, _meta, [event, _params, _socket]}) when is_binary(event),
+    do: {:ok, event, :handle_event, 3}
+
+  defp live_event(_head), do: :error
 
   defp callback(name, args, arity) when length(args) == arity do
     {:ok, Atom.to_string(name), arity, name}

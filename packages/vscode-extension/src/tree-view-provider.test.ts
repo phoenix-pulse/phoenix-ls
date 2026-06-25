@@ -433,6 +433,8 @@ describe('PhoenixPulseTreeProvider', () => {
             {
               name: 'save',
               type: 'handle_event',
+              handler: 'handle_event/3',
+              arity: 3,
               module: 'AppWeb.ProductLive.Index',
               filePath: '/workspace/lib/app_web/live/product_live/index.ex',
               location: { line: 48, character: 4 }
@@ -447,16 +449,63 @@ describe('PhoenixPulseTreeProvider', () => {
     const provider = new PhoenixPulseTreeProvider(client as never);
     const roots = await provider.getChildren();
     const eventsCategory = roots.find(item => item.label === 'Events');
-    const files = await provider.getChildren(eventsCategory);
-    const events = await provider.getChildren(files[0]);
+    const modules = await provider.getChildren(eventsCategory);
+    const events = await provider.getChildren(modules[0]);
 
+    expect(modules[0].label).toBe('AppWeb.ProductLive.Index');
     expect(events[0].label).toBe('save');
-    expect(events[0].description).toBe('AppWeb.ProductLive.Index');
+    expect(events[0].description).toBe('handle_event/3');
     expect(events[0].tooltip).toContain('Module: AppWeb.ProductLive.Index');
+    expect(events[0].tooltip).toContain('Handler: handle_event/3');
     expect(events[0].command).toMatchObject({
       command: 'phoenixPulse.goToItem',
       arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 48, character: 4 }]
     });
+  });
+
+  it('keeps event modules with matching basenames under separate nodes', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listEvents') {
+          return [
+            {
+              name: 'save',
+              type: 'handle_event',
+              handler: 'handle_event/3',
+              module: 'AppWeb.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              location: { line: 48, character: 4 }
+            },
+            {
+              name: 'archive',
+              type: 'handle_event',
+              handler: 'handle_event/3',
+              module: 'AppWeb.Admin.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/admin/product_live/index.ex',
+              location: { line: 21, character: 4 }
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const eventsCategory = roots.find(item => item.label === 'Events');
+    const modules = await provider.getChildren(eventsCategory);
+
+    expect(modules.map(item => item.label)).toEqual([
+      'AppWeb.ProductLive.Index',
+      'AppWeb.Admin.ProductLive.Index'
+    ]);
+
+    const firstModuleEvents = await provider.getChildren(modules[0]);
+    const secondModuleEvents = await provider.getChildren(modules[1]);
+
+    expect(firstModuleEvents[0].label).toBe('save');
+    expect(secondModuleEvents[0].label).toBe('archive');
   });
 
   it('keeps templates with matching basenames under separate file nodes', async () => {

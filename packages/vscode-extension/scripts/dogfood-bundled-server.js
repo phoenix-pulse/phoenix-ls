@@ -115,6 +115,8 @@ async function dogfoodBundledServer(options = {}) {
 
 function validateExplorerContracts(results) {
   validateRoutePayloads(results['phoenix/listRoutes'] || []);
+  validateTemplatePayloads(results['phoenix/listTemplates'] || []);
+  validateEventPayloads(results['phoenix/listEvents'] || []);
 }
 
 function validateRoutePayloads(routes) {
@@ -131,6 +133,41 @@ function validateRoutePayloads(routes) {
 
     if (missing.length > 0) {
       throw new Error(`phoenix/listRoutes[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateTemplatePayloads(templates) {
+  templates.forEach((template, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(template.name)) missing.push('name');
+    if (!nonEmptyString(template.format)) missing.push('format');
+    if (!nonEmptyString(template.kind)) missing.push('kind');
+    if (!nonEmptyString(template.module)) missing.push('module');
+    if (!nonEmptyString(template.filePath)) missing.push('filePath');
+    if (!validLocation(template.location)) missing.push('location');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listTemplates[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function validateEventPayloads(events) {
+  events.forEach((event, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(event.name)) missing.push('name');
+    if (!nonEmptyString(event.type)) missing.push('type');
+    if (!nonEmptyString(event.handler)) missing.push('handler');
+    if (typeof event.arity !== 'number' || !Number.isFinite(event.arity)) missing.push('arity');
+    if (!nonEmptyString(event.module)) missing.push('module');
+    if (!nonEmptyString(event.filePath)) missing.push('filePath');
+    if (!validLocation(event.location)) missing.push('location');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listEvents[${index}] missing contract fields: ${missing.join(', ')}`);
     }
   });
 }

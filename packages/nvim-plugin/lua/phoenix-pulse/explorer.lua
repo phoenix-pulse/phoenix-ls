@@ -1204,8 +1204,17 @@ function M.render()
 
   add_category("events", "Events", M.state.data.events, "event", function(event)
     local label = event.name or "Unknown"
+    local context = {}
     if event.module then
-      label = label .. " (" .. event.module .. ")"
+      table.insert(context, event.module)
+    end
+    if event.handler then
+      table.insert(context, event.handler)
+    elseif event.type then
+      table.insert(context, event.type)
+    end
+    if #context > 0 then
+      label = label .. " (" .. table.concat(context, " - ") .. ")"
     end
     return string.format("%s %s", get_icon("event"), label)
   end)

@@ -6,11 +6,15 @@ defmodule LiveviewComponentsAppWeb.Router do
 
     live("/", PageLive)
     get("/pages/:id", PageController, :show)
+    resources("/products", ProductController, only: [:index, :show])
+    forward("/mailbox", MailboxPlug, init_opts: [path: "/dev/mailbox"])
 
     scope "/admin" do
       pipe_through(:require_admin)
 
-      live("/products/:id", Admin.ProductLive, :show)
+      live_session :admin do
+        live("/products/:id", Admin.ProductLive, :show)
+      end
     end
   end
 end

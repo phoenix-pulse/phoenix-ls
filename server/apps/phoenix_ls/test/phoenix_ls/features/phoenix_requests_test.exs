@@ -136,16 +136,83 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
            ] = PhoenixRequests.handle("phoenix/listRoutes", snapshot())
   end
 
+  test "lists expanded resource forward and live session routes" do
+    {:ok, facts} =
+      ElixirSource.facts(@source_uri, """
+      defmodule AppWeb.Router do
+        use Phoenix.Router
+
+        scope "/admin", AppWeb do
+          pipe_through [:browser, :admin]
+
+          resources "/products", ProductController, only: [:index, :show]
+          forward "/graphiql", GraphiQLPlug, schema: AppWeb.Schema
+
+          live_session :authenticated do
+            live "/products/:id/live", ProductLive.Show, :show
+          end
+        end
+      end
+      """)
+
+    routes = PhoenixRequests.handle("phoenix/listRoutes", Snapshot.new(facts))
+
+    assert Enum.map(routes, &{&1["verb"], &1["path"], &1["controller"], &1["action"]}) == [
+             {"forward", "/admin/graphiql", "AppWeb.GraphiQLPlug", ""},
+             {"get", "/admin/products", "AppWeb.ProductController", "index"},
+             {"get", "/admin/products/:id", "AppWeb.ProductController", "show"},
+             {"live", "/admin/products/:id/live", "AppWeb.ProductLive.Show", "show"}
+           ]
+
+    assert Enum.map(routes, & &1["pipelines"]) == List.duplicate(["browser", "admin"], 4)
+
+    assert Enum.find(routes, &(&1["verb"] == "live"))["liveSession"] == "authenticated"
+  end
+
   test "lists templates" do
-    assert [
+    facts =
+      [
+        @template_uri,
+        "file:///tmp/app/lib/app_web/components/layouts/root.html.heex",
+        "file:///tmp/app/lib/app_web/components/core_components/card.html.heex",
+        "file:///tmp/app/lib/app_web/live/product_live/show.html.heex"
+      ]
+      |> Enum.flat_map(&Template.facts(&1, "<section />"))
+
+    assert PhoenixRequests.handle("phoenix/listTemplates", Snapshot.new(facts)) == [
+             %{
+               "name" => "card.html",
+               "format" => "heex",
+               "kind" => "component",
+               "filePath" => "/tmp/app/lib/app_web/components/core_components/card.html.heex",
+               "location" => %{"line" => 0, "character" => 0},
+               "module" => "AppWeb.CoreComponents"
+             },
+             %{
+               "name" => "root.html",
+               "format" => "heex",
+               "kind" => "layout",
+               "filePath" => "/tmp/app/lib/app_web/components/layouts/root.html.heex",
+               "location" => %{"line" => 0, "character" => 0},
+               "module" => "AppWeb.Layouts"
+             },
              %{
                "name" => "index.html",
                "format" => "heex",
+               "kind" => "controller",
                "filePath" => "/tmp/app/lib/app_web/controllers/page_html/index.html.heex",
                "location" => %{"line" => 0, "character" => 0},
                "module" => "AppWeb.PageHTML"
+             },
+             %{
+               "name" => "show.html",
+               "format" => "heex",
+               "kind" => "live_view",
+               "filePath" => "/tmp/app/lib/app_web/live/product_live/show.html.heex",
+               "location" => %{"line" => 0, "character" => 0},
+               "module" => "AppWeb.ProductLive.Show"
              }
-           ] = PhoenixRequests.handle("phoenix/listTemplates", snapshot())
+           ]
   end
 
   test "lists LiveView events" do
@@ -153,6 +220,8 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
              %{
                "name" => "select-product",
                "type" => "handle_event",
+               "handler" => "handle_event/3",
+               "arity" => 3,
                "module" => "AppWeb.ProductLive",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 2}
