@@ -192,6 +192,7 @@ describe('PhoenixPulseTreeProvider', () => {
           return [
             {
               name: 'button',
+              module: 'AppWeb.CoreComponents',
               filePath: '/workspace/lib/app_web/components/core_components.ex',
               location: { line: 20, character: 2 },
               attributesCount: 1,
@@ -228,6 +229,11 @@ describe('PhoenixPulseTreeProvider', () => {
     const files = await provider.getChildren(componentsCategory);
     const components = await provider.getChildren(files[0]);
     const children = await provider.getChildren(components[0]);
+
+    expect(components[0].data).toMatchObject({
+      module: 'AppWeb.CoreComponents',
+      name: 'button'
+    });
 
     expect(children[0].command).toMatchObject({
       command: 'phoenixPulse.goToItem',
@@ -276,6 +282,41 @@ describe('PhoenixPulseTreeProvider', () => {
     expect(children[0].command).toMatchObject({
       command: 'phoenixPulse.goToItem',
       arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 28, character: 14 }]
+    });
+  });
+
+  it('stores route payload data for copy commands without parsing labels', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listRoutes') {
+          return [
+            {
+              verb: 'GET',
+              path: '/products/:id',
+              controller: 'AppWeb.ProductController',
+              action: 'show',
+              filePath: '/workspace/lib/app_web/router.ex',
+              location: { line: 42, character: 4 },
+              scopePath: '/'
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const routesCategory = roots.find(item => item.label === 'Routes');
+    const scopes = await provider.getChildren(routesCategory);
+    const controllers = await provider.getChildren(scopes[0]);
+    const routes = await provider.getChildren(controllers[0]);
+
+    expect(routes[0].label).toBe('GET /products/:id');
+    expect(routes[0].data).toMatchObject({
+      path: '/products/:id',
+      verb: 'GET'
     });
   });
 });

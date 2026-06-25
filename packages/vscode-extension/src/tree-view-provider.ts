@@ -40,6 +40,7 @@ interface SchemaInfo {
 
 interface ComponentInfo {
   name: string;
+  module: string;
   filePath: string;
   location: { line: number; character: number };
   attributesCount: number;
@@ -519,8 +520,9 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       item.tooltip = `${component.name} component\n${description}\n${component.filePath}`;
 
       if (hasContent) {
-        item.data = { fileName, componentName: component.name }; // Store both for lookup
+        item.data = component;
       } else {
+        item.data = component;
         // No attributes/slots - click goes directly to component
         item.command = {
           command: 'phoenixPulse.goToItem',
@@ -533,15 +535,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
     });
   }
 
-  private getComponentAttributes(data: { fileName: string; componentName: string }): PhoenixTreeItem[] {
-    const component = this.componentsCache.find(c =>
-      c.filePath.split('/').pop() === data.fileName && c.name === data.componentName
-    );
-
-    if (!component) {
-      return [];
-    }
-
+  private getComponentAttributes(component: ComponentInfo): PhoenixTreeItem[] {
     const items: PhoenixTreeItem[] = [];
 
     // Add attributes
@@ -716,6 +710,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         title: 'Go to Route',
         arguments: [route.filePath, route.location]
       };
+      item.data = route;
       return item;
     });
   }

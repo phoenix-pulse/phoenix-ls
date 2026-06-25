@@ -78,6 +78,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
 
       %{
         "name" => fact.data.name,
+        "module" => fact.data.module,
         "filePath" => file_path(fact.uri),
         "location" => location(fact),
         "attributesCount" => length(attrs),

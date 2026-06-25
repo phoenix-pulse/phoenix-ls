@@ -77,6 +77,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
     assert [
              %{
                "name" => "button",
+               "module" => "AppWeb.CoreComponents",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 2},
                "attributesCount" => 1,

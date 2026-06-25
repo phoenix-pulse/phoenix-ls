@@ -8,5 +8,7 @@ describe('VS Code launcher architecture', () => {
 
     expect(extensionSource).not.toContain('{:phoenix');
     expect(extensionSource).not.toContain('Phoenix dependency');
+    expect(extensionSource).not.toContain('filePath.match');
+    expect(extensionSource).not.toContain('label.match');
   });
 });

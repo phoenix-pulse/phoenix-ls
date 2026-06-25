@@ -154,33 +154,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const copyModuleNameCommand = vscode.commands.registerCommand(
           'phoenixPulse.copyModuleName',
-          async (item: any) => {
+          (item: any) => {
             if (!item || !item.data) return;
 
             let moduleName = '';
 
-            // For schemas: data is the schema object
             if (item.contextValue === 'schema' || item.contextValue === 'schema-expandable') {
-              moduleName = item.data.name;
-            }
-            // For components: need to fetch from LSP
-            else if (item.contextValue === 'component' || item.contextValue === 'component-expandable') {
-              const components = await client.sendRequest('phoenix/listComponents', {});
-              const component = components.find((c: any) => c.name === item.label);
-              if (component) {
-                // Extract module from filePath: /lib/my_app_web/components/core_components.ex
-                const match = component.filePath.match(/lib\/(.+)\.ex$/);
-                if (match) {
-                  moduleName = match[1]
-                    .split('/')
-                    .map((part: string) =>
-                      part.split('_').map((w: string) =>
-                        w.charAt(0).toUpperCase() + w.slice(1)
-                      ).join('')
-                    )
-                    .join('.');
-                }
-              }
+              moduleName = item.data.module || item.data.name;
+            } else if (item.contextValue === 'component' || item.contextValue === 'component-expandable') {
+              moduleName = item.data.module;
             }
 
             if (moduleName) {
@@ -219,14 +201,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const copyRoutePathCommand = vscode.commands.registerCommand(
           'phoenixPulse.copyRoutePath',
           (item: any) => {
-            if (item && item.label) {
-              // Extract path from label "GET /users/:id"
-              const match = item.label.match(/^[A-Z]+\s+(.+)$/);
-              if (match) {
-                const routePath = match[1];
-                vscode.env.clipboard.writeText(routePath);
-                vscode.window.showInformationMessage(`Copied route: ${routePath}`);
-              }
+            const routePath = item?.data?.path;
+
+            if (routePath) {
+              vscode.env.clipboard.writeText(routePath);
+              vscode.window.showInformationMessage(`Copied route: ${routePath}`);
             }
           }
         );
