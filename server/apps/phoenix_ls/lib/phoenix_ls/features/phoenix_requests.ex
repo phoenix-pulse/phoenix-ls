@@ -3,19 +3,19 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   Payload builders for Phoenix editor explorer requests.
   """
 
-  alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Index.{Fact, Snapshot}
   alias PhoenixLS.Support.URI, as: SupportURI
 
   @type method :: String.t()
 
-  @spec handle(method(), [Fact.t()]) :: list(map()) | nil
-  def handle("phoenix/listSchemas", facts), do: list_schemas(facts)
-  def handle("phoenix/listComponents", facts), do: list_components(facts)
-  def handle("phoenix/listRoutes", facts), do: list_routes(facts)
-  def handle("phoenix/listTemplates", facts), do: list_templates(facts)
-  def handle("phoenix/listEvents", facts), do: list_events(facts)
-  def handle("phoenix/listLiveView", facts), do: list_live_view(facts)
-  def handle("phoenix/" <> _unknown, _facts), do: nil
+  @spec handle(method(), Snapshot.t()) :: list(map()) | nil
+  def handle("phoenix/listSchemas", snapshot), do: list_schemas(snapshot)
+  def handle("phoenix/listComponents", snapshot), do: list_components(snapshot)
+  def handle("phoenix/listRoutes", snapshot), do: list_routes(snapshot)
+  def handle("phoenix/listTemplates", snapshot), do: list_templates(snapshot)
+  def handle("phoenix/listEvents", snapshot), do: list_events(snapshot)
+  def handle("phoenix/listLiveView", snapshot), do: list_live_view(snapshot)
+  def handle("phoenix/" <> _unknown, _snapshot), do: nil
 
   defp list_schemas(facts) do
     fields_by_schema =
@@ -356,8 +356,8 @@ defmodule PhoenixLS.Features.PhoenixRequests do
   defp live_action(%Fact{data: %{verb: :live, action: action}}), do: optional_atom_string(action)
   defp live_action(_fact), do: nil
 
-  defp facts_by_kind(facts, kind) do
-    Enum.filter(facts, &(&1.kind == kind))
+  defp facts_by_kind(%Snapshot{} = snapshot, kind) do
+    Snapshot.by_kind(snapshot, kind)
   end
 
   defp location(%Fact{range: %{start: start}}) do

@@ -2,7 +2,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
   use ExUnit.Case, async: true
 
   alias PhoenixLS.Features.PhoenixRequests
-  alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Index.{ElixirSource, Snapshot}
   alias PhoenixLS.Introspection.Template
 
   @source_uri "file:///tmp/app/lib/app_web/live/page_live.ex"
@@ -68,7 +68,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                  }
                ]
              }
-           ] = PhoenixRequests.handle("phoenix/listSchemas", facts())
+           ] = PhoenixRequests.handle("phoenix/listSchemas", snapshot())
 
     assert line > 0
   end
@@ -112,7 +112,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                  }
                ]
              }
-           ] = PhoenixRequests.handle("phoenix/listComponents", facts())
+           ] = PhoenixRequests.handle("phoenix/listComponents", snapshot())
   end
 
   test "lists routes" do
@@ -128,7 +128,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 4}
              }
-           ] = PhoenixRequests.handle("phoenix/listRoutes", facts())
+           ] = PhoenixRequests.handle("phoenix/listRoutes", snapshot())
   end
 
   test "lists templates" do
@@ -140,7 +140,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "location" => %{"line" => 0, "character" => 0},
                "module" => "AppWeb.PageHTML"
              }
-           ] = PhoenixRequests.handle("phoenix/listTemplates", facts())
+           ] = PhoenixRequests.handle("phoenix/listTemplates", snapshot())
   end
 
   test "lists LiveView events" do
@@ -151,7 +151,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 2}
              }
-           ] = PhoenixRequests.handle("phoenix/listEvents", facts())
+           ] = PhoenixRequests.handle("phoenix/listEvents", snapshot())
   end
 
   test "lists LiveView modules with functions" do
@@ -189,7 +189,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                  }
                ]
              }
-           ] = PhoenixRequests.handle("phoenix/listLiveView", facts())
+           ] = PhoenixRequests.handle("phoenix/listLiveView", snapshot())
   end
 
   test "lists many-to-many association metadata for ERD explorers" do
@@ -218,7 +218,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                  } = association
                ]
              }
-           ] = PhoenixRequests.handle("phoenix/listSchemas", facts)
+           ] = PhoenixRequests.handle("phoenix/listSchemas", Snapshot.new(facts))
 
     assert association["joinThrough"] == "products_tags"
     assert association["joinKeys"] == "[product_id: :id, tag_id: :id]"
@@ -226,7 +226,12 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
   end
 
   test "unknown phoenix request returns nil" do
-    assert PhoenixRequests.handle("phoenix/unknown", facts()) == nil
+    assert PhoenixRequests.handle("phoenix/unknown", snapshot()) == nil
+  end
+
+  defp snapshot do
+    facts()
+    |> Snapshot.new()
   end
 
   defp facts do
