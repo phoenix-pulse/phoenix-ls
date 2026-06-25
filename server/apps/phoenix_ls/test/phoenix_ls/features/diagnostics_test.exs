@@ -297,6 +297,40 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
            }
   end
 
+  test "reports route helper arity mismatches" do
+    facts =
+      route_helper_facts(
+        """
+        defmodule AppWeb.PageController do
+          def show(conn, _params) do
+            Routes.product_path(conn, :show)
+          end
+        end
+        """,
+        """
+        defmodule AppWeb.Router do
+          use Phoenix.Router
+
+          scope "/", AppWeb do
+            live "/products/:id", ProductLive.Show, :show
+          end
+        end
+        """
+      )
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert diagnostic.code == "phoenix.route_helper_arity_mismatch"
+    assert diagnostic.message == ~s(Route helper "product_path" expects 3 arguments but got 2)
+
+    assert diagnostic.data == %{
+             "kind" => "route_helper_arity_mismatch",
+             "helper" => "product_path",
+             "actualArity" => 2,
+             "expectedArities" => [3]
+           }
+  end
+
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
     assert diagnostics(~s(<:inner_block />)) == []
@@ -390,20 +424,21 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   end
 
   defp route_helper_facts(source) do
+    route_helper_facts(source, """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products", ProductLive.Index, :index
+      end
+    end
+    """)
+  end
+
+  defp route_helper_facts(source, router_source) do
     {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+    {:ok, router_facts} = ElixirSource.facts(@uri, router_source)
 
-    controller_facts ++
-      elem(
-        ElixirSource.facts(@uri, """
-        defmodule AppWeb.Router do
-          use Phoenix.Router
-
-          scope "/", AppWeb do
-            live "/products", ProductLive.Index, :index
-          end
-        end
-        """),
-        1
-      )
+    controller_facts ++ router_facts
   end
 end

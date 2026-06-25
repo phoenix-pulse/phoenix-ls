@@ -625,6 +625,9 @@ defmodule PhoenixLS.Features.Diagnostics do
       invalid_route_helper_action?(reference, routes) ->
         [unknown_route_helper_action_diagnostic(reference, routes)]
 
+      route_helper_arity_mismatch?(reference, routes) ->
+        [route_helper_arity_mismatch_diagnostic(reference, routes)]
+
       true ->
         []
     end
@@ -652,6 +655,40 @@ defmodule PhoenixLS.Features.Diagnostics do
     |> Enum.sort()
   end
 
+  defp route_helper_arity_mismatch?(%Fact{data: %{arity: actual_arity}} = reference, routes)
+       when is_integer(actual_arity) do
+    expected_arities = route_helper_expected_arities(reference, routes)
+
+    expected_arities != [] and actual_arity not in expected_arities
+  end
+
+  defp route_helper_arity_mismatch?(_reference, _routes), do: false
+
+  defp route_helper_expected_arities(%Fact{data: %{action: action}}, routes)
+       when is_atom(action) do
+    routes
+    |> Enum.filter(&(&1.data.action == action))
+    |> expected_arities()
+  end
+
+  defp route_helper_expected_arities(_reference, routes) do
+    expected_arities(routes)
+  end
+
+  defp expected_arities(routes) do
+    routes
+    |> Enum.map(&route_helper_expected_arity/1)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp route_helper_expected_arity(%Fact{data: data}) do
+    1 + route_helper_action_arity(data.action) + length(data.path_params)
+  end
+
+  defp route_helper_action_arity(nil), do: 0
+  defp route_helper_action_arity(_action), do: 1
+
   defp unknown_route_helper_diagnostic(%Fact{range: range, data: data}) do
     diagnostic(
       range,
@@ -674,6 +711,29 @@ defmodule PhoenixLS.Features.Diagnostics do
         "validActions" => route_helper_actions(routes)
       }
     )
+  end
+
+  defp route_helper_arity_mismatch_diagnostic(%Fact{range: range, data: data} = reference, routes) do
+    expected_arities = route_helper_expected_arities(reference, routes)
+
+    diagnostic(
+      range,
+      "phoenix.route_helper_arity_mismatch",
+      ~s(Route helper "#{data.helper}" expects #{expected_arities_message(expected_arities)} arguments but got #{data.arity}),
+      %{
+        "kind" => "route_helper_arity_mismatch",
+        "helper" => data.helper,
+        "actualArity" => data.arity,
+        "expectedArities" => expected_arities
+      }
+    )
+  end
+
+  defp expected_arities_message([arity]), do: Integer.to_string(arity)
+
+  defp expected_arities_message(arities) do
+    arities
+    |> Enum.map_join(" or ", &Integer.to_string/1)
   end
 
   defp verified_route_path(%Attribute{value: value}) when is_binary(value) do
