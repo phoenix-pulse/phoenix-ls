@@ -17,20 +17,30 @@ defmodule PhoenixLS.Features.SignatureHelp do
   alias PhoenixLS.Index.Fact
 
   @spec signature_help(CursorContext.t(), [Fact.t()]) :: SignatureHelp.t() | nil
-  def signature_help(%CursorContext{kind: :attribute_name, tag: tag, prefix: prefix}, facts) do
-    with %Fact{} = component <- ComponentLookup.component_for_tag(tag, facts) do
-      attrs = component_attrs(component, facts)
-      tag_label = tag_label(tag)
-
-      %SignatureHelp{
-        signatures: [signature(component, tag_label, attrs)],
-        active_signature: 0,
-        active_parameter: active_parameter(attrs, prefix)
-      }
+  def signature_help(%CursorContext{} = context, facts) do
+    with tag when is_binary(tag) <- component_tag(context),
+         %Fact{} = component <- ComponentLookup.component_for_tag(tag, facts) do
+      signature_help_for_component(component, tag, context, facts)
     end
   end
 
   def signature_help(_context, _facts), do: nil
+
+  defp component_tag(%CursorContext{kind: :tag_name, tag: tag}), do: tag
+  defp component_tag(%CursorContext{kind: :attribute_name, tag: tag}), do: tag
+  defp component_tag(%CursorContext{kind: :attribute_value, tag: tag}), do: tag
+  defp component_tag(_context), do: nil
+
+  defp signature_help_for_component(component, tag, context, facts) do
+    attrs = component_attrs(component, facts)
+    tag_label = tag_label(tag)
+
+    %SignatureHelp{
+      signatures: [signature(component, tag_label, attrs)],
+      active_signature: 0,
+      active_parameter: active_parameter(attrs, context)
+    }
+  end
 
   defp component_attrs(component, facts) do
     facts
@@ -57,6 +67,19 @@ defmodule PhoenixLS.Features.SignatureHelp do
   end
 
   defp tag_label(tag) when is_binary(tag), do: tag
+
+  defp active_parameter([], _context), do: nil
+
+  defp active_parameter(attrs, %CursorContext{kind: :attribute_value, attribute: attribute})
+       when is_binary(attribute) do
+    attrs
+    |> Enum.find_index(&(&1.data.name == attribute))
+    |> default_active_parameter()
+  end
+
+  defp active_parameter(attrs, %CursorContext{prefix: prefix}) do
+    active_parameter_for_prefix(attrs, prefix || "")
+  end
 
   defp component_documentation(component) do
     markdown([
@@ -91,18 +114,14 @@ defmodule PhoenixLS.Features.SignatureHelp do
     end
   end
 
-  defp active_parameter([], _prefix), do: nil
-
-  defp active_parameter(attrs, prefix) do
-    prefix = prefix || ""
-
+  defp active_parameter_for_prefix(attrs, prefix) do
     attrs
     |> Enum.find_index(&String.starts_with?(&1.data.name, prefix))
-    |> case do
-      nil -> 0
-      index -> index
-    end
+    |> default_active_parameter()
   end
+
+  defp default_active_parameter(nil), do: 0
+  defp default_active_parameter(index), do: index
 
   defp required?(attr), do: Keyword.get(attr.data.options || [], :required, false) == true
 

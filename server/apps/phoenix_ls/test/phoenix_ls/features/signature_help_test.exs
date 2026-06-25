@@ -49,6 +49,33 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
     assert String.contains?(Enum.at(signature.parameters, 1).documentation.value, ":primary")
   end
 
+  test "returns component signature help from completed tag names" do
+    {source, position} = source_and_position("<.button|")
+    {:ok, context} = CursorContext.at(source, position)
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 0
+           } = SignatureHelpFeature.signature_help(context, facts())
+
+    assert signature.label == "<.button label kind disabled>"
+    assert Enum.map(signature.parameters, & &1.label) == ["label", "kind", "disabled"]
+  end
+
+  test "keeps the current attribute active while editing its value" do
+    {source, position} = source_and_position(~s(<.button kind="pri|" />))
+    {:ok, context} = CursorContext.at(source, position)
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 1
+           } = SignatureHelpFeature.signature_help(context, facts())
+
+    assert signature.label == "<.button label kind disabled>"
+  end
+
   test "returns nil outside component attribute contexts" do
     {source, position} = source_and_position("<p>Hello |world</p>")
     {:ok, context} = CursorContext.at(source, position)
