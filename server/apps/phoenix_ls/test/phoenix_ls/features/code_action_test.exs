@@ -62,6 +62,59 @@ defmodule PhoenixLS.Features.CodeActionTest do
            end) == ["primary", "secondary"]
   end
 
+  test "removes unknown attrs from component tags" do
+    source = ~s(<.button label="Save" unknown="x" />)
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts())
+
+    assert [
+             %CodeAction{
+               title: ~s(Remove unknown attr "unknown"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 21},
+                         end: %Position{line: 0, character: 33}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts())
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "adds missing LiveComponent attrs" do
+    source = "<.live_component />"
+    {:ok, document} = Parser.parse(source)
+    diagnostics = Diagnostics.diagnostics(document, facts())
+
+    actions = CodeActionFeature.actions(source, @uri, diagnostics, facts())
+
+    assert Enum.map(actions, & &1.title) == [
+             ~s(Add required attr "id"),
+             ~s(Add required attr "module")
+           ]
+
+    assert Enum.map(actions, fn action ->
+             [%TextEdit{range: range, new_text: new_text}] = action.edit.changes[@uri]
+
+             assert range == %Range{
+                      start: %Position{line: 0, character: 16},
+                      end: %Position{line: 0, character: 16}
+                    }
+
+             new_text
+           end) == [~s( id=""), " module={Module}"]
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """

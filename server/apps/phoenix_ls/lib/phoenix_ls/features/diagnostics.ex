@@ -194,7 +194,12 @@ defmodule PhoenixLS.Features.Diagnostics do
       diagnostic(
         tag.name_range,
         "phoenix.missing_live_component_attr",
-        ~s(Missing required attr "#{attr_name}" for .live_component)
+        ~s(Missing required attr "#{attr_name}" for .live_component),
+        %{
+          "kind" => "missing_live_component_attr",
+          "tag" => ".live_component",
+          "attr" => attr_name
+        }
       )
     end)
   end

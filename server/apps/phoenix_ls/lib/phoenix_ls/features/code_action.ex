@@ -15,7 +15,7 @@ defmodule PhoenixLS.Features.CodeAction do
   }
 
   alias PhoenixLS.Features.ComponentLookup
-  alias PhoenixLS.HEEx.Document.Tag
+  alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Support.Positions
@@ -47,22 +47,37 @@ defmodule PhoenixLS.Features.CodeAction do
     with %Tag{} = tag <- find_tag(tags, tag_name, diagnostic.range),
          %Fact{} = attr <- attr_fact(facts, tag_name, attr_name),
          {:ok, range} <- insert_range(source, tag) do
+      [insert_attr_action(diagnostic, uri, range, attr_name, default_value(attr))]
+    else
+      _missing_context -> []
+    end
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.missing_live_component_attr",
+           data: %{
+             "kind" => "missing_live_component_attr",
+             "tag" => tag_name,
+             "attr" => attr_name
+           }
+         } = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    with %Tag{} = tag <- find_tag(tags, tag_name, diagnostic.range),
+         {:ok, range} <- insert_range(source, tag) do
       [
-        %CodeAction{
-          title: ~s(Add required attr "#{attr_name}"),
-          kind: CodeActionKind.quick_fix(),
-          diagnostics: [diagnostic],
-          edit: %WorkspaceEdit{
-            changes: %{
-              uri => [
-                %TextEdit{
-                  range: range,
-                  new_text: " #{attr_name}=#{default_value(attr)}"
-                }
-              ]
-            }
-          }
-        }
+        insert_attr_action(
+          diagnostic,
+          uri,
+          range,
+          attr_name,
+          live_component_default_value(attr_name)
+        )
       ]
     else
       _missing_context -> []
@@ -100,10 +115,73 @@ defmodule PhoenixLS.Features.CodeAction do
     end)
   end
 
+  defp action_for_diagnostic(
+         %Diagnostic{} = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    if diagnostic.source == @source and diagnostic.code == "phoenix.unknown_attr" do
+      unknown_attr_action(diagnostic, source, uri, tags)
+    else
+      []
+    end
+  end
+
   defp action_for_diagnostic(_diagnostic, _source, _uri, _tags, _facts), do: []
+
+  defp insert_attr_action(diagnostic, uri, range, attr_name, value) do
+    %CodeAction{
+      title: ~s(Add required attr "#{attr_name}"),
+      kind: CodeActionKind.quick_fix(),
+      diagnostics: [diagnostic],
+      edit: %WorkspaceEdit{
+        changes: %{
+          uri => [
+            %TextEdit{
+              range: range,
+              new_text: " #{attr_name}=#{value}"
+            }
+          ]
+        }
+      }
+    }
+  end
+
+  defp unknown_attr_action(diagnostic, source, uri, tags) do
+    with %Attribute{} = attr <- find_attr(tags, diagnostic.range),
+         {:ok, range} <- attr_removal_range(source, attr) do
+      [
+        %CodeAction{
+          title: ~s(Remove unknown attr "#{attr.name}"),
+          kind: CodeActionKind.quick_fix(),
+          diagnostics: [diagnostic],
+          edit: %WorkspaceEdit{
+            changes: %{
+              uri => [
+                %TextEdit{
+                  range: range,
+                  new_text: ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    else
+      _missing_context -> []
+    end
+  end
 
   defp find_tag(tags, tag_name, range) do
     Enum.find(tags, &(&1.name == tag_name and &1.name_range == range))
+  end
+
+  defp find_attr(tags, range) do
+    tags
+    |> Enum.flat_map(& &1.attrs)
+    |> Enum.find(&(&1.name_range == range))
   end
 
   defp attr_fact(facts, tag_name, attr_name) do
@@ -122,6 +200,19 @@ defmodule PhoenixLS.Features.CodeAction do
       position = %Position{line: position.line, character: position.character}
 
       {:ok, %Range{start: position, end: position}}
+    else
+      _error -> :error
+    end
+  end
+
+  defp attr_removal_range(source, %Attribute{range: range}) do
+    with {:ok, start_offset} <- Positions.lsp_position_to_offset(source, range.start),
+         {:ok, start} <-
+           Positions.offset_to_lsp_position(
+             source,
+             rewind_inline_whitespace(source, start_offset)
+           ) do
+      {:ok, %Range{start: position(start), end: range.end}}
     else
       _error -> :error
     end
@@ -159,12 +250,38 @@ defmodule PhoenixLS.Features.CodeAction do
     :binary.at(source, offset) in [?\s, ?\t, ?\n, ?\r]
   end
 
+  defp rewind_inline_whitespace(_source, 0), do: 0
+
+  defp rewind_inline_whitespace(source, offset) do
+    previous_offset = offset - 1
+
+    if inline_whitespace_at?(source, previous_offset) do
+      rewind_inline_whitespace(source, previous_offset)
+    else
+      offset
+    end
+  end
+
+  defp inline_whitespace_at?(source, offset) when offset >= 0 do
+    :binary.at(source, offset) in [?\s, ?\t]
+  end
+
+  defp inline_whitespace_at?(_source, _offset), do: false
+
+  defp position(%{line: line, character: character}) do
+    %Position{line: line, character: character}
+  end
+
   defp default_value(%Fact{data: %{type: :string}}), do: ~s("")
   defp default_value(%Fact{data: %{type: :boolean}}), do: "{false}"
   defp default_value(%Fact{data: %{type: :integer}}), do: "{0}"
   defp default_value(%Fact{data: %{type: :float}}), do: "{0.0}"
   defp default_value(%Fact{data: %{type: :atom}}), do: "{:value}"
   defp default_value(_attr), do: "{nil}"
+
+  defp live_component_default_value("id"), do: ~s("")
+  defp live_component_default_value("module"), do: "{Module}"
+  defp live_component_default_value(_attr), do: "{nil}"
 
   defp facts_by_kind(facts, kind) do
     Enum.filter(facts, &(&1.kind == kind))

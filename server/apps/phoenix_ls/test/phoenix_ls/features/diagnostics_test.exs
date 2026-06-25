@@ -95,6 +95,19 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
              ~s(Missing required attr "id" for .live_component),
              ~s(Missing required attr "module" for .live_component)
            ]
+
+    assert Enum.map(diagnostics, & &1.data) == [
+             %{
+               "kind" => "missing_live_component_attr",
+               "tag" => ".live_component",
+               "attr" => "id"
+             },
+             %{
+               "kind" => "missing_live_component_attr",
+               "tag" => ".live_component",
+               "attr" => "module"
+             }
+           ]
   end
 
   test "reports bad phx event names" do
