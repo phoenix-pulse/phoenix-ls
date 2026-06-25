@@ -40,6 +40,24 @@ defmodule PhoenixLS.Workspace.FileEventsTest do
     end)
   end
 
+  test "created watched files schedule disk indexing", %{
+    manager: manager,
+    root: root,
+    root_uri: root_uri
+  } do
+    path = Path.join([root, "lib", "created_live.ex"])
+    write_elixir!(path, "AppWeb.CreatedLive")
+    uri = SupportURI.path_to_file_uri!(path)
+
+    assert FileEvents.handle_lsp_events(manager, [
+             %FileEvent{uri: uri, type: FileChangeType.created()}
+           ]) == :ok
+
+    assert_eventually(fn ->
+      assert index_ids(Names.index_store(root_uri)) == ["AppWeb.CreatedLive"]
+    end)
+  end
+
   test "deleted watched files invalidate indexed facts", %{
     manager: manager,
     root: root,

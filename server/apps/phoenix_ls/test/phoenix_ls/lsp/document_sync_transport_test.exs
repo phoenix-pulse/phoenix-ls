@@ -10,7 +10,9 @@ defmodule PhoenixLS.LSP.DocumentSyncTransportTest do
   test "GenLSP transport applies open, full change, and close notifications" do
     start_supervised!({DocumentStore, name: @store})
 
-    test_server = GenLSP.Test.server(Server, init_args: [document_store: @store])
+    test_server =
+      GenLSP.Test.server(Server, init_args: [document_store: @store, project_manager: nil])
+
     test_client = GenLSP.Test.client(test_server)
 
     GenLSP.Test.notify(test_client, %{

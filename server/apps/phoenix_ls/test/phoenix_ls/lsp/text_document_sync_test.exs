@@ -202,6 +202,60 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
     end)
   end
 
+  test "changed open documents do not trigger a project warm scan",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "no_full_scan_on_change_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+    document_uri = SupportURI.path_to_file_uri!(Path.join([root, "lib", "page_live.ex"]))
+
+    first_source = """
+    defmodule AppWeb.PageLive do
+      def mount(socket), do: socket
+    end
+    """
+
+    second_source = """
+    defmodule AppWeb.PageLive do
+      def render(assigns), do: assigns
+    end
+    """
+
+    TextDocumentSync.handle(open_notification(document_uri, "elixir", first_source), lsp)
+
+    assert_eventually(fn ->
+      assert index_ids(Names.index_store(root_uri)) == [
+               "AppWeb.PageLive",
+               "AppWeb.PageLive.mount/1"
+             ]
+    end)
+
+    drain_phoenix_status_messages()
+
+    assert {:noreply, ^lsp} =
+             TextDocumentSync.handle(
+               change_notification(document_uri, 2, [%{text: second_source}]),
+               lsp
+             )
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "document",
+                      "uri" => ^document_uri
+                    }},
+                   500
+
+    refute_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "job" => "project"
+                    }},
+                   100
+  end
+
   test "removes indexed facts when an Elixir document closes",
        %{
          lsp: lsp
@@ -297,6 +351,14 @@ defmodule PhoenixLS.LSP.TextDocumentSyncTest do
       else
         reraise exception, __STACKTRACE__
       end
+  end
+
+  defp drain_phoenix_status_messages do
+    receive do
+      {:phoenix_ls_status, _payload} -> drain_phoenix_status_messages()
+    after
+      0 -> :ok
+    end
   end
 
   defp fixture_project(context, name) do

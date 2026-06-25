@@ -52,6 +52,30 @@ defmodule PhoenixLS.Index.SnapshotTest do
     assert Snapshot.by_kind(snapshot, :route) == []
   end
 
+  test "concurrent snapshots remain internally consistent while the store changes" do
+    component = fact(:component, "AppWeb.CoreComponents.button/1")
+    route = fact(:route, "AppWeb.Router:live:/products:AppWeb.ProductLive.Index:index")
+
+    Store.put(@store, component)
+
+    tasks =
+      for _ <- 1..20 do
+        Task.async(fn -> Snapshot.from_store(@store) end)
+      end
+
+    Store.put(@store, route)
+
+    snapshots = Enum.map(tasks, &Task.await/1)
+
+    Enum.each(snapshots, fn snapshot ->
+      all = Snapshot.all(snapshot)
+
+      assert Snapshot.by_kind(snapshot, :component) == Enum.filter(all, &(&1.kind == :component))
+      assert Snapshot.by_kind(snapshot, :route) == Enum.filter(all, &(&1.kind == :route))
+      assert all in [[component], [component, route]]
+    end)
+  end
+
   test "empty snapshot contains no facts" do
     snapshot = Snapshot.empty()
 
