@@ -413,10 +413,15 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       );
       item.description = assoc.type;
       item.tooltip = `Association: ${assoc.fieldName}\nType: ${assoc.type}\nTarget: ${assoc.targetModule}`;
-
-      // Try to find target schema and navigate to it
       const targetSchema = this.schemasCache.find(s => s.name === assoc.targetModule);
-      if (targetSchema) {
+
+      if (assoc.filePath && assoc.location) {
+        item.command = {
+          command: 'phoenixPulse.goToItem',
+          title: 'Go to Association',
+          arguments: [assoc.filePath, assoc.location]
+        };
+      } else if (targetSchema) {
         item.command = {
           command: 'phoenixPulse.goToItem',
           title: 'Go to Schema',
