@@ -276,6 +276,8 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert reference.data.variant == :path
     assert reference.data.action == :show
     assert reference.data.action_range == range(2, 30, 2, 35)
+    assert reference.data.arg_insert_range == range(2, 38, 2, 38)
+    assert reference.data.arg_trim_ranges[2] == range(2, 35, 2, 38)
     assert reference.data.arity == 3
   end
 

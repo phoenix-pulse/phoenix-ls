@@ -159,7 +159,11 @@ defmodule PhoenixLS.Features.CodeAction do
          _tags,
          facts
        )
-       when code in ["phoenix.unknown_route_helper", "phoenix.unknown_route_helper_action"] do
+       when code in [
+              "phoenix.unknown_route_helper",
+              "phoenix.unknown_route_helper_action",
+              "phoenix.route_helper_arity_mismatch"
+            ] do
     RouteHelpers.actions(diagnostic, uri, facts)
   end
 

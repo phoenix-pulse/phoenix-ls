@@ -14,7 +14,16 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
     """
 
     @enforce_keys [:helper, :helper_base, :variant, :arity]
-    defstruct [:helper, :helper_base, :variant, :action, :action_range, :arity]
+    defstruct [
+      :helper,
+      :helper_base,
+      :variant,
+      :action,
+      :action_range,
+      :arg_insert_range,
+      :arg_trim_ranges,
+      :arity
+    ]
   end
 
   @spec facts(term(), String.t(), keyword()) :: [Fact.t()]
@@ -62,6 +71,8 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
             variant: variant,
             action: action,
             action_range: helper_action_range(source, tokens, call_meta, helper_atom, action),
+            arg_insert_range: helper_arg_insert_range(source, tokens, call_meta, helper_atom),
+            arg_trim_ranges: helper_arg_trim_ranges(source, tokens, call_meta, helper_atom),
             arity: length(args)
           }
         )
@@ -99,6 +110,40 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
 
   defp helper_action_range(_source, _tokens, _call_meta, _helper, _action), do: nil
 
+  defp helper_arg_insert_range(source, tokens, call_meta, helper)
+       when is_binary(source) and is_list(tokens) and is_atom(helper) do
+    with {:ok, helper_index} <- helper_token_index(tokens, call_meta, helper),
+         {:ok, _commas, token} <- call_argument_boundary_tokens(tokens, helper_index),
+         {:ok, offset} <- token_start_offset(source, token_meta(token)),
+         {:ok, range} <- SourceMap.to_lsp_range(SourceMap.new(source), offset, offset) do
+      range
+    else
+      _no_insert_range -> nil
+    end
+  end
+
+  defp helper_arg_insert_range(_source, _tokens, _call_meta, _helper), do: nil
+
+  defp helper_arg_trim_ranges(source, tokens, call_meta, helper)
+       when is_binary(source) and is_list(tokens) and is_atom(helper) do
+    with {:ok, helper_index} <- helper_token_index(tokens, call_meta, helper),
+         {:ok, commas, closing_token} <- call_argument_boundary_tokens(tokens, helper_index),
+         {:ok, end_offset} <- token_start_offset(source, token_meta(closing_token)) do
+      commas
+      |> Enum.with_index(1)
+      |> Map.new(fn {comma, keep_count} ->
+        {:ok, start_offset} = token_start_offset(source, token_meta(comma))
+        {:ok, range} = SourceMap.to_lsp_range(SourceMap.new(source), start_offset, end_offset)
+
+        {keep_count, range}
+      end)
+    else
+      _no_trim_ranges -> %{}
+    end
+  end
+
+  defp helper_arg_trim_ranges(_source, _tokens, _call_meta, _helper), do: nil
+
   defp helper_token_index(tokens, call_meta, helper) do
     line = Keyword.get(call_meta, :line)
     column = Keyword.get(call_meta, :column)
@@ -120,6 +165,44 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
     case Enum.at(tokens, helper_index + 1) do
       {:"(", _meta} -> find_argument_token(tokens, helper_index + 2, 0, 0)
       _not_parenthesized -> :error
+    end
+  end
+
+  defp call_argument_boundary_tokens(tokens, helper_index) do
+    case Enum.at(tokens, helper_index + 1) do
+      {:"(", _meta} -> find_call_argument_boundaries(tokens, helper_index + 2, 0, [])
+      _not_parenthesized -> :error
+    end
+  end
+
+  defp find_call_argument_boundaries(tokens, index, depth, commas) do
+    case Enum.at(tokens, index) do
+      nil ->
+        :error
+
+      token ->
+        find_call_argument_boundaries(tokens, index, depth, commas, token, token_type(token))
+    end
+  end
+
+  defp find_call_argument_boundaries(_tokens, _index, 0, commas, token, :")") do
+    {:ok, Enum.reverse(commas), token}
+  end
+
+  defp find_call_argument_boundaries(tokens, index, 0, commas, token, :",") do
+    find_call_argument_boundaries(tokens, index + 1, 0, [token | commas])
+  end
+
+  defp find_call_argument_boundaries(tokens, index, depth, commas, _token, type) do
+    cond do
+      opening_token?(type) ->
+        find_call_argument_boundaries(tokens, index + 1, depth + 1, commas)
+
+      closing_token?(type) ->
+        find_call_argument_boundaries(tokens, index + 1, depth - 1, commas)
+
+      true ->
+        find_call_argument_boundaries(tokens, index + 1, depth, commas)
     end
   end
 
@@ -182,6 +265,9 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
   end
 
   defp atom_token_end_offset(_source, _start_offset, _meta), do: :error
+
+  defp token_meta({_type, meta}), do: meta
+  defp token_meta({_type, meta, _value}), do: meta
 
   defp token_type({type, _meta}), do: type
   defp token_type({type, _meta, _value}), do: type

@@ -273,6 +273,93 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
                    500
   end
 
+  test "GenLSP transport returns route helper arity quick fixes", context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "route_helper_arity_code_action_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+
+    controller_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/controllers/page_controller.ex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", param_router_source())
+    assert_indexed(router_uri, 2)
+    open_document(test_client, controller_uri, "elixir", route_helper_missing_param_source())
+    assert_indexed(controller_uri, 3)
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "method" => "textDocument/publishDiagnostics",
+                     "params" => %{
+                       "uri" => ^controller_uri,
+                       "diagnostics" => [
+                         %{
+                           "code" => "phoenix.route_helper_arity_mismatch",
+                           "data" => %{
+                             "kind" => "route_helper_arity_mismatch",
+                             "helper" => "product_path",
+                             "actualArity" => 2,
+                             "expectedArities" => [3]
+                           },
+                           "range" => diagnostic_range
+                         } = diagnostic
+                       ]
+                     }
+                   },
+                   500
+
+    GenLSP.Test.request(test_client, %{
+      id: 2,
+      jsonrpc: "2.0",
+      method: "textDocument/codeAction",
+      params: %{
+        textDocument: %{uri: controller_uri},
+        range: diagnostic_range,
+        context: %{diagnostics: [diagnostic]}
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 2,
+                     "result" => [
+                       %{
+                         "title" => "Add missing route param id",
+                         "kind" => "quickfix",
+                         "edit" => %{
+                           "changes" => %{
+                             ^controller_uri => [
+                               %{
+                                 "newText" => ", id",
+                                 "range" => %{
+                                   "start" => %{"line" => 2, "character" => 35},
+                                   "end" => %{"line" => 2, "character" => 35}
+                                 }
+                               }
+                             ]
+                           }
+                         }
+                       }
+                     ]
+                   },
+                   500
+  end
+
   test "GenLSP transport returns unknown template quick fixes", context do
     handler_id = {__MODULE__, self(), make_ref()}
 
@@ -421,11 +508,33 @@ defmodule PhoenixLS.LSP.CodeActionTransportTest do
     """
   end
 
+  defp param_router_source do
+    """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        live "/products/:id", ProductLive.Show, :show
+      end
+    end
+    """
+  end
+
   defp route_helper_controller_source do
     """
     defmodule AppWeb.PageController do
       def show(conn, _params) do
         Routes.product_path(conn, :edit)
+      end
+    end
+    """
+  end
+
+  defp route_helper_missing_param_source do
+    """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :show)
       end
     end
     """

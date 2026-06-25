@@ -522,6 +522,91 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "adds missing route helper params" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :show)
+      end
+    end
+    """
+
+    facts =
+      route_helper_facts(
+        source,
+        """
+        defmodule AppWeb.Router do
+          use Phoenix.Router
+
+          scope "/", AppWeb do
+            live "/products/:id", ProductLive.Show, :show
+          end
+        end
+        """
+      )
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert [
+             %CodeAction{
+               title: "Add missing route param id",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @controller_uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 2, character: 35},
+                         end: %Position{line: 2, character: 35}
+                       },
+                       new_text: ", id"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "removes extra route helper params" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :index, product)
+      end
+    end
+    """
+
+    facts = route_helper_facts(source)
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert [
+             %CodeAction{
+               title: "Remove extra route helper arguments",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @controller_uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 2, character: 36},
+                         end: %Position{line: 2, character: 45}
+                       },
+                       new_text: ""
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "replaces unknown render templates with known templates" do
     source = """
     defmodule AppWeb.PageController do
@@ -577,10 +662,7 @@ defmodule PhoenixLS.Features.CodeActionTest do
   end
 
   defp route_helper_facts(source) do
-    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
-
-    {:ok, router_facts} =
-      ElixirSource.facts(@uri, """
+    route_helper_facts(source, """
       defmodule AppWeb.Router do
         use Phoenix.Router
 
@@ -588,7 +670,12 @@ defmodule PhoenixLS.Features.CodeActionTest do
           live "/products", ProductLive.Index, :index
         end
       end
-      """)
+    """)
+  end
+
+  defp route_helper_facts(source, router_source) do
+    {:ok, controller_facts} = ElixirSource.facts(@controller_uri, source)
+    {:ok, router_facts} = ElixirSource.facts(@uri, router_source)
 
     controller_facts ++ router_facts
   end
