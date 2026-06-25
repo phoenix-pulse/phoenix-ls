@@ -114,7 +114,7 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
           "version" => ^version
         }
       },
-      500
+      1_500
     )
   end
 

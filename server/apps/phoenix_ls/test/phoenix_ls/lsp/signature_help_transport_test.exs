@@ -1,4 +1,4 @@
-defmodule PhoenixLS.LSP.DefinitionTransportTest do
+defmodule PhoenixLS.LSP.SignatureHelpTransportTest do
   use ExUnit.Case, async: true
 
   import GenLSP.Test, only: [assert_result: 3]
@@ -7,8 +7,7 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
   alias PhoenixLS.Support.Positions
   alias PhoenixLS.Support.URI, as: SupportURI
 
-  test "GenLSP transport returns component definition locations from open project indexes",
-       context do
+  test "GenLSP transport returns component signature help from open project indexes", context do
     handler_id = {__MODULE__, self(), make_ref()}
 
     :telemetry.attach(
@@ -20,7 +19,7 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    root = fixture_project(context, "definition_project")
+    root = fixture_project(context, "signature_help_project")
     root_uri = SupportURI.path_to_file_uri!(root)
 
     component_uri =
@@ -28,7 +27,7 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
 
     heex_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page.html.heex"))
 
-    {heex_source, position} = source_and_position("<.button| />")
+    {heex_source, position} = source_and_position("<.button la| />")
 
     test_server = GenLSP.Test.server(Server)
     test_client = GenLSP.Test.client(test_server)
@@ -36,95 +35,51 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
     initialize(test_client, root_uri)
     open_document(test_client, component_uri, "elixir", component_source())
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
-    assert_indexed(component_uri, 3)
+    assert_indexed(component_uri, 5)
     assert_indexed(heex_uri, 1)
 
     GenLSP.Test.request(test_client, %{
       id: 2,
       jsonrpc: "2.0",
-      method: "textDocument/definition",
+      method: "textDocument/signatureHelp",
       params: %{
         textDocument: %{uri: heex_uri},
         position: position
       }
     })
 
-    assert_result(
-      2,
-      %{
-        "uri" => ^component_uri,
-        "range" => %{
-          "start" => %{"line" => 1, "character" => 2},
-          "end" => %{"line" => 5, "character" => 5}
-        }
-      },
-      500
-    )
-  end
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 2,
+                     "result" => %{
+                       "activeParameter" => 0,
+                       "activeSignature" => 0,
+                       "signatures" => [
+                         %{
+                           "documentation" => %{
+                             "kind" => "markdown",
+                             "value" => documentation
+                           },
+                           "label" => "<.button label kind>",
+                           "parameters" => [
+                             %{
+                               "documentation" => %{
+                                 "kind" => "markdown",
+                                 "value" => label_documentation
+                               },
+                               "label" => "label"
+                             },
+                             %{"label" => "kind"}
+                           ]
+                         }
+                       ]
+                     }
+                   },
+                   500
 
-  test "GenLSP transport returns template definition locations from controller render calls",
-       context do
-    handler_id = {__MODULE__, self(), make_ref()}
-
-    :telemetry.attach(
-      handler_id,
-      [:phoenix_ls, :indexer, :document],
-      &__MODULE__.handle_indexer_event/4,
-      self()
-    )
-
-    on_exit(fn -> :telemetry.detach(handler_id) end)
-
-    root = fixture_project(context, "template_definition_project")
-    root_uri = SupportURI.path_to_file_uri!(root)
-
-    controller_uri =
-      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/controllers/page_controller.ex"))
-
-    template_uri =
-      SupportURI.path_to_file_uri!(
-        Path.join(root, "lib/app_web/controllers/page_html/index.html.heex")
-      )
-
-    {controller_source, position} =
-      source_and_position("""
-      defmodule AppWeb.PageController do
-        def index(conn, _params) do
-          render(conn, :in|dex)
-        end
-      end
-      """)
-
-    test_server = GenLSP.Test.server(Server)
-    test_client = GenLSP.Test.client(test_server)
-
-    initialize(test_client, root_uri)
-    open_document(test_client, controller_uri, "elixir", controller_source)
-    open_document(test_client, template_uri, "phoenix-heex", "<h1>Index</h1>")
-    assert_indexed(controller_uri, 3)
-    assert_indexed(template_uri, 1)
-
-    GenLSP.Test.request(test_client, %{
-      id: 2,
-      jsonrpc: "2.0",
-      method: "textDocument/definition",
-      params: %{
-        textDocument: %{uri: controller_uri},
-        position: position
-      }
-    })
-
-    assert_result(
-      2,
-      %{
-        "uri" => ^template_uri,
-        "range" => %{
-          "start" => %{"line" => 0, "character" => 0},
-          "end" => %{"line" => 0, "character" => 14}
-        }
-      },
-      500
-    )
+    assert String.contains?(documentation, "AppWeb.CoreComponents.button/1")
+    assert String.contains?(label_documentation, "Required")
+    assert String.contains?(label_documentation, "Visible label")
   end
 
   def handle_indexer_event(event, measurements, metadata, parent) do
@@ -162,6 +117,10 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
           "definitionProvider" => true,
           "experimental" => nil,
           "hoverProvider" => true,
+          "signatureHelpProvider" => %{
+            "triggerCharacters" => ["<", " "],
+            "retriggerCharacters" => [" "]
+          },
           "textDocumentSync" => %{
             "openClose" => true,
             "change" => 1
@@ -200,6 +159,9 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
   defp component_source do
     """
     defmodule AppWeb.CoreComponents do
+      attr :label, :string, required: true, doc: "Visible label"
+      attr :kind, :atom, default: :primary
+
       def button(assigns) do
         ~H\"\"\"
         <button><%= @label %></button>
@@ -232,11 +194,11 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
     File.mkdir_p!(root)
 
     File.write!(Path.join(root, "mix.exs"), """
-    defmodule DefinitionFixture.MixProject do
+    defmodule SignatureHelpFixture.MixProject do
       use Mix.Project
 
       def project do
-        [app: :definition_fixture, version: "0.1.0", deps: []]
+        [app: :signature_help_fixture, version: "0.1.0", deps: []]
       end
     end
     """)
@@ -246,6 +208,18 @@ defmodule PhoenixLS.LSP.DefinitionTransportTest do
 
   defp tmp_dir(context) do
     name = context.test |> Atom.to_string() |> :erlang.phash2() |> Integer.to_string(36)
-    Path.join(System.tmp_dir!(), "phoenix_ls_definition_transport_#{name}")
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "phoenix_ls_signature_help_#{name}_#{System.unique_integer([:positive])}"
+      )
+
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+
+    on_exit(fn -> File.rm_rf!(path) end)
+
+    path
   end
 end

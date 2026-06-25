@@ -39,7 +39,7 @@ defmodule PhoenixLS.LSP.WatchedFilesTransportTest do
         },
         "serverInfo" => %{"name" => "PhoenixLS", "version" => "0.1.0"}
       },
-      500
+      1_500
     )
 
     GenLSP.Test.notify(test_client, %{

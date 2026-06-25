@@ -12,6 +12,7 @@ defmodule PhoenixLS.LSP.Capabilities do
   alias GenLSP.Structures.{
     CompletionOptions,
     ServerCapabilities,
+    SignatureHelpOptions,
     TextDocumentSyncOptions,
     WorkspaceFoldersServerCapabilities
   }
@@ -25,6 +26,10 @@ defmodule PhoenixLS.LSP.Capabilities do
       completion_provider: %CompletionOptions{
         trigger_characters: [".", ":"],
         resolve_provider: true
+      },
+      signature_help_provider: %SignatureHelpOptions{
+        trigger_characters: ["<", " "],
+        retrigger_characters: [" "]
       },
       hover_provider: true,
       definition_provider: true,

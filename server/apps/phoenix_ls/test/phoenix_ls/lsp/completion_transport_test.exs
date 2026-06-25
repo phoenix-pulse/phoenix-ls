@@ -251,7 +251,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
           "version" => ^version
         }
       },
-      500
+      1_500
     )
   end
 

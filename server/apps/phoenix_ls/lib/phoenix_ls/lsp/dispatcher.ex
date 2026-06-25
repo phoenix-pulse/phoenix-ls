@@ -20,6 +20,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Shutdown,
     TextDocumentCompletion,
     TextDocumentDefinition,
+    TextDocumentSignatureHelp,
     TextDocumentHover,
     WorkspaceExecuteCommand
   }
@@ -34,6 +35,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Hover,
     PhoenixRequests,
     RequestContext,
+    SignatureHelp,
     TextDocumentSync,
     WorkspaceFolders
   }
@@ -76,6 +78,10 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_request(%TextDocumentDefinition{} = request, lsp) do
     Definition.handle(request, RequestContext.new(lsp))
+  end
+
+  def handle_request(%TextDocumentSignatureHelp{} = request, lsp) do
+    SignatureHelp.handle(request, RequestContext.new(lsp))
   end
 
   def handle_request(

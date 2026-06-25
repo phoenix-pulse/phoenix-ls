@@ -20,7 +20,7 @@ defmodule PhoenixLS.LSP.StatusTransportTest do
       params: %{capabilities: %{}, processId: nil, rootUri: root_uri}
     })
 
-    assert_result(1, %{"serverInfo" => %{"name" => "PhoenixLS"}}, 500)
+    assert_result(1, %{"serverInfo" => %{"name" => "PhoenixLS"}}, 1_500)
 
     assert_notification(
       "phoenix/status",

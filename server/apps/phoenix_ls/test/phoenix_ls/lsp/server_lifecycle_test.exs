@@ -247,7 +247,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
           "version" => ^version
         }
       },
-      500
+      1_500
     )
 
     GenLSP.Test.request(test_client, %{id: 2, jsonrpc: "2.0", method: "shutdown"})

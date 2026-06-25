@@ -2,7 +2,14 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
   use ExUnit.Case, async: true
 
   alias GenLSP.Enumerations.TextDocumentSyncKind
-  alias GenLSP.Structures.{CompletionOptions, ServerCapabilities, TextDocumentSyncOptions}
+
+  alias GenLSP.Structures.{
+    CompletionOptions,
+    ServerCapabilities,
+    SignatureHelpOptions,
+    TextDocumentSyncOptions
+  }
+
   alias PhoenixLS.LSP.Capabilities
 
   test "returns a GenLSP server capabilities struct" do
@@ -47,5 +54,13 @@ defmodule PhoenixLS.LSP.CapabilitiesTest do
     capabilities = Capabilities.build()
 
     assert capabilities.definition_provider == true
+  end
+
+  test "advertises signature help support" do
+    capabilities = Capabilities.build()
+
+    assert %SignatureHelpOptions{} = signature_help = capabilities.signature_help_provider
+    assert signature_help.trigger_characters == ["<", " "]
+    assert signature_help.retrigger_characters == [" "]
   end
 end

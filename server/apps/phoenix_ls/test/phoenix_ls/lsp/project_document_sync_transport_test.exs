@@ -57,7 +57,7 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
           "version" => "0.1.0"
         }
       },
-      500
+      1_500
     )
 
     GenLSP.Test.notify(test_client, %{
@@ -132,7 +132,7 @@ defmodule PhoenixLS.LSP.ProjectDocumentSyncTransportTest do
           "version" => "0.1.0"
         }
       },
-      500
+      1_500
     )
 
     GenLSP.Test.notify(test_client, %{

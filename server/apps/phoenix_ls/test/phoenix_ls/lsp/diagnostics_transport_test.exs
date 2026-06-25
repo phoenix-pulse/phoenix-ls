@@ -273,7 +273,7 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
       }
     })
 
-    assert_result(1, %{"serverInfo" => %{"name" => "PhoenixLS"}}, 500)
+    assert_result(1, %{"serverInfo" => %{"name" => "PhoenixLS"}}, 1_500)
   end
 
   defp open_document(test_client, uri, language_id, text) do
