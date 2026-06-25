@@ -5,7 +5,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   alias GenLSP.Enumerations.DiagnosticSeverity
   alias GenLSP.Structures.Diagnostic
-  alias PhoenixLS.Features.ComponentLookup
+  alias PhoenixLS.Features.{ComponentLookup, TemplateFacts}
   alias PhoenixLS.HEEx.Document
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.Index.Fact
@@ -61,7 +61,7 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   @spec diagnostics(Document.t(), [Fact.t()]) :: [Diagnostic.t()]
   def diagnostics(%Document{tags: tags}, facts) when is_list(facts) do
-    indexes = indexes(facts)
+    indexes = indexes(facts, nil)
 
     tags
     |> Enum.flat_map(&tag_diagnostics(&1, indexes, tags))
@@ -88,6 +88,14 @@ defmodule PhoenixLS.Features.Diagnostics do
       |> Enum.flat_map(&route_helper_reference_diagnostics(&1, facts))
 
     template_diagnostics ++ route_helper_diagnostics
+  end
+
+  @spec diagnostics(String.t(), Document.t(), [Fact.t()]) :: [Diagnostic.t()]
+  def diagnostics(uri, %Document{tags: tags}, facts) when is_binary(uri) and is_list(facts) do
+    indexes = indexes(facts, uri)
+
+    tags
+    |> Enum.flat_map(&tag_diagnostics(&1, indexes, tags))
   end
 
   defp tag_diagnostics(%Tag{kind: :component, name: ".live_component"} = tag, indexes, tags) do
@@ -948,7 +956,9 @@ defmodule PhoenixLS.Features.Diagnostics do
     Enum.find(attrs, &(&1.name == name))
   end
 
-  defp indexes(facts) do
+  defp indexes(facts, uri) do
+    event_facts = event_facts_for_uri(facts, uri)
+
     %{
       facts: facts,
       attrs_by_component:
@@ -968,12 +978,10 @@ defmodule PhoenixLS.Features.Diagnostics do
         |> facts_by_kind(:component_slot)
         |> MapSet.new(& &1.data.name),
       events:
-        facts
-        |> facts_by_kind(:live_event)
+        event_facts
         |> MapSet.new(& &1.data.event),
       event_names:
-        facts
-        |> facts_by_kind(:live_event)
+        event_facts
         |> Enum.map(& &1.data.event)
         |> Enum.uniq()
         |> Enum.sort(),
@@ -986,6 +994,20 @@ defmodule PhoenixLS.Features.Diagnostics do
 
   defp facts_by_kind(facts, kind) do
     Enum.filter(facts, &(&1.kind == kind))
+  end
+
+  defp event_facts_for_uri(facts, nil), do: facts_by_kind(facts, :live_event)
+
+  defp event_facts_for_uri(facts, uri) do
+    case TemplateFacts.module_for_uri(facts, uri) do
+      {:ok, module} ->
+        facts
+        |> facts_by_kind(:live_event)
+        |> Enum.filter(&(&1.data.module == module))
+
+      :error ->
+        facts_by_kind(facts, :live_event)
+    end
   end
 
   defp diagnostic(range, code, message, data \\ nil, severity \\ DiagnosticSeverity.error()) do

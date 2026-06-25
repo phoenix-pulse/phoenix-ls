@@ -113,9 +113,9 @@ defmodule PhoenixLS.LSP.Diagnostics do
     end
   end
 
-  defp heex_diagnostics(%Document{text: text}, facts) do
+  defp heex_diagnostics(%Document{uri: uri, text: text}, facts) do
     case Parser.parse(text) do
-      {:ok, heex_document} -> FeatureDiagnostics.diagnostics(heex_document, facts)
+      {:ok, heex_document} -> FeatureDiagnostics.diagnostics(uri, heex_document, facts)
       {:error, reason} -> [parse_error_diagnostic(reason)]
     end
   end

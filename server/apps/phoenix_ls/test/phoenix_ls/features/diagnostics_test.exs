@@ -11,6 +11,7 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
   @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
   @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
+  @live_template_uri "file:///tmp/app/lib/app_web/live/product_live.html.heex"
 
   test "reports missing required component attrs" do
     [diagnostic] = diagnostics("<.button />")
@@ -203,6 +204,35 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
              "handler" => "handle_event/3",
              "knownEvents" => ["save"]
            }
+  end
+
+  test "reports phx event names missing from the template LiveView module" do
+    source = ~s(<button phx-click="save-admin">)
+    {:ok, document} = Parser.parse(source)
+
+    [diagnostic] =
+      Diagnostics.diagnostics(@live_template_uri, document, live_event_scope_facts(source))
+
+    assert diagnostic.code == "phoenix.unknown_event"
+
+    assert diagnostic.message ==
+             ~s(Missing handle_event/3 handler for LiveView event "save-admin")
+
+    assert diagnostic.data == %{
+             "kind" => "missing_live_event_handler",
+             "event" => "save-admin",
+             "attribute" => "phx-click",
+             "handler" => "handle_event/3",
+             "knownEvents" => ["save-product"]
+           }
+  end
+
+  test "accepts phx event names from the template LiveView module" do
+    source = ~s(<button phx-click="save-product">)
+    {:ok, document} = Parser.parse(source)
+
+    assert Diagnostics.diagnostics(@live_template_uri, document, live_event_scope_facts(source)) ==
+             []
   end
 
   test "does not report expression-based phx event values as unknown events" do
@@ -529,6 +559,29 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
       """)
 
     facts
+  end
+
+  defp live_event_scope_facts(template_source) do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.Admin.ProductLive do
+        use Phoenix.LiveView
+
+        def handle_event("save-admin", _params, socket) do
+          {:noreply, socket}
+        end
+      end
+
+      defmodule AppWeb.ProductLive do
+        use Phoenix.LiveView
+
+        def handle_event("save-product", _params, socket) do
+          {:noreply, socket}
+        end
+      end
+      """)
+
+    facts ++ Template.facts(@live_template_uri, template_source)
   end
 
   defp required_slot_attr_facts do

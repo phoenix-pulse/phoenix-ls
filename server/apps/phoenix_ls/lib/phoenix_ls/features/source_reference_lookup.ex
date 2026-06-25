@@ -5,15 +5,37 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
 
   alias PhoenixLS.Index.Fact
 
+  @type target_result :: {:ok, Fact.t()} | {:missing_target, Fact.t()} | :not_found
+
   @spec target_at(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [Fact.t()]) ::
           Fact.t() | nil
   def target_at(uri, position, facts) when is_binary(uri) and is_list(facts) do
-    facts
-    |> Enum.find(&reference_at?(&1, uri, position))
-    |> target(facts)
+    case target_result_at(uri, position, facts) do
+      {:ok, target} -> target
+      {:missing_target, _reference} -> nil
+      :not_found -> nil
+    end
   end
 
-  defp target(nil, _facts), do: nil
+  @spec target_result_at(
+          String.t(),
+          %{line: non_neg_integer(), character: non_neg_integer()},
+          [Fact.t()]
+        ) :: target_result()
+  def target_result_at(uri, position, facts) when is_binary(uri) and is_list(facts) do
+    facts
+    |> Enum.find(&reference_at?(&1, uri, position))
+    |> target_result(facts)
+  end
+
+  defp target_result(nil, _facts), do: :not_found
+
+  defp target_result(%Fact{} = reference, facts) do
+    case target(reference, facts) do
+      %Fact{} = target -> {:ok, target}
+      nil -> {:missing_target, reference}
+    end
+  end
 
   defp target(%Fact{kind: :template_reference, data: reference}, facts) do
     Enum.find(facts, &template_match?(&1, reference))
@@ -25,6 +47,10 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
     |> route_helper_target(reference)
   end
 
+  defp target(%Fact{kind: :live_event_usage, data: reference}, facts) do
+    Enum.find(facts, &live_event_handler_match?(&1, reference))
+  end
+
   defp target(_reference, _facts), do: nil
 
   defp reference_at?(
@@ -32,7 +58,8 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
          uri,
          position
        )
-       when fact_uri == uri and kind in [:template_reference, :route_helper_reference] do
+       when fact_uri == uri and
+              kind in [:template_reference, :route_helper_reference, :live_event_usage] do
     contains_position?(range, position)
   end
 
@@ -60,6 +87,15 @@ defmodule PhoenixLS.Features.SourceReferenceLookup do
   end
 
   defp route_helper_target(routes, _reference), do: List.first(routes)
+
+  defp live_event_handler_match?(
+         %Fact{kind: :live_event, data: %{module: module, event: event}},
+         %{module: module, event: event}
+       )
+       when is_binary(module) and is_binary(event),
+       do: true
+
+  defp live_event_handler_match?(_fact, _reference), do: false
 
   defp contains_position?(%{start: start, end: finish}, position) do
     compare_position(start, position) != :gt and compare_position(position, finish) == :lt

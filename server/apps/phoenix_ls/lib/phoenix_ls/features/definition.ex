@@ -27,9 +27,23 @@ defmodule PhoenixLS.Features.Definition do
           Fact.t()
         ]) :: Location.t() | nil
   def definition(uri, position, facts) when is_binary(uri) and is_list(facts) do
-    uri
-    |> SourceReferenceLookup.target_at(position, facts)
-    |> location()
+    case reference_definition(uri, position, facts) do
+      {:ok, definition} -> definition
+      :not_found -> nil
+    end
+  end
+
+  @spec reference_definition(
+          String.t(),
+          %{line: non_neg_integer(), character: non_neg_integer()},
+          [Fact.t()]
+        ) :: {:ok, Location.t() | nil} | :not_found
+  def reference_definition(uri, position, facts) when is_binary(uri) and is_list(facts) do
+    case SourceReferenceLookup.target_result_at(uri, position, facts) do
+      {:ok, fact} -> {:ok, location(fact)}
+      {:missing_target, _reference} -> {:ok, nil}
+      :not_found -> :not_found
+    end
   end
 
   defp location(nil), do: nil

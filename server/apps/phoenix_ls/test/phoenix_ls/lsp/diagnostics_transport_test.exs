@@ -234,6 +234,67 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     )
   end
 
+  test "GenLSP transport scopes HEEx event diagnostics to the template module", context do
+    root = fixture_project(context, "event_diagnostics_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    admin_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/admin/product_live.ex"))
+
+    product_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.ex"))
+
+    heex_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.html.heex"))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      admin_uri,
+      "elixir",
+      live_view_source("AppWeb.Admin.ProductLive", "save-admin")
+    )
+
+    open_document(
+      test_client,
+      product_uri,
+      "elixir",
+      live_view_source("AppWeb.ProductLive", "save-product")
+    )
+
+    assert_eventually(fn ->
+      events = IndexStore.by_kind(Names.index_store(root_uri), :live_event)
+      assert Enum.any?(events, &(&1.data.module == "AppWeb.Admin.ProductLive"))
+      assert Enum.any?(events, &(&1.data.module == "AppWeb.ProductLive"))
+    end)
+
+    open_document(test_client, heex_uri, "phoenix-heex", ~s(<button phx-click="save-admin">))
+
+    assert_notification(
+      "textDocument/publishDiagnostics",
+      %{
+        "uri" => ^heex_uri,
+        "version" => 1,
+        "diagnostics" => [
+          %{
+            "code" => "phoenix.unknown_event",
+            "message" => "Missing handle_event/3 handler for LiveView event \"save-admin\"",
+            "data" => %{
+              "kind" => "missing_live_event_handler",
+              "event" => "save-admin",
+              "knownEvents" => ["save-product"]
+            }
+          }
+        ]
+      },
+      500
+    )
+  end
+
   test "GenLSP transport publishes degraded diagnostics when no project engine is available" do
     start_supervised!({DocumentStore, name: @fallback_store})
 
@@ -341,6 +402,18 @@ defmodule PhoenixLS.LSP.DiagnosticsTransportTest do
     defmodule AppWeb.PageController do
       def index(conn, _params) do
         render(conn, :index)
+      end
+    end
+    """
+  end
+
+  defp live_view_source(module, event) do
+    """
+    defmodule #{module} do
+      use Phoenix.LiveView
+
+      def handle_event("#{event}", _params, socket) do
+        {:noreply, socket}
       end
     end
     """

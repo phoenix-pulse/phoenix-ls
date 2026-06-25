@@ -24,7 +24,7 @@ defmodule PhoenixLS.LSP.Completion do
         facts = Snapshot.all(snapshot)
 
         Components.complete(document.text, position, facts) ++
-          Phoenix.complete(context, facts) ++
+          context_completion_items(context, facts) ++
           Phoenix.complete(uri, document.text, position, facts)
       else
         _missing_or_invalid -> []
@@ -38,4 +38,13 @@ defmodule PhoenixLS.LSP.Completion do
   def resolve(%CompletionItemResolve{params: item}, %RequestContext{} = context) do
     {:reply, Resolve.resolve(item), context.lsp}
   end
+
+  defp context_completion_items(
+         %CursorContext{kind: :attribute_value, attribute: "phx-" <> _event},
+         _facts
+       ),
+       do: []
+
+  defp context_completion_items(%CursorContext{} = context, facts),
+    do: Phoenix.complete(context, facts)
 end

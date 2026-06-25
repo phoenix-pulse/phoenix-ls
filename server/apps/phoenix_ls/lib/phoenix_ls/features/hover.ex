@@ -27,9 +27,23 @@ defmodule PhoenixLS.Features.Hover do
   @spec hover(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [Fact.t()]) ::
           Hover.t() | nil
   def hover(uri, position, facts) when is_binary(uri) and is_list(facts) do
-    uri
-    |> SourceReferenceLookup.target_at(position, facts)
-    |> hover_for_fact()
+    case reference_hover(uri, position, facts) do
+      {:ok, hover} -> hover
+      :not_found -> nil
+    end
+  end
+
+  @spec reference_hover(
+          String.t(),
+          %{line: non_neg_integer(), character: non_neg_integer()},
+          [Fact.t()]
+        ) :: {:ok, Hover.t() | nil} | :not_found
+  def reference_hover(uri, position, facts) when is_binary(uri) and is_list(facts) do
+    case SourceReferenceLookup.target_result_at(uri, position, facts) do
+      {:ok, fact} -> {:ok, hover_for_fact(fact)}
+      {:missing_target, _reference} -> {:ok, nil}
+      :not_found -> :not_found
+    end
   end
 
   defp hover_for_fact(nil), do: nil

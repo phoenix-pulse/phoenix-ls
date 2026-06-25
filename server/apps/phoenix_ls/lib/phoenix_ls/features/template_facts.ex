@@ -31,6 +31,16 @@ defmodule PhoenixLS.Features.TemplateFacts do
     |> Enum.filter(&candidate_template?(uri, &1))
   end
 
+  @spec module_for_uri([Fact.t()], String.t()) :: {:ok, String.t()} | :error
+  def module_for_uri(facts, uri) when is_list(facts) and is_binary(uri) do
+    facts
+    |> Enum.find(&(&1.kind == :template and &1.uri == uri))
+    |> case do
+      %Fact{data: %{module: module}} when is_binary(module) -> {:ok, module}
+      _missing_template -> :error
+    end
+  end
+
   defp entry(%Fact{uri: uri}) do
     with {:ok, path} <- URI.file_uri_to_path(uri),
          {:ok, name, format} <- name_and_format(path) do

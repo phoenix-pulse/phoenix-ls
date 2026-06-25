@@ -229,6 +229,76 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  test "GenLSP transport scopes LiveView event completions to the template module", context do
+    attach_indexer()
+
+    root = fixture_project(context, "event_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    admin_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/admin/product_live.ex"))
+
+    product_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.ex"))
+
+    heex_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.html.heex"))
+
+    {heex_source, position} = source_and_position(~s(<button phx-click="save-|">Save</button>))
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      admin_uri,
+      "elixir",
+      live_view_source("AppWeb.Admin.ProductLive", "save-admin")
+    )
+
+    open_document(
+      test_client,
+      product_uri,
+      "elixir",
+      live_view_source("AppWeb.ProductLive", "save-product")
+    )
+
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(admin_uri)
+    assert_indexed(product_uri)
+    assert_indexed(heex_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 3,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      3,
+      [
+        %{
+          "data" => %{
+            "id" => "AppWeb.ProductLive:event:save-product",
+            "kind" => "live_event"
+          },
+          "detail" => "handle_event(\"save-product\", ...)",
+          "insertText" => "save-product",
+          "insertTextFormat" => 1,
+          "kind" => 23,
+          "label" => "save-product"
+        }
+      ],
+      500
+    )
+  end
+
   test "GenLSP transport resolves completion item documentation" do
     test_server = GenLSP.Test.server(Server)
     test_client = GenLSP.Test.client(test_server)
@@ -390,6 +460,18 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
         get "/users", UserController, :index
         get "/users/:id", UserController, :show
         live "/products/:id", ProductLive.Show, :show
+      end
+    end
+    """
+  end
+
+  defp live_view_source(module, event) do
+    """
+    defmodule #{module} do
+      use Phoenix.LiveView
+
+      def handle_event("#{event}", _params, socket) do
+        {:noreply, socket}
       end
     end
     """

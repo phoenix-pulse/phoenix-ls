@@ -22,8 +22,10 @@ defmodule PhoenixLS.LSP.Definition do
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         facts = Snapshot.all(snapshot)
 
-        DefinitionFeature.definition_source(document.text, position, facts) ||
-          DefinitionFeature.definition(uri, position, facts)
+        case DefinitionFeature.reference_definition(uri, position, facts) do
+          {:ok, definition} -> definition
+          :not_found -> DefinitionFeature.definition_source(document.text, position, facts)
+        end
       else
         _missing_or_invalid -> nil
       end

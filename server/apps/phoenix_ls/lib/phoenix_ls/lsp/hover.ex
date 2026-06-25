@@ -22,8 +22,10 @@ defmodule PhoenixLS.LSP.Hover do
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         facts = Snapshot.all(snapshot)
 
-        HoverFeature.hover_source(document.text, position, facts) ||
-          HoverFeature.hover(uri, position, facts)
+        case HoverFeature.reference_hover(uri, position, facts) do
+          {:ok, hover} -> hover
+          :not_found -> HoverFeature.hover_source(document.text, position, facts)
+        end
       else
         _missing_or_invalid -> nil
       end
