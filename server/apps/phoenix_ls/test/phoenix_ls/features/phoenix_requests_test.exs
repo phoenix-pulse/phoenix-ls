@@ -128,6 +128,8 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "helperBase" => "product",
                "pathParams" => ["id"],
                "scopePath" => "/",
+               "pipeline" => "browser",
+               "pipelines" => ["browser"],
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 4}
              }
@@ -306,6 +308,8 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
         use Phoenix.Router
 
         scope "/", AppWeb do
+          pipe_through :browser
+
           live "/products/:id", ProductLive.Show, :show
         end
       end

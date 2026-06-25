@@ -11,7 +11,16 @@ defmodule PhoenixLS.Introspection.Router do
     Typed route fact payload.
     """
 
-    @enforce_keys [:router, :verb, :path, :plug, :scope_path, :helper_base, :path_params]
+    @enforce_keys [
+      :router,
+      :verb,
+      :path,
+      :plug,
+      :scope_path,
+      :helper_base,
+      :path_params,
+      :pipelines
+    ]
     defstruct [
       :router,
       :verb,
@@ -21,7 +30,8 @@ defmodule PhoenixLS.Introspection.Router do
       :scope_path,
       :scope_module,
       :helper_base,
-      :path_params
+      :path_params,
+      :pipelines
     ]
   end
 
@@ -32,7 +42,34 @@ defmodule PhoenixLS.Introspection.Router do
       when is_binary(module) and is_binary(uri) and is_map(provenance) do
     body_ast
     |> top_level_expressions()
-    |> Enum.flat_map(&collect_expression(&1, module, uri, provenance, nil, ""))
+    |> collect_expressions(module, uri, provenance, nil, "", [])
+  end
+
+  defp collect_expressions(
+         expressions,
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines
+       ) do
+    expressions
+    |> Enum.reduce({[], pipelines}, fn expression, {facts, current_pipelines} ->
+      {new_facts, next_pipelines} =
+        collect_expression(
+          expression,
+          router,
+          uri,
+          provenance,
+          scope_module,
+          scope_path,
+          current_pipelines
+        )
+
+      {facts ++ new_facts, next_pipelines}
+    end)
+    |> elem(0)
   end
 
   defp collect_expression(
@@ -40,44 +77,115 @@ defmodule PhoenixLS.Introspection.Router do
          router,
          uri,
          provenance,
-         _scope_module,
-         scope_path
+         scope_module,
+         scope_path,
+         pipelines
        ) do
-    case scope_context(args, scope_path) do
+    case scope_context(args, scope_path, scope_module) do
       {:ok, next_scope_module, next_scope_path, block} ->
-        block
-        |> top_level_expressions()
-        |> Enum.flat_map(
-          &collect_expression(&1, router, uri, provenance, next_scope_module, next_scope_path)
-        )
+        facts =
+          block
+          |> top_level_expressions()
+          |> collect_expressions(
+            router,
+            uri,
+            provenance,
+            next_scope_module,
+            next_scope_path,
+            pipelines
+          )
+
+        {facts, pipelines}
 
       :error ->
-        []
+        {[], pipelines}
     end
   end
 
-  defp collect_expression({verb, meta, args}, router, uri, provenance, scope_module, scope_path)
+  defp collect_expression(
+         {:pipe_through, _meta, args},
+         _router,
+         _uri,
+         _provenance,
+         _scope_module,
+         _scope_path,
+         pipelines
+       ) do
+    case pipe_through_pipelines(args) do
+      {:ok, next_pipelines} -> {[], pipelines ++ next_pipelines}
+      :error -> {[], pipelines}
+    end
+  end
+
+  defp collect_expression(
+         {verb, meta, args},
+         router,
+         uri,
+         provenance,
+         scope_module,
+         scope_path,
+         pipelines
+       )
        when verb in @route_macros do
-    case route_fact(verb, meta, args, router, uri, provenance, scope_module, scope_path) do
-      {:ok, fact} -> [fact]
-      :error -> []
+    case route_fact(
+           verb,
+           meta,
+           args,
+           router,
+           uri,
+           provenance,
+           scope_module,
+           scope_path,
+           pipelines
+         ) do
+      {:ok, fact} -> {[fact], pipelines}
+      :error -> {[], pipelines}
     end
   end
 
-  defp collect_expression(_expression, _router, _uri, _provenance, _scope_module, _scope_path),
-    do: []
+  defp collect_expression(
+         _expression,
+         _router,
+         _uri,
+         _provenance,
+         _scope_module,
+         _scope_path,
+         pipelines
+       ),
+       do: {[], pipelines}
 
-  defp scope_context([path, [do: block]], current_path) when is_binary(path) do
-    {:ok, nil, join_paths(current_path, path), block}
+  defp pipe_through_pipelines([pipeline_ast]) do
+    case pipeline_names(pipeline_ast) do
+      [] -> :error
+      names -> {:ok, names}
+    end
   end
 
-  defp scope_context([path, module_ast, [do: block]], current_path) when is_binary(path) do
-    with {:ok, module} <- alias_to_string(module_ast) do
+  defp pipe_through_pipelines(_args), do: :error
+
+  defp pipeline_names(pipelines) when is_list(pipelines) do
+    pipelines
+    |> Enum.map(&pipeline_name/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp pipeline_names(pipeline), do: pipeline_names([pipeline])
+
+  defp pipeline_name(atom) when is_atom(atom), do: Atom.to_string(atom)
+  defp pipeline_name(_pipeline), do: nil
+
+  defp scope_context([path, [do: block]], current_path, current_module) when is_binary(path) do
+    {:ok, current_module, join_paths(current_path, path), block}
+  end
+
+  defp scope_context([path, module_ast, [do: block]], current_path, current_module)
+       when is_binary(path) do
+    with {:ok, module} <- scoped_alias(module_ast, current_module) do
       {:ok, module, join_paths(current_path, path), block}
     end
   end
 
-  defp scope_context(_args, _current_path), do: :error
+  defp scope_context(_args, _current_path, _current_module), do: :error
 
   defp route_fact(
          verb,
@@ -87,7 +195,8 @@ defmodule PhoenixLS.Introspection.Router do
          uri,
          provenance,
          scope_module,
-         scope_path
+         scope_path,
+         pipelines
        )
        when is_binary(path) do
     with {:ok, plug} <- scoped_alias(plug_ast, scope_module),
@@ -110,13 +219,24 @@ defmodule PhoenixLS.Introspection.Router do
            scope_path: scope_path,
            scope_module: scope_module,
            helper_base: helper_base(full_path),
-           path_params: path_params(full_path)
+           path_params: path_params(full_path),
+           pipelines: pipelines
          }
        )}
     end
   end
 
-  defp route_fact(_verb, _meta, _args, _router, _uri, _provenance, _scope_module, _scope_path) do
+  defp route_fact(
+         _verb,
+         _meta,
+         _args,
+         _router,
+         _uri,
+         _provenance,
+         _scope_module,
+         _scope_path,
+         _pipelines
+       ) do
     :error
   end
 

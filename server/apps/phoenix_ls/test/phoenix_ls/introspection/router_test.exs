@@ -46,7 +46,8 @@ defmodule PhoenixLS.Introspection.RouterTest do
              scope_path: "/",
              scope_module: "AppWeb",
              helper_base: "product",
-             path_params: ["id"]
+             path_params: ["id"],
+             pipelines: ["browser"]
            }
 
     assert get_route.kind == :route
@@ -56,6 +57,7 @@ defmodule PhoenixLS.Introspection.RouterTest do
     assert get_route.data.action == :edit
     assert get_route.data.helper_base == "product_edit"
     assert get_route.data.path_params == ["id"]
+    assert get_route.data.pipelines == ["browser"]
   end
 
   test "extracts helper bases and params from scoped controller routes" do
@@ -80,6 +82,41 @@ defmodule PhoenixLS.Introspection.RouterTest do
 
     assert Enum.map(facts, & &1.data.helper_base) == ["admin_report", "billing_invoice"]
     assert Enum.map(facts, & &1.data.path_params) == [[], ["invoice_id"]]
+  end
+
+  test "attaches accumulated pipe_through pipelines to subsequent scoped routes" do
+    source = """
+    defmodule AppWeb.Router do
+      use Phoenix.Router
+
+      scope "/", AppWeb do
+        pipe_through [:browser, :load_account]
+
+        get "/dashboard", DashboardController, :show
+
+        scope "/admin" do
+          pipe_through :require_admin
+
+          live "/users/:id", UserLive.Show, :show
+        end
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Router.facts_for_module_body("AppWeb.Router", body, @uri, @provenance)
+
+    assert Enum.map(facts, & &1.data.pipelines) == [
+             ["browser", "load_account"],
+             ["browser", "load_account", "require_admin"]
+           ]
+
+    assert Enum.map(facts, & &1.data.plug) == [
+             "AppWeb.DashboardController",
+             "AppWeb.UserLive.Show"
+           ]
   end
 
   test "ignores dynamic route paths without raising" do

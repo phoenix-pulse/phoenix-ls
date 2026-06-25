@@ -24,6 +24,7 @@ package.preload["phoenix-pulse.lsp"] = function()
             action = "show",
             helperBase = "product",
             pathParams = { "id" },
+            pipelines = { "browser", "load_account" },
             filePath = "/workspace/lib/app_web/router.ex",
             location = { line = 42, character = 4 },
             scopePath = "/",
@@ -86,7 +87,7 @@ explorer.state.expanded.routes = true
 explorer.refresh()
 
 assert_line_contains(rendered_lines, "Routes (1)", "route category")
-assert_line_contains(rendered_lines, "GET /products/:id (helper: product, params: id)", "route helper context")
+assert_line_contains(rendered_lines, "GET /products/:id (helper: product, params: id, pipelines: browser, load_account)", "route helper context")
 
 local target = explorer._definition_target(explorer.state.data.routes[1])
 assert_equal(target.file, "/workspace/lib/app_web/router.ex", "route target file")

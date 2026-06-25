@@ -392,6 +392,8 @@ describe('PhoenixPulseTreeProvider', () => {
               action: 'show',
               helperBase: 'product',
               pathParams: ['id'],
+              pipelines: ['browser', 'load_account'],
+              pipeline: 'browser, load_account',
               filePath: '/workspace/lib/app_web/router.ex',
               location: { line: 42, character: 4 },
               scopePath: '/'
@@ -413,9 +415,11 @@ describe('PhoenixPulseTreeProvider', () => {
     expect(routes[0].label).toBe('GET /products/:id');
     expect(routes[0].tooltip).toContain('Helper: product');
     expect(routes[0].tooltip).toContain('Params: id');
+    expect(routes[0].tooltip).toContain('Pipelines: browser, load_account');
     expect(routes[0].data).toMatchObject({
       helperBase: 'product',
       pathParams: ['id'],
+      pipelines: ['browser', 'load_account'],
       path: '/products/:id',
       verb: 'GET'
     });

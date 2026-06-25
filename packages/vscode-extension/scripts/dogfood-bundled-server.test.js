@@ -15,9 +15,7 @@ describe('dogfoodBundledServer', () => {
     fs.writeFileSync(serverPath, '#!/bin/sh\n');
     fs.chmodSync(serverPath, 0o755);
 
-    const spawn = createFakeServerSpawn({
-      results: Object.fromEntries(defaultMethods.map(method => [method, [{ method }]]))
-    });
+    const spawn = createFakeServerSpawn({ results: completeExplorerResults() });
 
     const summary = await dogfoodBundledServer({ rootDir, serverPath, spawn });
 
@@ -51,7 +49,7 @@ describe('dogfoodBundledServer', () => {
     fs.writeFileSync(serverPath, '#!/bin/sh\n');
     fs.chmodSync(serverPath, 0o755);
 
-    const results = Object.fromEntries(defaultMethods.map(method => [method, [{ method }]]));
+    const results = completeExplorerResults();
     results['phoenix/listTemplates'] = [];
 
     await expect(
@@ -62,7 +60,52 @@ describe('dogfoodBundledServer', () => {
       })
     ).rejects.toThrow('missing non-empty dogfood results for phoenix/listTemplates');
   });
+
+  test('fails when listRoutes omits route contract fields', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ls-dogfood-root-'));
+    const serverPath = path.join(rootDir, 'phoenix_ls');
+    fs.writeFileSync(serverPath, '#!/bin/sh\n');
+    fs.chmodSync(serverPath, 0o755);
+
+    const results = completeExplorerResults();
+    results['phoenix/listRoutes'] = [{}];
+
+    await expect(
+      dogfoodBundledServer({
+        rootDir,
+        serverPath,
+        spawn: createFakeServerSpawn({ results })
+      })
+    ).rejects.toThrow(
+      'phoenix/listRoutes[0] missing contract fields: verb, path, filePath, location, helperBase, pathParams, pipelines'
+    );
+  });
 });
+
+function completeExplorerResults() {
+  return {
+    'phoenix/listSchemas': [{ method: 'phoenix/listSchemas' }],
+    'phoenix/listComponents': [{ method: 'phoenix/listComponents' }],
+    'phoenix/listRoutes': [
+      {
+        verb: 'GET',
+        path: '/products/:id',
+        controller: 'AppWeb.ProductController',
+        action: 'show',
+        helperBase: 'product',
+        pathParams: ['id'],
+        pipelines: ['browser'],
+        pipeline: 'browser',
+        filePath: '/workspace/lib/app_web/router.ex',
+        location: { line: 42, character: 4 },
+        scopePath: '/'
+      }
+    ],
+    'phoenix/listTemplates': [{ method: 'phoenix/listTemplates' }],
+    'phoenix/listEvents': [{ method: 'phoenix/listEvents' }],
+    'phoenix/listLiveView': [{ method: 'phoenix/listLiveView' }]
+  };
+}
 
 function createFakeServerSpawn({ results }) {
   const calls = [];

@@ -84,6 +84,7 @@ interface RouteInfo {
   filePath: string;
   location: { line: number; character: number };
   pipeline?: string;
+  pipelines?: string[];
   scopePath?: string;
   helperBase?: string;
   pathParams?: string[];
@@ -1383,6 +1384,14 @@ function routeTooltip(route: RouteInfo, target: string): string {
 
   if (route.pathParams && route.pathParams.length > 0) {
     lines.push(`Params: ${route.pathParams.join(', ')}`);
+  }
+
+  const pipelines = route.pipelines && route.pipelines.length > 0
+    ? route.pipelines.join(', ')
+    : route.pipeline;
+
+  if (pipelines) {
+    lines.push(`Pipelines: ${pipelines}`);
   }
 
   lines.push(route.filePath);

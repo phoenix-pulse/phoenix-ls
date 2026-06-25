@@ -104,11 +104,49 @@ async function dogfoodBundledServer(options = {}) {
       throw new Error(`missing non-empty dogfood results for ${missing.join(', ')}`);
     }
 
+    validateExplorerContracts(results);
+
     return summary;
   } catch (error) {
     child.kill('SIGTERM');
     throw error;
   }
+}
+
+function validateExplorerContracts(results) {
+  validateRoutePayloads(results['phoenix/listRoutes'] || []);
+}
+
+function validateRoutePayloads(routes) {
+  routes.forEach((route, index) => {
+    const missing = [];
+
+    if (!nonEmptyString(route.verb)) missing.push('verb');
+    if (!nonEmptyString(route.path)) missing.push('path');
+    if (!nonEmptyString(route.filePath)) missing.push('filePath');
+    if (!validLocation(route.location)) missing.push('location');
+    if (!nonEmptyString(route.helperBase)) missing.push('helperBase');
+    if (!Array.isArray(route.pathParams)) missing.push('pathParams');
+    if (!Array.isArray(route.pipelines)) missing.push('pipelines');
+
+    if (missing.length > 0) {
+      throw new Error(`phoenix/listRoutes[${index}] missing contract fields: ${missing.join(', ')}`);
+    }
+  });
+}
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function validLocation(location) {
+  return (
+    location &&
+    typeof location.line === 'number' &&
+    Number.isFinite(location.line) &&
+    typeof location.character === 'number' &&
+    Number.isFinite(location.character)
+  );
 }
 
 function createJsonRpcClient(child, timeoutMs) {

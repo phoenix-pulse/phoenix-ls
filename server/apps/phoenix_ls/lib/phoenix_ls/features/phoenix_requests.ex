@@ -95,6 +95,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
     |> facts_by_kind(:route)
     |> Enum.map(fn fact ->
       action = optional_atom_string(fact.data.action)
+      pipelines = Map.get(fact.data, :pipelines, [])
 
       %{
         "verb" => Atom.to_string(fact.data.verb),
@@ -106,6 +107,8 @@ defmodule PhoenixLS.Features.PhoenixRequests do
         "helperBase" => fact.data.helper_base,
         "pathParams" => fact.data.path_params,
         "scopePath" => fact.data.scope_path || "/",
+        "pipeline" => Enum.join(pipelines, ", "),
+        "pipelines" => pipelines,
         "liveModule" => live_module(fact),
         "liveAction" => live_action(fact)
       }

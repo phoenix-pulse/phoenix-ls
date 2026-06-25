@@ -1188,6 +1188,12 @@ function M.render()
       table.insert(details, "params: " .. table.concat(route.pathParams, ", "))
     end
 
+    if route.pipelines and #route.pipelines > 0 then
+      table.insert(details, "pipelines: " .. table.concat(route.pipelines, ", "))
+    elseif route.pipeline and route.pipeline ~= "" then
+      table.insert(details, "pipeline: " .. route.pipeline)
+    end
+
     local suffix = ""
     if #details > 0 then
       suffix = " (" .. table.concat(details, ", ") .. ")"
