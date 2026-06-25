@@ -135,6 +135,7 @@ defmodule PhoenixLS.Features.PhoenixRequests do
       %{
         "name" => fact.data.event,
         "type" => "handle_event",
+        "module" => fact.data.module,
         "filePath" => file_path(fact.uri),
         "location" => location(fact)
       }

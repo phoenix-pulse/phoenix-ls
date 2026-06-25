@@ -149,6 +149,7 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
              %{
                "name" => "select-product",
                "type" => "handle_event",
+               "module" => "AppWeb.ProductLive",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => _line, "character" => 2}
              }

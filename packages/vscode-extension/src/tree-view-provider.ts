@@ -100,6 +100,7 @@ interface TemplateInfo {
 interface EventInfo {
   name: string;
   type: string;
+  module?: string;
   filePath: string;
   location: { line: number; character: number };
 }
@@ -234,6 +235,12 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
             color: 'charts.yellow'
           },
           {
+            label: 'Events',
+            contextValue: 'category-events',
+            icon: '$(zap)',
+            color: 'charts.red'
+          },
+          {
             label: 'LiveView',
             contextValue: 'category-liveview',
             icon: '$(pulse)',
@@ -293,6 +300,10 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
           return this.getTemplateFiles();
         case 'template-file':
           return this.getTemplatesInFile(element.data);
+        case 'category-events':
+          return this.getEventFiles();
+        case 'event-file':
+          return this.getEventsInFile(element.data);
         case 'category-liveview':
           return this.getLiveViewFolders();
         case 'liveview-folder':
@@ -837,6 +848,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
       const filtered = events.filter(event =>
         this.matchesSearch(event.name) ||
         this.matchesSearch(event.type) ||
+        this.matchesSearch(event.module || '') ||
         this.matchesSearch(event.filePath)
       );
 
@@ -883,13 +895,14 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         '$(zap)',
         'charts.red'
       );
-      item.description = event.type;
-      item.tooltip = `${event.name} (${event.type})\n${event.filePath}`;
+      item.description = event.module || event.type;
+      item.tooltip = `Event: ${event.name}\nType: ${event.type}${event.module ? `\nModule: ${event.module}` : ''}\n${event.filePath}`;
       item.command = {
         command: 'phoenixPulse.goToItem',
         title: 'Go to Event',
         arguments: [event.filePath, event.location]
       };
+      item.data = event;
       return item;
     });
   }

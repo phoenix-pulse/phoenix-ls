@@ -414,4 +414,38 @@ describe('PhoenixPulseTreeProvider', () => {
       verb: 'GET'
     });
   });
+
+  it('shows LiveView events with module context and navigates to event source locations', async () => {
+    const client = {
+      sendRequest: vi.fn(async method => {
+        if (method === 'phoenix/listEvents') {
+          return [
+            {
+              name: 'save',
+              type: 'handle_event',
+              module: 'AppWeb.ProductLive.Index',
+              filePath: '/workspace/lib/app_web/live/product_live/index.ex',
+              location: { line: 48, character: 4 }
+            }
+          ];
+        }
+
+        return [];
+      })
+    };
+
+    const provider = new PhoenixPulseTreeProvider(client as never);
+    const roots = await provider.getChildren();
+    const eventsCategory = roots.find(item => item.label === 'Events');
+    const files = await provider.getChildren(eventsCategory);
+    const events = await provider.getChildren(files[0]);
+
+    expect(events[0].label).toBe('save');
+    expect(events[0].description).toBe('AppWeb.ProductLive.Index');
+    expect(events[0].tooltip).toContain('Module: AppWeb.ProductLive.Index');
+    expect(events[0].command).toMatchObject({
+      command: 'phoenixPulse.goToItem',
+      arguments: ['/workspace/lib/app_web/live/product_live/index.ex', { line: 48, character: 4 }]
+    });
+  });
 });

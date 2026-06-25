@@ -701,6 +701,15 @@ local function copy_menu()
       end
     })
 
+    if item.module then
+      table.insert(options, {
+        label = "Copy Module Name",
+        action = function()
+          copy_to_clipboard(item.module, "module name")
+        end
+      })
+    end
+
     if item.filePath or item.file then
       table.insert(options, {
         label = "Copy File Path",
@@ -879,7 +888,7 @@ local function definition_target(item)
     item = item.schema
   elseif item.component then
     item = item.component
-  elseif item.module then
+  elseif type(item.module) == "table" then
     item = item.module
   end
 
@@ -1164,7 +1173,11 @@ function M.render()
   end)
 
   add_category("events", "Events", M.state.data.events, "event", function(event)
-    return string.format("%s %s", get_icon("event"), event.name or "Unknown")
+    local label = event.name or "Unknown"
+    if event.module then
+      label = label .. " (" .. event.module .. ")"
+    end
+    return string.format("%s %s", get_icon("event"), label)
   end)
 
   add_category("templates", "Templates", M.state.data.templates, "template", function(template)
