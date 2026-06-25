@@ -152,14 +152,14 @@ defmodule PhoenixLS.Features.CodeAction do
   defp action_for_diagnostic(
          %Diagnostic{
            source: @source,
-           code: "phoenix.unknown_route_helper_action",
-           data: %{"kind" => "unknown_route_helper_action"}
+           code: code
          } = diagnostic,
          _source,
          uri,
          _tags,
          facts
-       ) do
+       )
+       when code in ["phoenix.unknown_route_helper", "phoenix.unknown_route_helper_action"] do
     RouteHelpers.actions(diagnostic, uri, facts)
   end
 

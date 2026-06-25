@@ -486,6 +486,42 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "replaces unknown route helper names with known helpers" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.missing_path(conn, :index)
+      end
+    end
+    """
+
+    facts = route_helper_facts(source)
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert [
+             %CodeAction{
+               title: "Change route helper to product_path",
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @controller_uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 2, character: 11},
+                         end: %Position{line: 2, character: 23}
+                       },
+                       new_text: "product_path"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @controller_uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "replaces unknown render templates with known templates" do
     source = """
     defmodule AppWeb.PageController do
