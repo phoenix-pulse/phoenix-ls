@@ -10,6 +10,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
     HTMLAttributes,
     LiveView,
     LiveViewJS,
+    PhxValues,
     Routes,
     Schemas,
     Snippets,
@@ -51,6 +52,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
     source
     |> Routes.complete(position, facts)
     |> Kernel.++(FormFields.complete(source, position, facts))
+    |> Kernel.++(PhxValues.complete(source, position, facts))
     |> Kernel.++(Templates.complete(uri, source, position, facts))
     |> uniq_by_label()
   end

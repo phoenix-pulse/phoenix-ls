@@ -269,6 +269,24 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
            ]
   end
 
+  test "completes phx-value attributes from :for loop schema fields" do
+    {source, position} =
+      source_and_position("""
+      <div :for={product <- @products}>
+        <button phx-click="select" phx-value-na|>
+      </div>
+      """)
+
+    items = Phoenix.complete(@uri, source, position, facts())
+
+    assert Enum.map(items, & &1.label) == ["phx-value-name"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.property()
+    assert item.detail == "From product: :string"
+    assert item.insert_text == "phx-value-name={product.name}"
+  end
+
   test "completes element-specific HTML attributes" do
     items = complete("<img s|>")
     labels = Enum.map(items, & &1.label)
