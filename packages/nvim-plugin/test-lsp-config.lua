@@ -79,3 +79,57 @@ end
 if type(captured_setup) ~= "table" then
   error("expected lspconfig setup to be called", 2)
 end
+
+local request_seen = false
+local callback_seen = false
+
+vim.lsp.get_clients = function(filter)
+  if filter.name ~= "phoenix_pulse" then
+    error("expected phoenix_pulse client filter", 2)
+  end
+
+  return {
+    {
+      request = function(self, command, params, callback, bufnr)
+        if type(self) ~= "table" then
+          error("expected method-style client request", 2)
+        end
+
+        if command ~= "phoenix/listSchemas" then
+          error("expected phoenix/listSchemas request", 2)
+        end
+
+        if params.scope ~= "workspace" then
+          error("expected request params to be forwarded", 2)
+        end
+
+        if bufnr ~= 0 then
+          error("expected current buffer request", 2)
+        end
+
+        request_seen = true
+        callback(nil, { { name = "App.Catalog.Product" } })
+      end,
+    },
+  }
+end
+
+vim.lsp.get_active_clients = function()
+  error("expected vim.lsp.get_clients when available", 2)
+end
+
+lsp.call_lsp_command("phoenix/listSchemas", { scope = "workspace" }, function(result)
+  if result[1].name ~= "App.Catalog.Product" then
+    error("expected LSP result to reach callback", 2)
+  end
+
+  callback_seen = true
+end)
+
+if not request_seen then
+  error("expected client request to be sent", 2)
+end
+
+if not callback_seen then
+  error("expected callback to be called", 2)
+end

@@ -66,7 +66,13 @@ end
 
 -- Helper function to call custom LSP commands
 function M.call_lsp_command(command, params, callback)
-  local clients = vim.lsp.get_active_clients({ name = "phoenix_pulse" })
+  local clients
+
+  if vim.lsp.get_clients then
+    clients = vim.lsp.get_clients({ name = "phoenix_pulse" })
+  else
+    clients = vim.lsp.get_active_clients({ name = "phoenix_pulse" })
+  end
 
   if #clients == 0 then
     vim.notify("[Phoenix Pulse] LSP server not running", vim.log.levels.WARN)
@@ -75,7 +81,7 @@ function M.call_lsp_command(command, params, callback)
 
   local client = clients[1]
 
-  client.request(command, params or {}, function(err, result)
+  client:request(command, params or {}, function(err, result)
     if err then
       vim.notify(
         "[Phoenix Pulse] LSP command error: " .. vim.inspect(err),
