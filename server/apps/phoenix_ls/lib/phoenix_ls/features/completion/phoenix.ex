@@ -6,6 +6,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   alias PhoenixLS.Features.Completion.{
     Assets,
     ElixirFallback,
+    FormFields,
     HTMLAttributes,
     LiveView,
     LiveViewJS,
@@ -49,6 +50,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
       when (is_binary(uri) or is_nil(uri)) and is_binary(source) and is_list(facts) do
     source
     |> Routes.complete(position, facts)
+    |> Kernel.++(FormFields.complete(source, position, facts))
     |> Kernel.++(Templates.complete(uri, source, position, facts))
     |> uniq_by_label()
   end

@@ -117,6 +117,24 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     assert item.insert_text == "name"
   end
 
+  test "completes schema fields for form :let bindings" do
+    {source, position} =
+      source_and_position("""
+      <.form :let={f} for={@product}>
+        <.input field={f[:na|]} />
+      </.form>
+      """)
+
+    items = Phoenix.complete(@uri, source, position, facts())
+
+    assert Enum.map(items, & &1.label) == ["name"]
+
+    assert [item] = items
+    assert item.kind == CompletionItemKind.field()
+    assert item.detail == "field :name, :string"
+    assert item.insert_text == "name"
+  end
+
   test "completes assigns in HEEx expressions" do
     items = complete("<p>{@sele|}</p>")
 

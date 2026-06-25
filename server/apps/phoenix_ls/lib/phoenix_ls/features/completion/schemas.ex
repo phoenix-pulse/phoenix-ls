@@ -11,10 +11,7 @@ defmodule PhoenixLS.Features.Completion.Schemas do
   def complete(%CursorContext{kind: :expression, prefix: prefix}, facts) do
     case form_field_prefix(prefix) do
       {:ok, typed_field} ->
-        facts
-        |> facts_by_kind(:schema_field)
-        |> Enum.map(&field_item/1)
-        |> prefixed_items(typed_field)
+        field_items(facts, typed_field)
 
       :error ->
         []
@@ -23,8 +20,22 @@ defmodule PhoenixLS.Features.Completion.Schemas do
 
   def complete(_context, _facts), do: []
 
+  @spec field_items([PhoenixLS.Index.Fact.t()], String.t(), String.t() | nil) :: [
+          CompletionItem.t()
+        ]
+  def field_items(facts, typed_field, schema_id \\ nil) when is_list(facts) do
+    facts
+    |> facts_by_kind(:schema_field)
+    |> filter_schema(schema_id)
+    |> Enum.map(&field_item/1)
+    |> prefixed_items(typed_field)
+  end
+
   defp form_field_prefix("@form[:" <> field), do: {:ok, field}
   defp form_field_prefix(_prefix), do: :error
+
+  defp filter_schema(facts, nil), do: facts
+  defp filter_schema(facts, schema_id), do: Enum.filter(facts, &(&1.data.schema == schema_id))
 
   defp field_item(fact) do
     name = fact.data.name
