@@ -134,8 +134,75 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
   test "does not require :key for tracked or component :for loops" do
     assert diagnostics(~s(<div :for={item <- @items} :key={item.id}>{item.name}</div>)) == []
     assert diagnostics(~s(<div :for={item <- @items} id={item.id}>{item.name}</div>)) == []
-    assert diagnostics(~s(<div :for={{dom_id, item} <- @streams.items}>{item.name}</div>)) == []
+
+    assert diagnostics("""
+           <div phx-update="stream">
+             <div :for={{dom_id, item} <- @streams.items} id={dom_id}>{item.name}</div>
+           </div>
+           """) == []
+
     assert diagnostics(~s(<.card :for={item <- @items} />)) == []
+  end
+
+  test "reports stream loops without tuple destructuring" do
+    [diagnostic] =
+      diagnostics("""
+      <table phx-update="stream">
+        <tr :for={user <- @streams.users} id={user.id}>
+          <td>{user.name}</td>
+        </tr>
+      </table>
+      """)
+
+    assert diagnostic.code == "phoenix.stream_invalid_pattern"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message =~ "{dom_id, user} <- @streams.users"
+  end
+
+  test "reports stream loops without dom id tracking" do
+    [diagnostic] =
+      diagnostics("""
+      <table phx-update="stream">
+        <tr :for={{dom_id, user} <- @streams.users}>
+          <td>{user.name}</td>
+        </tr>
+      </table>
+      """)
+
+    assert diagnostic.code == "phoenix.stream_missing_id"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message =~ "id={dom_id}"
+  end
+
+  test "reports stream loops without phx-update stream container" do
+    [diagnostic] =
+      diagnostics("""
+      <table>
+        <tr :for={{dom_id, user} <- @streams.users} id={dom_id}>
+          <td>{user.name}</td>
+        </tr>
+      </table>
+      """)
+
+    assert diagnostic.code == "phoenix.stream_missing_phx_update"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+    assert diagnostic.message =~ ~s(phx-update="stream")
+  end
+
+  test "reports unnecessary stream :key usage" do
+    [diagnostic] =
+      diagnostics("""
+      <table phx-update="stream">
+        <tr :for={{dom_id, user} <- @streams.users} :key={user.id} id={dom_id}>
+          <td>{user.name}</td>
+        </tr>
+      </table>
+      """)
+
+    assert diagnostic.code == "phoenix.stream_unnecessary_key"
+    assert diagnostic.severity == DiagnosticSeverity.warning()
+    assert diagnostic.message =~ ":key"
+    assert diagnostic.message =~ "id={dom_id}"
   end
 
   test "reports unknown verified routes" do
