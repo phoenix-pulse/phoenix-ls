@@ -37,6 +37,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
     Hover,
     PhoenixRequests,
     RequestContext,
+    ServerConfig,
     SignatureHelp,
     TextDocumentSync,
     WorkspaceFolders
@@ -133,7 +134,13 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   def handle_notification(%WorkspaceDidChangeWatchedFiles{params: %{changes: changes}}, lsp) do
     project_manager = LSP.assigns(lsp).project_manager
-    :ok = FileEvents.handle_lsp_events(project_manager, changes, diagnostics_pid: lsp.pid)
+
+    :ok =
+      FileEvents.handle_lsp_events(
+        project_manager,
+        changes,
+        project_manager_opts(lsp)
+      )
 
     {:noreply, lsp}
   end
@@ -147,7 +154,7 @@ defmodule PhoenixLS.LSP.Dispatcher do
   defp assign_project(lsp, root_uri) when is_binary(root_uri) do
     project_manager = LSP.assigns(lsp).project_manager
 
-    case Manager.ensure_project_for_uri(project_manager, root_uri, status_target: lsp.pid) do
+    case Manager.ensure_project_for_uri(project_manager, root_uri, project_manager_opts(lsp)) do
       {:ok, engine} ->
         LSP.assign(lsp, document_store: engine.document_store, project_root_uri: engine.root_uri)
 
@@ -161,4 +168,10 @@ defmodule PhoenixLS.LSP.Dispatcher do
 
   defp first_argument_map([params | _rest]) when is_map(params), do: params
   defp first_argument_map(_arguments), do: %{}
+
+  defp project_manager_opts(lsp) do
+    config = lsp |> LSP.assigns() |> Map.get(:server_config, ServerConfig.default())
+
+    ServerConfig.project_manager_opts(config, lsp.pid)
+  end
 end

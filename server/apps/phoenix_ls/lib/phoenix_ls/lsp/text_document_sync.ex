@@ -13,6 +13,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
 
   alias PhoenixLS.Index.Indexer
   alias PhoenixLS.LSP.Diagnostics
+  alias PhoenixLS.LSP.ServerConfig
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.{Document, DocumentStore}
 
@@ -143,7 +144,7 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
         :error
 
       project_manager ->
-        case Manager.ensure_project_for_uri(project_manager, uri, status_target: lsp.pid) do
+        case Manager.ensure_project_for_uri(project_manager, uri, project_manager_opts(lsp)) do
           {:ok, engine} -> {:ok, engine}
           :error -> :error
           {:error, _reason} -> :error
@@ -156,5 +157,11 @@ defmodule PhoenixLS.LSP.TextDocumentSync do
       diagnostics: {lsp.pid, engine.document_store, {:ok, engine}},
       status_target: lsp.pid
     ]
+  end
+
+  defp project_manager_opts(lsp) do
+    config = lsp |> LSP.assigns() |> Map.get(:server_config, ServerConfig.default())
+
+    ServerConfig.project_manager_opts(config, lsp.pid)
   end
 end

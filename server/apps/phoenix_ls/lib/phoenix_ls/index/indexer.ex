@@ -46,7 +46,8 @@ defmodule PhoenixLS.Index.Indexer do
     state = %{
       index_store: index_store,
       root_uri: Keyword.get(opts, :root_uri),
-      status_target: Keyword.get(opts, :status_target)
+      status_target: Keyword.get(opts, :status_target),
+      project_indexing_enabled: Keyword.get(opts, :project_indexing_enabled, true)
     }
 
     case Keyword.fetch(opts, :root_uri) do
@@ -58,7 +59,7 @@ defmodule PhoenixLS.Index.Indexer do
   @impl true
   def handle_continue({:index_project, root_uri}, state) do
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
-    {result, count} = emit_project_indexed(state.index_store, root_uri)
+    {result, count} = emit_project_indexed(state, root_uri)
 
     notify_status(
       state,
@@ -120,7 +121,7 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     before_facts = Store.by_uri(state.index_store, uri)
-    result = index_uri(state.index_store, uri, state.root_uri)
+    result = index_uri(state.index_store, uri, state.root_uri, state.project_indexing_enabled)
     after_facts = Store.by_uri(state.index_store, uri)
     changed_kinds = DependencyGraph.changed_kinds(before_facts, after_facts)
 
@@ -148,7 +149,7 @@ defmodule PhoenixLS.Index.Indexer do
 
   def handle_cast({:index_project, root_uri}, state) do
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
-    {result, count} = emit_project_indexed(state.index_store, root_uri)
+    {result, count} = emit_project_indexed(state, root_uri)
 
     notify_status(
       state,
@@ -190,7 +191,9 @@ defmodule PhoenixLS.Index.Indexer do
     {:noreply, state}
   end
 
-  defp index_uri(index_store, uri, root_uri) do
+  defp index_uri(_index_store, _uri, _root_uri, false), do: :disabled
+
+  defp index_uri(index_store, uri, root_uri, true) do
     with {:ok, path} <- SupportURI.file_uri_to_path(uri),
          {:ok, index_target} <- index_target(path, root_uri) do
       index_path(index_store, uri, path, index_target)
@@ -199,7 +202,16 @@ defmodule PhoenixLS.Index.Indexer do
     end
   end
 
-  defp emit_project_indexed(index_store, root_uri) do
+  defp emit_project_indexed(%{project_indexing_enabled: false}, root_uri) do
+    Telemetry.execute([:indexer, :project], %{count: 0}, %{
+      root_uri: root_uri,
+      result: :disabled
+    })
+
+    {:disabled, 0}
+  end
+
+  defp emit_project_indexed(%{index_store: index_store}, root_uri) do
     {result, count} = index_project(index_store, root_uri)
 
     Telemetry.execute([:indexer, :project], %{count: count}, %{
@@ -213,7 +225,7 @@ defmodule PhoenixLS.Index.Indexer do
   defp index_project(index_store, root_uri) do
     case ProjectScan.uris(root_uri) do
       {:ok, uris} ->
-        Enum.each(uris, &index_uri(index_store, &1, root_uri))
+        Enum.each(uris, &index_uri(index_store, &1, root_uri, true))
 
         {:ok, length(uris)}
 

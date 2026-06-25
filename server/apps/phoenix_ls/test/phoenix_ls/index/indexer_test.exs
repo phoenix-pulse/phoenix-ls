@@ -174,6 +174,57 @@ defmodule PhoenixLS.Index.IndexerTest do
     end)
   end
 
+  test "disabled project indexing skips disk warmup but keeps open document indexing", context do
+    root = tmp_dir(context)
+    path = Path.join([root, "lib", "disabled_project_live.ex"])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "defmodule AppWeb.DisabledProjectLive do\nend\n")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    store =
+      Module.concat(__MODULE__, :"DisabledProjectStore#{System.unique_integer([:positive])}")
+
+    indexer =
+      Module.concat(__MODULE__, :"DisabledProjectIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: store}, id: {Store, store})
+
+    start_supervised!(
+      {Indexer,
+       name: indexer, index_store: store, status_target: self(), project_indexing_enabled: false},
+      id: {Indexer, indexer}
+    )
+
+    assert Indexer.schedule_project(indexer, root_uri) == :ok
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "project",
+                      "rootUri" => ^root_uri,
+                      "result" => "disabled",
+                      "count" => 0
+                    }},
+                   500
+
+    assert Store.all(store) == []
+
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/open_disabled_live.ex",
+        "elixir",
+        1,
+        "defmodule AppWeb.OpenDisabledLive do\nend\n"
+      )
+
+    assert Indexer.schedule_document(indexer, document) == :ok
+
+    assert_eventually(fn ->
+      assert index_ids(store) == ["AppWeb.OpenDisabledLive"]
+    end)
+  end
+
   test "invalidates facts for deleted uris" do
     document =
       Document.new(

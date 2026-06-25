@@ -47,12 +47,17 @@ defmodule PhoenixLS.Project.Engine do
     index_store = Keyword.get(opts, :index_store, Names.index_store(root_uri))
     indexer = Keyword.get(opts, :indexer, Names.indexer(root_uri))
     status_target = Keyword.get(opts, :status_target)
+    project_indexing_enabled = Keyword.get(opts, :project_indexing_enabled, true)
 
     children = [
       {DocumentStore, name: document_store},
       {IndexStore, name: index_store},
       {Indexer,
-       name: indexer, index_store: index_store, root_uri: root_uri, status_target: status_target}
+       name: indexer,
+       index_store: index_store,
+       root_uri: root_uri,
+       status_target: status_target,
+       project_indexing_enabled: project_indexing_enabled}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

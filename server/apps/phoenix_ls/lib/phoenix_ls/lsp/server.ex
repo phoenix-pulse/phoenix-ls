@@ -7,6 +7,7 @@ defmodule PhoenixLS.LSP.Server do
 
   alias PhoenixLS.LSP.Diagnostics
   alias PhoenixLS.LSP.Dispatcher
+  alias PhoenixLS.LSP.ServerConfig
   alias PhoenixLS.LSP.Status
   alias PhoenixLS.Project.Manager
   alias PhoenixLS.Workspace.DocumentStore
@@ -31,6 +32,7 @@ defmodule PhoenixLS.LSP.Server do
     document_store = Keyword.get(args, :document_store, DocumentStore)
     dispatcher = Keyword.get(args, :dispatcher, Dispatcher)
     project_manager = Keyword.get(args, :project_manager, Manager)
+    server_config = Keyword.get(args, :server_config, ServerConfig.default())
 
     {:ok,
      assign(lsp,
@@ -41,6 +43,7 @@ defmodule PhoenixLS.LSP.Server do
        project_manager: project_manager,
        project_root_uri: nil,
        root_uri: nil,
+       server_config: server_config,
        workspace_folders: %{},
        workspace_project_roots: MapSet.new()
      )}

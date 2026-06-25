@@ -15,7 +15,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     WorkspaceFolder
   }
 
-  alias PhoenixLS.LSP.Server
+  alias PhoenixLS.LSP.{Server, ServerConfig}
   alias PhoenixLS.Project.{Manager, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.DocumentStore
@@ -51,6 +51,17 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(initialized_lsp).workspace_folders == %{}
     assert LSP.assigns(initialized_lsp).workspace_project_roots == MapSet.new()
     assert is_function(LSP.assigns(initialized_lsp).exit_handler, 1)
+  end
+
+  test "init stores runtime server config", %{lsp: lsp} do
+    config = %ServerConfig{
+      source_only?: false,
+      project_indexing_enabled?: false,
+      log_level: :debug
+    }
+
+    assert {:ok, initialized_lsp} = Server.init(lsp, server_config: config)
+    assert LSP.assigns(initialized_lsp).server_config == config
   end
 
   test "initialize returns PhoenixLS server info and capabilities", %{lsp: lsp} do
@@ -143,6 +154,28 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     assert LSP.assigns(updated_lsp).root_uri == nested_uri
     assert LSP.assigns(updated_lsp).project_root_uri == root_uri
     assert LSP.assigns(updated_lsp).document_store == Names.document_store(root_uri)
+  end
+
+  test "initialize passes project indexing config to project engines",
+       %{
+         lsp: lsp
+       } = context do
+    root_path = fixture_project(context, "server_project_indexing_config")
+    root_uri = SupportURI.path_to_file_uri!(root_path)
+
+    config = %ServerConfig{source_only?: true, project_indexing_enabled?: false, log_level: :info}
+    {:ok, lsp} = Server.init(lsp, project_manager: Manager, server_config: config)
+
+    params = %InitializeParams{
+      process_id: nil,
+      root_uri: root_uri,
+      capabilities: %ClientCapabilities{}
+    }
+
+    assert {:reply, %InitializeResult{}, _updated_lsp} =
+             Server.handle_request(%Initialize{id: 1, params: params}, lsp)
+
+    assert %{project_indexing_enabled: false} = :sys.get_state(Names.indexer(root_uri))
   end
 
   test "initialize keeps fallback document store when no Mix project is found",

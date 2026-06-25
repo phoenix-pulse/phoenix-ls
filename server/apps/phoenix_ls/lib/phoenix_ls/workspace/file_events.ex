@@ -64,9 +64,25 @@ defmodule PhoenixLS.Workspace.FileEvents do
   end
 
   defp manager_opts(opts) do
-    case Keyword.get(opts, :diagnostics_pid) do
-      pid when is_pid(pid) -> [status_target: pid]
-      _missing -> []
+    []
+    |> maybe_put_status_target(opts)
+    |> maybe_put_project_indexing_enabled(opts)
+  end
+
+  defp maybe_put_status_target(manager_opts, opts) do
+    case Keyword.get(opts, :diagnostics_pid) || Keyword.get(opts, :status_target) do
+      pid when is_pid(pid) -> Keyword.put(manager_opts, :status_target, pid)
+      _missing -> manager_opts
+    end
+  end
+
+  defp maybe_put_project_indexing_enabled(manager_opts, opts) do
+    case Keyword.fetch(opts, :project_indexing_enabled) do
+      {:ok, enabled} when is_boolean(enabled) ->
+        Keyword.put(manager_opts, :project_indexing_enabled, enabled)
+
+      _missing_or_invalid ->
+        manager_opts
     end
   end
 

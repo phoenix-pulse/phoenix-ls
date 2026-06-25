@@ -164,7 +164,7 @@ defmodule PhoenixLS.Project.Manager do
   defp start_engine(engine_supervisor, root_uri, opts) do
     engine_opts =
       [root_uri: root_uri]
-      |> Keyword.merge(engine_status_opts(opts))
+      |> Keyword.merge(engine_start_opts(opts))
 
     try do
       case DynamicSupervisor.start_child(engine_supervisor, {Engine, engine_opts}) do
@@ -254,10 +254,26 @@ defmodule PhoenixLS.Project.Manager do
     end
   end
 
-  defp engine_status_opts(opts) do
+  defp engine_start_opts(opts) do
+    []
+    |> maybe_put_status_target(opts)
+    |> maybe_put_project_indexing_enabled(opts)
+  end
+
+  defp maybe_put_status_target(engine_opts, opts) do
     case Keyword.get(opts, :status_target) do
-      pid when is_pid(pid) -> [status_target: pid]
-      _missing -> []
+      pid when is_pid(pid) -> Keyword.put(engine_opts, :status_target, pid)
+      _missing -> engine_opts
+    end
+  end
+
+  defp maybe_put_project_indexing_enabled(engine_opts, opts) do
+    case Keyword.fetch(opts, :project_indexing_enabled) do
+      {:ok, enabled} when is_boolean(enabled) ->
+        Keyword.put(engine_opts, :project_indexing_enabled, enabled)
+
+      _missing_or_invalid ->
+        engine_opts
     end
   end
 
