@@ -25,6 +25,42 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
            }
   end
 
+  test "completes route helpers in HEEx expressions" do
+    items = complete("<p>{Routes.us|}</p>")
+
+    labels = Enum.map(items, & &1.label)
+
+    assert "user_path" in labels
+    assert "user_url" in labels
+
+    user_path = Enum.find(items, &(&1.label == "user_path"))
+
+    assert user_path.kind == CompletionItemKind.function()
+    assert user_path.detail == "Routes.user_path"
+    assert user_path.insert_text == "user_path(${1:conn_or_socket}, :${2|index,show|}, ${3:id})"
+    assert user_path.insert_text_format == 2
+
+    assert user_path.data == %{
+             "kind" => "route_helper",
+             "helper" => "user_path"
+           }
+  end
+
+  test "completes route helpers in Elixir Routes prefixes" do
+    {source, position} = source_and_position("Routes.admin_re|")
+
+    items = Phoenix.complete(source, position, facts())
+
+    assert Enum.map(items, & &1.label) == ["admin_report_path", "admin_report_url"]
+    assert hd(items).insert_text == "admin_report_path(${1:conn_or_socket}, :${2:index})"
+  end
+
+  test "source-aware route helper completion ignores incomplete HEEx route sigils" do
+    {source, position} = source_and_position("<.link navigate={~p\"/prod|\"} />")
+
+    assert Phoenix.complete(source, position, facts()) == []
+  end
+
   test "completes schema fields in form field expressions" do
     items = complete("<.input field={@form[:na|]} />")
 
@@ -96,7 +132,13 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
         use Phoenix.Router
 
         scope "/", AppWeb do
+          get "/users", UserController, :index
+          get "/users/:id", UserController, :show
           live "/products/:id", ProductLive.Show, :show
+        end
+
+        scope "/admin", AppWeb do
+          get "/reports", ReportController, :index
         end
       end
 

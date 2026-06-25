@@ -11,8 +11,18 @@ defmodule PhoenixLS.Introspection.Router do
     Typed route fact payload.
     """
 
-    @enforce_keys [:router, :verb, :path, :plug, :scope_path]
-    defstruct [:router, :verb, :path, :plug, :action, :scope_path, :scope_module]
+    @enforce_keys [:router, :verb, :path, :plug, :scope_path, :helper_base, :path_params]
+    defstruct [
+      :router,
+      :verb,
+      :path,
+      :plug,
+      :action,
+      :scope_path,
+      :scope_module,
+      :helper_base,
+      :path_params
+    ]
   end
 
   @route_macros [:connect, :delete, :get, :head, :live, :options, :patch, :post, :put, :trace]
@@ -98,7 +108,9 @@ defmodule PhoenixLS.Introspection.Router do
            plug: plug,
            action: action,
            scope_path: scope_path,
-           scope_module: scope_module
+           scope_module: scope_module,
+           helper_base: helper_base(full_path),
+           path_params: path_params(full_path)
          }
        )}
     end
@@ -153,6 +165,97 @@ defmodule PhoenixLS.Introspection.Router do
   defp normalize_path(""), do: "/"
   defp normalize_path("/" <> _rest = path), do: path
   defp normalize_path(path), do: "/" <> path
+
+  defp helper_base(path) do
+    path
+    |> path_segments()
+    |> Enum.reject(&dynamic_path_segment?/1)
+    |> Enum.map(&normalize_helper_segment/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&singularize/1)
+    |> case do
+      [] -> "root"
+      segments -> Enum.join(segments, "_")
+    end
+  end
+
+  defp path_params(path) do
+    path
+    |> path_segments()
+    |> Enum.filter(&dynamic_path_segment?/1)
+    |> Enum.map(&dynamic_param_name/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp path_segments(path) do
+    path
+    |> String.split("/")
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp dynamic_path_segment?(":" <> _name), do: true
+  defp dynamic_path_segment?("*" <> _name), do: true
+  defp dynamic_path_segment?(_segment), do: false
+
+  defp dynamic_param_name(":" <> name), do: normalize_helper_segment(name)
+  defp dynamic_param_name("*" <> name), do: normalize_helper_segment(name)
+
+  defp normalize_helper_segment(segment) do
+    segment
+    |> String.graphemes()
+    |> Enum.map(&helper_grapheme/1)
+    |> Enum.reject(&is_nil/1)
+    |> collapse_underscores()
+    |> trim_underscores()
+    |> Enum.join()
+  end
+
+  defp helper_grapheme(grapheme) do
+    cond do
+      grapheme >= "A" and grapheme <= "Z" -> String.downcase(grapheme)
+      grapheme >= "a" and grapheme <= "z" -> grapheme
+      grapheme >= "0" and grapheme <= "9" -> grapheme
+      true -> "_"
+    end
+  end
+
+  defp collapse_underscores(graphemes) do
+    graphemes
+    |> Enum.reduce([], fn
+      "_", ["_" | _rest] = acc -> acc
+      grapheme, acc -> [grapheme | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp trim_underscores(graphemes) do
+    graphemes
+    |> Enum.drop_while(&(&1 == "_"))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == "_"))
+    |> Enum.reverse()
+  end
+
+  defp singularize(segment) do
+    cond do
+      String.ends_with?(segment, "ies") and String.length(segment) > 3 ->
+        String.trim_trailing(segment, "ies") <> "y"
+
+      String.ends_with?(segment, "ses") and String.length(segment) > 3 ->
+        String.trim_trailing(segment, "es")
+
+      (String.ends_with?(segment, "xes") or String.ends_with?(segment, "zes")) and
+          String.length(segment) > 3 ->
+        String.trim_trailing(segment, "es")
+
+      String.ends_with?(segment, "s") and not String.ends_with?(segment, "ss") and
+          String.length(segment) > 1 ->
+        String.trim_trailing(segment, "s")
+
+      true ->
+        segment
+    end
+  end
 
   defp top_level_expressions({:__block__, _meta, expressions}), do: expressions
   defp top_level_expressions(nil), do: []

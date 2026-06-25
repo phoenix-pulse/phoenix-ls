@@ -127,6 +127,56 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     )
   end
 
+  test "GenLSP transport returns route helper completions in Elixir documents", context do
+    root = fixture_project(context, "route_helper_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    router_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/router.ex"))
+    elixir_uri = SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/page_live.ex"))
+
+    {elixir_source, position} = source_and_position("Routes.us|")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+    open_document(test_client, router_uri, "elixir", router_source())
+    open_document(test_client, elixir_uri, "elixir", elixir_source)
+
+    GenLSP.Test.request(test_client, %{
+      id: 2,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: elixir_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      2,
+      [
+        %{
+          "data" => %{"helper" => "user_path", "kind" => "route_helper"},
+          "detail" => "Routes.user_path",
+          "insertText" => "user_path(${1:conn_or_socket}, :${2|index,show|}, ${3:id})",
+          "insertTextFormat" => 2,
+          "kind" => 3,
+          "label" => "user_path"
+        },
+        %{
+          "data" => %{"helper" => "user_url", "kind" => "route_helper"},
+          "detail" => "Routes.user_url",
+          "insertText" => "user_url(${1:conn_or_socket}, :${2|index,show|}, ${3:id})",
+          "insertTextFormat" => 2,
+          "kind" => 3,
+          "label" => "user_url"
+        }
+      ],
+      500
+    )
+  end
+
   test "GenLSP transport resolves completion item documentation" do
     test_server = GenLSP.Test.server(Server)
     test_client = GenLSP.Test.client(test_server)
@@ -240,6 +290,8 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
       use Phoenix.Router
 
       scope "/", AppWeb do
+        get "/users", UserController, :index
+        get "/users/:id", UserController, :show
         live "/products/:id", ProductLive.Show, :show
       end
     end

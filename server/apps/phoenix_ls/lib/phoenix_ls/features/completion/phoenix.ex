@@ -6,6 +6,7 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
   alias PhoenixLS.Features.Completion.{ElixirFallback, LiveView, Routes, Schemas, Snippets}
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Support.Positions
 
   @spec complete(CursorContext.t(), [Fact.t()]) :: [GenLSP.Structures.CompletionItem.t()]
   def complete(%CursorContext{} = context, facts) when is_list(facts) do
@@ -17,6 +18,15 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
       ElixirFallback.complete(context, facts)
     ]
     |> List.flatten()
+    |> uniq_by_label()
+  end
+
+  @spec complete(String.t(), Positions.lsp_position(), [Fact.t()]) :: [
+          GenLSP.Structures.CompletionItem.t()
+        ]
+  def complete(source, position, facts) when is_binary(source) and is_list(facts) do
+    source
+    |> Routes.complete(position, facts)
     |> uniq_by_label()
   end
 

@@ -23,7 +23,9 @@ defmodule PhoenixLS.LSP.Completion do
            {:ok, context} <- CursorContext.at(document.text, position) do
         facts = Snapshot.all(snapshot)
 
-        Components.complete(context, facts) ++ Phoenix.complete(context, facts)
+        Components.complete(context, facts) ++
+          Phoenix.complete(context, facts) ++
+          Phoenix.complete(document.text, position, facts)
       else
         _missing_or_invalid -> []
       end
