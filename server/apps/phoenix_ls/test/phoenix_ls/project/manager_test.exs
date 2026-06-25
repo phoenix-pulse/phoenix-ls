@@ -129,6 +129,58 @@ defmodule PhoenixLS.Project.ManagerTest do
     assert first.document_store == second.document_store
   end
 
+  test "ensure_project_for_uri does not execute project mix or source code", context do
+    %{manager: manager} =
+      start_manager(__MODULE__.NoProjectCodeSupervisor, __MODULE__.NoProjectCodeManager)
+
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    sentinel_path = Path.join(root, "project_code_executed")
+
+    File.write!(Path.join(root, "mix.exs"), """
+    File.write!(#{inspect(sentinel_path)}, "mix executed")
+
+    defmodule NoProjectCode.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :no_project_code, version: "0.1.0", deps: [{:phoenix, "~> 1.8"}]]
+      end
+    end
+    """)
+
+    file_path = Path.join([root, "lib", "no_project_code_web", "live", "page_live.ex"])
+    File.mkdir_p!(Path.dirname(file_path))
+
+    File.write!(file_path, """
+    File.write!(#{inspect(sentinel_path)}, "source executed")
+
+    defmodule NoProjectCodeWeb.PageLive do
+      use Phoenix.LiveView
+
+      def render(assigns), do: ~H"<div>{@title}</div>"
+    end
+    """)
+
+    assert {:ok, engine} =
+             Manager.ensure_project_for_uri(manager, SupportURI.path_to_file_uri!(file_path),
+               status_target: self()
+             )
+
+    assert engine.root_uri == root_uri
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "project",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+
+    refute File.exists?(sentinel_path)
+  end
+
   test "ensure_project_for_uri returns error for files outside Mix projects", context do
     %{manager: manager} =
       start_manager(__MODULE__.NoProjectSupervisor, __MODULE__.NoProjectManager)
