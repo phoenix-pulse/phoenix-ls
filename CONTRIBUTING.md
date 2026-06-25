@@ -16,18 +16,18 @@ Thanks for helping shape Phoenix Pulse! This guide covers project expectations, 
 
 ## Project Overview
 
-Phoenix Pulse is a VS Code extension + Node-based language server:
+Phoenix Pulse is an Elixir-native language server with thin editor clients:
 
 | Layer | Location | Responsibilities |
 | --- | --- | --- |
-| **Extension host** | `src/` | Boots the LSP, wires document synchronization, exposes commands |
-| **Language server** | `lsp/src/server.ts` | Completions, hovers, diagnostics, definitions |
-| **Registries** | `lsp/src/*-registry.ts` | Parse workspace for components, controllers, routes, schemas, events |
-| **Completions** | `lsp/src/completions/` | Modular providers (components, assigns, JS, routes, etc.) |
-| **Diagnostics** | `lsp/src/validators/` | Component issues, navigation problems, JS usage, comment filtering |
-| **Grammar** | `syntaxes/` | TextMate grammars for HEEx files and `~H` sigils |
+| **Elixir server** | `server/apps/phoenix_ls/lib/phoenix_ls/` | LSP protocol, project management, indexing, Phoenix introspection, completions, hovers, diagnostics, definitions, signature help, and code actions |
+| **Manager/project engine** | `server/apps/phoenix_ls/lib/phoenix_ls/project/` | Project isolation, degraded state, restart/backoff behavior, and engine-owned indexing |
+| **Index and facts** | `server/apps/phoenix_ls/lib/phoenix_ls/index/` | Source facts, snapshots, dependency-aware invalidation, project scans |
+| **VS Code client** | `packages/vscode-extension/src/` | Launches `phoenix_ls`, exposes settings, explorer, ERD, and VS Code commands |
+| **Neovim client** | `packages/nvim-plugin/lua/phoenix-pulse/` | Launches `phoenix_ls`, exposes Lua config, explorer, ERD, and Neovim commands |
+| **Grammar** | `packages/vscode-extension/syntaxes/` | TextMate grammars for HEEx files and `~H` sigils |
 
-The codebase is TypeScript end-to-end (no Rust or native dependencies).
+Do not implement new Phoenix semantics in the legacy TypeScript server. The TypeScript and Lua code should stay editor-client focused.
 
 ---
 
@@ -37,7 +37,11 @@ The codebase is TypeScript end-to-end (no Rust or native dependencies).
 git clone https://github.com/phoenix-pulse/phoenix-ls.git
 cd phoenix-ls
 npm install          # Installs extension + LSP deps (workspaces)
-npm run compile      # Builds extension and language server
+cd server
+mix deps.get
+mix test
+cd ..
+npm run compile:vscode
 ```
 
 Run the extension in VS Code:
@@ -54,15 +58,15 @@ Common scripts (run from repo root unless noted):
 
 | Command | Purpose |
 | --- | --- |
-| `npm run compile` | One-shot build for `src/` and `lsp/src/` |
-| `npm run watch` | Watch/compile extension bundle (`src/`) |
-| `cd lsp && npm run watch` | Watch/compile language server bundle |
-| `npm test` | Run vitest suites (`lsp/__tests__`) |
-| `npm run compile-ext -- --production` | Production extension build |
-| `npm run compile-lsp` | Production server build |
-| `npm run package` | Build & package VSIX (uses `vsce`) |
+| `cd server && mix test` | Run Elixir server tests |
+| `cd server && mix format --check-formatted` | Check Elixir formatting |
+| `npm run compile:vscode` | Build the VS Code client bundle |
+| `npm test --workspace phoenix-pulse` | Run VS Code client, explorer, ERD, and packaging-helper tests |
+| `npm test --workspace phoenix-pulse-nvim` | Run Neovim installer and Lua contract tests |
+| `npm run package:vscode` | Build the Elixir escript, bundle it into the VS Code extension, and package a VSIX |
+| `npm run update-lsp --workspace phoenix-pulse-nvim` | Build or validate the Neovim bundled `phoenix_ls` executable |
 
-The project uses npm workspaces, so `npm install` at the root installs both extension and LSP dependencies.
+The project uses npm workspaces for editor tooling. Elixir dependencies are managed separately under `server/`.
 
 ---
 
@@ -70,24 +74,28 @@ The project uses npm workspaces, so `npm install` at the root installs both exte
 
 Before opening a PR:
 
-1. ✅ `npm test` – vitest suites (component diagnostics, controller assigns, comment filters, etc.).
-2. ✅ `npm run compile` – ensures TypeScript output is up-to-date.
-3. ✅ Manual smoke test in a sample Phoenix project (check completions, hovers, diagnostics).
-4. ✅ `NPM_CONFIG_CACHE=./.npm-cache npx vsce package --allow-star-activation --no-dependencies` (if your change touches packaging or grammar).
+1. ✅ `cd server && mix format --check-formatted && mix test` for server changes.
+2. ✅ `cd server/apps/phoenix_ls && MIX_ENV=prod mix escript.build && ./phoenix_ls --help` for executable changes.
+3. ✅ `npm run compile:vscode && npm test --workspace phoenix-pulse` for VS Code changes.
+4. ✅ `npm test --workspace phoenix-pulse-nvim` for Neovim changes.
+5. ✅ `npm run package:vscode` if your change touches packaging, the server executable, grammar, or VS Code contributions.
+6. ✅ Manual smoke test in a sample Phoenix project for user-facing LSP behavior.
 
 Optional extras:
 
 - Inspect the “Phoenix Pulse” output channel inside VS Code for registry counts.
 - Run `Developer: Reload Window` between test iterations to clear caches.
+- Use `:messages` and Neovim LSP logs when testing the Neovim client.
 
 ---
 
 ## Pull Request Checklist
 
-- [ ] Follow TypeScript strict mode (no `any` unless justified with comments).
-- [ ] Prefer small, focused commits (no generated `out/` or `lsp/dist/` files).
+- [ ] Keep semantic Phoenix, HEEx, router, schema, template, and LiveView logic in Elixir.
+- [ ] Keep VS Code TypeScript and Neovim Lua changes focused on launcher/client/UI behavior.
+- [ ] Prefer small, focused commits (no generated `out/`, `_build/`, `deps/`, or packaged artifacts unless intentionally updating a bundled executable).
 - [ ] Update documentation (README, docs in `docs/`, or inline comments) when behavior changes.
-- [ ] Add or update tests when feasible (especially for new registries/completions/diagnostics).
+- [ ] Add or update tests before implementing semantic behavior.
 - [ ] Run the VSIX packager if your change affects distribution (grammars, package.json, VS Code contributions).
 - [ ] Describe manual verification steps in the PR (e.g., “Typed `<:details>`: saw hover for slot assigns”).
 
@@ -97,21 +105,21 @@ Propose the change in a PR referencing issues when available. Maintainers review
 
 ## Release Workflow
 
-1. Ensure `npm run compile` and `npm test` pass.
-2. `NPM_CONFIG_CACHE=./.npm-cache npx vsce package --allow-star-activation --no-dependencies`.
+1. Ensure the Elixir server, VS Code client, and Neovim plugin checks pass.
+2. `npm run package:vscode`.
 3. Upload the generated `phoenix-pulse-<version>.vsix` to the release draft.
 4. Update release notes & changelog.
-5. Publish to the VS Code Marketplace (coming soon).
+5. Publish only through the approved release process.
 
 ---
 
 ## Code Style & Standards
 
-- TypeScript + ESLint defaults (no implicit `any`, prefer `const`).
-- Two-space indentation, single quotes.
-- Keep modules cohesive (registries -> `lsp/src/*-registry.ts`, completions -> `lsp/src/completions/`).
-- Use helper utilities (`utils/component-usage.ts`, `utils/comments.ts`) to avoid duplication.
-- Favor async functions for IO; wrap filesystem access in try/catch.
-- Keep docs user-focused: update `README.md`, `PROGRESS_TODAY.md`, and session notes when features ship.
+- Elixir server code uses ExUnit tests, focused modules, explicit context, and source locations/provenance for indexed facts.
+- Do not use regex to parse Elixir, Phoenix, or HEEx semantics.
+- Do not put LSP protocol handling inside feature providers.
+- Do not load or execute project code in the manager VM.
+- TypeScript and Lua client code should remain thin launcher/UI layers around the Elixir server.
+- Keep docs user-focused: update `README.md`, `NEOVIM.md`, `docs/release.md`, and package READMEs when behavior changes.
 
 Thanks for contributing—the Phoenix community gets stronger with every PR! 🚀

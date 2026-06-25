@@ -341,18 +341,21 @@ ls mix.exs
 
 ### Performance issues
 
-**Lower parser concurrency:**
-Set environment variable:
-```bash
-export PHOENIX_PULSE_PARSER_CONCURRENCY=5
+**Use source-only mode while investigating project build issues:**
+```lua
+require("phoenix-pulse").setup({
+  source_only_mode = true,
+  indexing_enabled = true,
+  log_level = "debug",
+})
 ```
 
-**Check Elixir installed:**
+**Confirm the bundled server starts:**
 ```bash
-elixir --version
+packages/nvim-plugin/server/phoenix_ls --help
 ```
 
-Without Elixir, falls back to regex parser (slower).
+The Elixir server keeps the editor alive in degraded mode when project indexing or compilation-aware work is unavailable. Check `:messages` and the Neovim LSP log for indexing and degraded-mode status.
 
 ---
 

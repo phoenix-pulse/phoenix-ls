@@ -6,8 +6,8 @@ This is the `phoenix-ls` monorepo containing the Phoenix Pulse Language Server a
 
 ## 📦 Packages
 
-### [`@phoenix-pulse/language-server`](./packages/language-server/)
-The core Language Server Protocol (LSP) server providing intelligent features for Phoenix LiveView development.
+### [Phoenix LS Elixir Server](./server/apps/phoenix_ls/)
+The Elixir-native Language Server Protocol (LSP) server providing intelligent features for Phoenix LiveView development.
 
 - 🧩 Component completions with attributes and slots
 - 📊 Schema completions with association drill-down
@@ -17,7 +17,7 @@ The core Language Server Protocol (LSP) server providing intelligent features fo
 - 📖 Hover documentation
 - 🎯 Go-to-definition support
 
-**Published to npm:** `@phoenix-pulse/language-server`
+The server builds to a local `phoenix_ls` escript and is launched by the editor clients over stdio.
 
 ### [VS Code Extension](./packages/vscode-extension/)
 Full-featured VS Code extension for Phoenix LiveView development.
@@ -119,35 +119,33 @@ See [NEOVIM.md](./NEOVIM.md) for complete installation and configuration details
 ```bash
 git clone https://github.com/phoenix-pulse/phoenix-ls
 cd phoenix-ls
-npm install              # Installs all workspace packages
-npm run compile          # Builds language-server + vscode-extension
+npm install              # Installs editor workspace packages
+cd server && mix deps.get && cd .. # Installs Elixir server dependencies
+npm run compile:vscode   # Builds the VS Code client bundle
 ```
 
 **Development Commands:**
 ```bash
-# Compile everything
-npm run compile
-
-# Compile specific package
-npm run compile:lsp
+# Compile the VS Code client
 npm run compile:vscode
 
-# Watch mode (auto-recompile on changes)
-npm run watch:lsp
+# Watch the VS Code client
 npm run watch:vscode
 
 # Run tests
 npm test
+cd server && mix test
 
-# Clean build artifacts
-npm run clean
+# Build local editor packages
+npm run package:vscode
+npm run update-lsp --workspace phoenix-pulse-nvim
 ```
 
 **Test VS Code Extension:**
 ```bash
 cd packages/vscode-extension
 npm run compile
-npm run package         # Creates .vsix file
+npm run package         # Builds phoenix_ls and creates .vsix file
 code --install-extension phoenix-pulse-*.vsix
 ```
 
@@ -181,14 +179,9 @@ cd packages/nvim-plugin
 ```
 phoenix-ls/
 ├── packages/
-│   ├── language-server/          # @phoenix-pulse/language-server
-│   │   ├── src/                   # TypeScript source
-│   │   ├── dist/                  # Compiled output
-│   │   ├── elixir-parser/         # Elixir AST parsers
-│   │   └── package.json
-│   │
 │   ├── vscode-extension/          # VS Code extension
 │   │   ├── src/                   # Extension source
+│   │   ├── server/phoenix_ls      # Bundled Elixir server executable
 │   │   ├── syntaxes/              # HEEx grammar
 │   │   ├── images/                # Icons
 │   │   └── package.json
@@ -196,9 +189,16 @@ phoenix-ls/
 │   └── nvim-plugin/               # Neovim plugin
 │       ├── lua/phoenix-pulse/     # Lua modules
 │       ├── plugin/                # Plugin entry point
+│       ├── server/phoenix_ls      # Bundled Elixir server executable
 │       ├── doc/                   # Vim help docs
 │       └── install-lsp.sh         # LSP installer script
 │
+├── server/
+│   └── apps/phoenix_ls/           # Elixir-native LSP server
+│       ├── lib/                   # LSP, indexing, introspection, features
+│       └── mix.exs
+│
+├── packages/language-server/      # Legacy TypeScript server retained until final removal
 ├── package.json                   # Root workspace config
 ├── README.md                      # This file
 ├── NEOVIM.md                      # Neovim documentation
@@ -210,17 +210,22 @@ phoenix-ls/
 
 ## 🔄 Workflow
 
-### Updating the Language Server
+### Updating the Elixir Language Server
 
 ```bash
-# 1. Make changes to language-server
-cd packages/language-server
-# ... edit src/ files ...
-npm run compile
+# 1. Make changes to the Elixir server
+cd server
+# ... edit apps/phoenix_ls/lib or tests ...
+mix format --check-formatted
+mix test
+cd apps/phoenix_ls
+MIX_ENV=prod mix escript.build
+./phoenix_ls --help
 
 # 2. Test in VS Code
-cd ../vscode-extension
+cd ../../../packages/vscode-extension
 npm run compile
+npm run package
 code .  # Press F5 to launch Extension Development Host
 
 # 3. Test in Neovim
@@ -231,13 +236,7 @@ nvim /path/to/phoenix/project
 
 ### Publishing
 
-**Language Server to npm:**
-```bash
-cd packages/language-server
-npm version patch  # or minor, major
-npm run compile
-npm publish
-```
+Do not publish from a development branch. Build local release candidates with the commands in [docs/release.md](./docs/release.md), verify the generated VSIX and bundled `phoenix_ls` executables, then publish only through the release process.
 
 **VS Code Extension to Marketplace:**
 ```bash
@@ -273,9 +272,9 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 | Package | Version | Status |
 |---------|---------|--------|
-| Language Server | 1.0.0 | ✅ Published to npm |
-| VS Code Extension | 1.3.0 | ✅ Ready to publish |
-| Neovim Plugin | 1.0.0 | ✅ Stable |
+| Phoenix LS Elixir Server | 0.1.0 | Elixir v2 rewrite in progress |
+| VS Code Extension | 1.3.0 | Uses bundled or configured Elixir server |
+| Neovim Plugin | 1.0.0 | Uses bundled or configured Elixir server |
 
 ---
 
@@ -299,4 +298,3 @@ Special thanks to all contributors and the Phoenix/Elixir community!
 - **Organization:** https://github.com/phoenix-pulse
 - **VS Code Marketplace:** https://marketplace.visualstudio.com/items?itemName=onsever.phoenix-pulse
 - **Issues:** https://github.com/phoenix-pulse/phoenix-ls/issues
-- **npm:** https://www.npmjs.com/package/@phoenix-pulse/language-server

@@ -21,7 +21,7 @@
 
 Phoenix Pulse provides intelligent IntelliSense, validation, and navigation for Phoenix 1.6+ and 1.7+ applications. Work faster with smart completions for components, templates, routes, and assigns—all powered by deep understanding of your Phoenix project structure.
 
-**Powered by Elixir's own AST parser** for 100% accurate code analysis with intelligent caching for lightning-fast performance.
+**Powered by the Elixir-native Phoenix LS server** for source-aware analysis, indexing, completions, diagnostics, navigation, explorer data, and ERD payloads.
 
 ---
 
@@ -318,13 +318,11 @@ code --install-extension onsever.phoenix-pulse
 
 - **VS Code**: 1.75.0 or higher
 - **Phoenix**: 1.6+ or 1.7+ project
-- **Node.js**: 16+ (for LSP server)
+- **Phoenix LS executable**: bundled with release builds, or configured with `phoenixPulse.serverPath`
 
 ### Recommended
 
-- **Elixir**: 1.13+ (for accurate AST parsing)
-  - Without Elixir: Falls back to regex parser (less accurate)
-  - With Elixir: 100% accurate parsing with function clause support
+- **Elixir/Mix**: 1.17+ when building the local Phoenix LS executable from source
 - **Phoenix**: 1.7+ (for verified routes and `:html` modules)
 
 ### Supported File Types
@@ -423,20 +421,21 @@ Ctrl+Shift+P → "Developer: Reload Window"
 
 ### Performance issues?
 
-**Enable Performance Logging**
-```bash
-export PHOENIX_LSP_DEBUG_PERF=true
-code .
+**Enable Debug Logging**
+```json
+{
+  "phoenixPulse.logLevel": "debug",
+  "phoenixPulse.sourceOnlyMode": true,
+  "phoenixPulse.indexing.enabled": true
+}
 ```
 
-Check the "Phoenix Pulse" output channel for slow operations:
-- **Good**: < 50ms for completions, < 100ms for hover
-- **Slow**: > 200ms indicates issue
+Check the "Phoenix Pulse" output channel for indexing, degraded-mode, and startup messages.
 
 **Solutions:**
 1. Check the configured executable: `"phoenixPulse.serverPath"`
-2. Check Elixir is installed: `elixir --version`
-3. Set `"phoenixPulse.logLevel": "debug"` and inspect the Phoenix Pulse output channel
+2. Confirm the bundled executable runs: `packages/vscode-extension/server/phoenix_ls --help`
+3. Rebuild local release artifacts with `npm run package:vscode`
 
 ### Still having issues?
 
