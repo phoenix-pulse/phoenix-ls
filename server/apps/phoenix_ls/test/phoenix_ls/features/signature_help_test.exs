@@ -99,6 +99,26 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
            )
   end
 
+  test "source-aware slot signature help is scoped to the active component slot" do
+    {source, position} = source_and_position("<.card><:item ro| /></.card>")
+
+    assert %SignatureHelp{
+             signatures: [signature],
+             active_signature: 0,
+             active_parameter: 0
+           } = SignatureHelpFeature.signature_help(source, position, facts())
+
+    assert signature.label == "<:item role>"
+    assert String.contains?(signature.documentation.value, "Slot `:item`")
+    assert String.contains?(signature.documentation.value, "AppWeb.CoreComponents.card/1")
+    assert Enum.map(signature.parameters, & &1.label) == ["role"]
+
+    assert String.contains?(
+             Enum.at(signature.parameters, 0).documentation.value,
+             "Card item role"
+           )
+  end
+
   test "returns route helper signature help for Elixir calls" do
     {source, position} = source_and_position("Routes.user_path(conn, :show, |)")
 
@@ -133,10 +153,24 @@ defmodule PhoenixLS.Features.SignatureHelpTest do
           attr :class, :string, doc: "Slot CSS class"
         end
 
+        slot :item do
+          attr :class, :string, doc: "Button item class"
+        end
+
         @doc "Renders a button."
         def button(assigns) do
           ~H\"\"\"
           <button><%= @label %></button>
+          \"\"\"
+        end
+
+        slot :item do
+          attr :role, :string, doc: "Card item role"
+        end
+
+        def card(assigns) do
+          ~H\"\"\"
+          <section><%= render_slot(@item) %></section>
           \"\"\"
         end
       end

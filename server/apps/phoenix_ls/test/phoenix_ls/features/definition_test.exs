@@ -45,6 +45,22 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "source-aware slot definitions are scoped to the active component" do
+    assert_source_definition(
+      "<.card><:it|em role=\"navigation\" /></.card>",
+      :component_slot,
+      "AppWeb.CoreComponents.card/1:slot:item"
+    )
+  end
+
+  test "source-aware slot attr definitions are scoped to the active component slot" do
+    assert_source_definition(
+      "<.card><:item ro|le=\"navigation\" /></.card>",
+      :component_slot_attr,
+      "AppWeb.CoreComponents.card/1:slot:item:attr:role"
+    )
+  end
+
   test "goes to remote component attr definitions through aliases" do
     assert_definition(
       "<CoreComponents.button lab|el=\"Save\" />",
@@ -206,6 +222,14 @@ defmodule PhoenixLS.Features.DefinitionTest do
              Definition.definition(context, facts())
   end
 
+  defp assert_source_definition(marked_source, kind, id) do
+    {source, position} = source_and_position(marked_source)
+    expected_fact = Enum.find(facts(), &(&1.kind == kind and &1.id == id))
+
+    assert %Location{uri: @uri, range: expected_fact.range} ==
+             Definition.definition_source(source, position, facts())
+  end
+
   defp facts do
     {:ok, facts} =
       ElixirSource.facts(@uri, """
@@ -216,9 +240,23 @@ defmodule PhoenixLS.Features.DefinitionTest do
           attr :class, :string
         end
 
+        slot :item do
+          attr :class, :string
+        end
+
         def button(assigns) do
           ~H\"\"\"
           <button><%= @label %></button>
+          \"\"\"
+        end
+
+        slot :item do
+          attr :role, :string
+        end
+
+        def card(assigns) do
+          ~H\"\"\"
+          <section><%= render_slot(@item) %></section>
           \"\"\"
         end
       end

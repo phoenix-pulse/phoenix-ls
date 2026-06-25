@@ -36,7 +36,7 @@ defmodule PhoenixLS.Features.SignatureHelp do
          routes when routes != [] <- route_helper_routes(facts, helper_base) do
       route_helper_signature_help(helper_name, routes, active_parameter)
     else
-      _not_route_helper -> nil
+      _not_route_helper -> component_signature_help(source, position, facts)
     end
   end
 
@@ -48,6 +48,14 @@ defmodule PhoenixLS.Features.SignatureHelp do
   defp component_or_slot_for_tag(tag, facts) do
     ComponentLookup.component_for_tag(tag, facts) ||
       ComponentLookup.slot_for_tag(tag, facts)
+  end
+
+  defp component_or_slot_for_source_tag(":" <> _ = tag, source, position, facts) do
+    ComponentLookup.slot_for_source_tag(tag, source, position, facts)
+  end
+
+  defp component_or_slot_for_source_tag(tag, _source, _position, facts) do
+    ComponentLookup.component_for_tag(tag, facts)
   end
 
   defp signature_help_for_fact(%Fact{kind: :component} = component, tag, context, facts) do
@@ -78,6 +86,16 @@ defmodule PhoenixLS.Features.SignatureHelp do
       active_signature: 0,
       active_parameter: active_parameter(attrs, context)
     }
+  end
+
+  defp component_signature_help(source, position, facts) do
+    with {:ok, context} <- CursorContext.at(source, position),
+         tag when is_binary(tag) <- component_tag(context),
+         %Fact{} = fact <- component_or_slot_for_source_tag(tag, source, position, facts) do
+      signature_help_for_fact(fact, tag, context, facts)
+    else
+      _not_component_context -> nil
+    end
   end
 
   defp component_attrs(component, facts) do

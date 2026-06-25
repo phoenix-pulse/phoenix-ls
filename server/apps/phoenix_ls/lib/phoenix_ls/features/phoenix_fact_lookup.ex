@@ -8,6 +8,15 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
+  @spec cursor_fact(String.t(), CursorContext.lsp_position(), [Fact.t()]) :: Fact.t() | nil
+  def cursor_fact(source, position, facts) when is_binary(source) and is_list(facts) do
+    with {:ok, context} <- CursorContext.at(source, position) do
+      source_cursor_fact(context, source, position, facts)
+    else
+      _invalid_context -> nil
+    end
+  end
+
   @spec cursor_fact(CursorContext.t(), [Fact.t()]) :: Fact.t() | nil
   def cursor_fact(%CursorContext{kind: :tag_name, prefix: tag}, facts) do
     ComponentLookup.component_for_tag(tag, facts) ||
@@ -52,6 +61,28 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   end
 
   def cursor_fact(_context, _facts), do: nil
+
+  defp source_cursor_fact(
+         %CursorContext{kind: :tag_name, prefix: ":" <> _} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.slot_for_source_tag(context.prefix, source, position, facts)
+  end
+
+  defp source_cursor_fact(
+         %CursorContext{kind: :attribute_name, tag: ":" <> _} = context,
+         source,
+         position,
+         facts
+       ) do
+    ComponentLookup.slot_attr_for_source_tag(context.tag, context.prefix, source, position, facts)
+  end
+
+  defp source_cursor_fact(%CursorContext{} = context, _source, _position, facts) do
+    cursor_fact(context, facts)
+  end
 
   defp find_route(facts, path_prefix) do
     Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))

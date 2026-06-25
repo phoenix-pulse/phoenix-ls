@@ -51,6 +51,31 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "source-aware slot hovers are scoped to the active component" do
+    {source, position} = source_and_position("<.card><:it|em role=\"navigation\" /></.card>")
+    markdown = MarkupKind.markdown()
+
+    assert %Hover{contents: %{kind: ^markdown, value: value}} =
+             HoverFeature.hover_source(source, position, facts())
+
+    assert String.contains?(value, "slot :item")
+    assert String.contains?(value, "AppWeb.CoreComponents.card/1")
+    refute String.contains?(value, "AppWeb.CoreComponents.button/1")
+  end
+
+  test "source-aware slot attr hovers are scoped to the active component slot" do
+    {source, position} = source_and_position("<.card><:item ro|le=\"navigation\" /></.card>")
+    markdown = MarkupKind.markdown()
+
+    assert %Hover{contents: %{kind: ^markdown, value: value}} =
+             HoverFeature.hover_source(source, position, facts())
+
+    assert String.contains?(value, "slot attr :role, :string")
+    assert String.contains?(value, "Card item role")
+    assert String.contains?(value, "AppWeb.CoreComponents.card/1")
+    refute String.contains?(value, "Button item class")
+  end
+
   test "hovers remote component attrs through aliases" do
     assert_hover("<CoreComponents.button lab|el=\"Save\" />", [
       "attr :label, :string",
@@ -212,10 +237,24 @@ defmodule PhoenixLS.Features.HoverTest do
           attr :class, :string
         end
 
+        slot :item do
+          attr :class, :string, doc: "Button item class"
+        end
+
         @doc "Renders a button."
         def button(assigns) do
           ~H\"\"\"
           <button><%= @label %></button>
+          \"\"\"
+        end
+
+        slot :item do
+          attr :role, :string, doc: "Card item role"
+        end
+
+        def card(assigns) do
+          ~H\"\"\"
+          <section><%= render_slot(@item) %></section>
           \"\"\"
         end
       end

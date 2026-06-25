@@ -5,7 +5,6 @@ defmodule PhoenixLS.LSP.Hover do
 
   alias GenLSP.Requests.TextDocumentHover
   alias PhoenixLS.Features.Hover, as: HoverFeature
-  alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Snapshot
   alias PhoenixLS.LSP.RequestContext
   alias PhoenixLS.Workspace.DocumentStore
@@ -23,13 +22,8 @@ defmodule PhoenixLS.LSP.Hover do
            {:ok, document} <- DocumentStore.fetch(engine.document_store, uri) do
         facts = Snapshot.all(snapshot)
 
-        case CursorContext.at(document.text, position) do
-          {:ok, cursor_context} ->
-            HoverFeature.hover(cursor_context, facts) || HoverFeature.hover(uri, position, facts)
-
-          _invalid_context ->
-            HoverFeature.hover(uri, position, facts)
-        end
+        HoverFeature.hover_source(document.text, position, facts) ||
+          HoverFeature.hover(uri, position, facts)
       else
         _missing_or_invalid -> nil
       end

@@ -17,6 +17,13 @@ defmodule PhoenixLS.Features.Hover do
     |> hover_for_fact()
   end
 
+  @spec hover_source(String.t(), CursorContext.lsp_position(), [Fact.t()]) :: Hover.t() | nil
+  def hover_source(source, position, facts) when is_binary(source) and is_list(facts) do
+    source
+    |> PhoenixFactLookup.cursor_fact(position, facts)
+    |> hover_for_fact()
+  end
+
   @spec hover(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [Fact.t()]) ::
           Hover.t() | nil
   def hover(uri, position, facts) when is_binary(uri) and is_list(facts) do
@@ -67,6 +74,7 @@ defmodule PhoenixLS.Features.Hover do
       code("slot attr :#{fact.data.name}, #{inspect(fact.data.type)}"),
       "slot :#{fact.data.slot}",
       option_lines(fact.data.options),
+      Keyword.get(fact.data.options || [], :doc),
       fact.data.component
     ]
     |> compact_join()
