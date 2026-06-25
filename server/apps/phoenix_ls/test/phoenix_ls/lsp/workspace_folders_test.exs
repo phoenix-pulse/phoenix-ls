@@ -11,7 +11,8 @@ defmodule PhoenixLS.LSP.WorkspaceFoldersTest do
     WorkspaceFoldersChangeEvent
   }
 
-  alias PhoenixLS.LSP.{Server, WorkspaceFolders}
+  alias PhoenixLS.LSP.{Server, ServerConfig, WorkspaceFolders}
+  alias PhoenixLS.Project.Names
   alias PhoenixLS.Support.URI, as: SupportURI
 
   setup do
@@ -48,6 +49,32 @@ defmodule PhoenixLS.LSP.WorkspaceFoldersTest do
 
     assert LSP.assigns(updated_lsp).workspace_folders == %{root_uri => "initial"}
     assert LSP.assigns(updated_lsp).workspace_project_roots == MapSet.new([root_uri])
+  end
+
+  test "assign_initial passes runtime config to located workspace projects",
+       %{
+         lsp: lsp
+       } = context do
+    root = fixture_project(context, "configured_initial")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    lsp =
+      LSP.assign(lsp,
+        server_config: %ServerConfig{
+          source_only?: true,
+          project_indexing_enabled?: false,
+          project_compilation_enabled?: false,
+          log_level: :info
+        }
+      )
+
+    updated_lsp =
+      WorkspaceFolders.assign_initial(lsp, [
+        %WorkspaceFolder{uri: root_uri, name: "configured_initial"}
+      ])
+
+    assert LSP.assigns(updated_lsp).workspace_project_roots == MapSet.new([root_uri])
+    assert %{project_indexing_enabled: false} = :sys.get_state(Names.indexer(root_uri))
   end
 
   test "assign_initial keeps folders that are not Mix projects without project roots",

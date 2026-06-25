@@ -5,6 +5,7 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   alias GenLSP.LSP
   alias GenLSP.Notifications.WorkspaceDidChangeWorkspaceFolders
+  alias PhoenixLS.LSP.ServerConfig
   alias PhoenixLS.Project.Manager
 
   @type folder :: %{uri: String.t(), name: String.t()}
@@ -67,7 +68,11 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   defp add_project_roots(project_roots, lsp, entries) do
     Enum.reduce(entries, project_roots, fn entry, roots ->
-      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri, status_target: lsp.pid) do
+      case Manager.ensure_project_for_uri(
+             project_manager(lsp),
+             entry.uri,
+             project_manager_opts(lsp)
+           ) do
         {:ok, engine} -> MapSet.put(roots, engine.root_uri)
         _not_located -> roots
       end
@@ -76,7 +81,11 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   defp remove_project_roots(project_roots, lsp, entries) do
     Enum.reduce(entries, project_roots, fn entry, roots ->
-      case Manager.ensure_project_for_uri(project_manager(lsp), entry.uri, status_target: lsp.pid) do
+      case Manager.ensure_project_for_uri(
+             project_manager(lsp),
+             entry.uri,
+             project_manager_opts(lsp)
+           ) do
         {:ok, engine} -> MapSet.delete(roots, engine.root_uri)
         _not_located -> roots
       end
@@ -103,5 +112,11 @@ defmodule PhoenixLS.LSP.WorkspaceFolders do
 
   defp project_manager(lsp) do
     LSP.assigns(lsp).project_manager
+  end
+
+  defp project_manager_opts(lsp) do
+    config = lsp |> LSP.assigns() |> Map.get(:server_config, ServerConfig.default())
+
+    ServerConfig.project_manager_opts(config, lsp.pid)
   end
 end

@@ -7,6 +7,7 @@ defmodule PhoenixLS.LSP.ServerConfigTest do
     assert %ServerConfig{
              source_only?: true,
              project_indexing_enabled?: true,
+             project_compilation_enabled?: false,
              log_level: :info
            } = ServerConfig.from_env(%{})
   end
@@ -15,32 +16,46 @@ defmodule PhoenixLS.LSP.ServerConfigTest do
     assert %ServerConfig{
              source_only?: false,
              project_indexing_enabled?: false,
+             project_compilation_enabled?: true,
              log_level: :warning
            } =
              ServerConfig.from_env(%{
                "PHOENIX_LS_SOURCE_ONLY" => "0",
                "PHOENIX_LS_INDEXING" => "false",
+               "PHOENIX_LS_COMPILATION" => "true",
                "PHOENIX_LS_LOG_LEVEL" => "warn"
              })
   end
 
   test "builds project manager options from runtime config" do
-    config = %ServerConfig{source_only?: true, project_indexing_enabled?: false, log_level: :info}
+    config = %ServerConfig{
+      source_only?: true,
+      project_indexing_enabled?: false,
+      project_compilation_enabled?: false,
+      log_level: :info
+    }
 
     assert ServerConfig.project_manager_opts(config, self()) == [
              status_target: self(),
              source_only?: true,
-             project_indexing_enabled: false
+             project_indexing_enabled: false,
+             project_compilation_enabled: false
            ]
   end
 
   test "passes compilation-aware mode through project manager options" do
-    config = %ServerConfig{source_only?: false, project_indexing_enabled?: true, log_level: :info}
+    config = %ServerConfig{
+      source_only?: false,
+      project_indexing_enabled?: true,
+      project_compilation_enabled?: true,
+      log_level: :info
+    }
 
     assert ServerConfig.project_manager_opts(config, self()) == [
              status_target: self(),
              source_only?: false,
-             project_indexing_enabled: true
+             project_indexing_enabled: true,
+             project_compilation_enabled: true
            ]
   end
 end

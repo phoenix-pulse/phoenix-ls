@@ -57,6 +57,7 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     config = %ServerConfig{
       source_only?: false,
       project_indexing_enabled?: false,
+      project_compilation_enabled?: false,
       log_level: :debug
     }
 
@@ -163,7 +164,13 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
     root_path = fixture_project(context, "server_project_indexing_config")
     root_uri = SupportURI.path_to_file_uri!(root_path)
 
-    config = %ServerConfig{source_only?: true, project_indexing_enabled?: false, log_level: :info}
+    config = %ServerConfig{
+      source_only?: true,
+      project_indexing_enabled?: false,
+      project_compilation_enabled?: false,
+      log_level: :info
+    }
+
     {:ok, lsp} = Server.init(lsp, project_manager: Manager, server_config: config)
 
     params = %InitializeParams{
@@ -176,6 +183,35 @@ defmodule PhoenixLS.LSP.ServerLifecycleTest do
              Server.handle_request(%Initialize{id: 1, params: params}, lsp)
 
     assert %{project_indexing_enabled: false} = :sys.get_state(Names.indexer(root_uri))
+  end
+
+  test "initialize passes project compilation config to project engines",
+       %{
+         lsp: lsp
+       } = context do
+    root_path = fixture_project(context, "server_project_compilation_config")
+    root_uri = SupportURI.path_to_file_uri!(root_path)
+
+    config = %ServerConfig{
+      source_only?: true,
+      project_indexing_enabled?: true,
+      project_compilation_enabled?: true,
+      log_level: :info
+    }
+
+    {:ok, lsp} = Server.init(lsp, project_manager: Manager, server_config: config)
+
+    params = %InitializeParams{
+      process_id: nil,
+      root_uri: root_uri,
+      capabilities: %ClientCapabilities{}
+    }
+
+    assert {:reply, %InitializeResult{}, _updated_lsp} =
+             Server.handle_request(%Initialize{id: 1, params: params}, lsp)
+
+    assert %{compile_runner: compile_runner} = :sys.get_state(Names.indexer(root_uri))
+    assert compile_runner == Names.compile_runner(root_uri)
   end
 
   test "initialize keeps fallback document store when no Mix project is found",

@@ -3,12 +3,18 @@ defmodule PhoenixLS.LSP.ServerConfig do
   Runtime options passed by editor launchers to the Elixir language server.
   """
 
-  @enforce_keys [:source_only?, :project_indexing_enabled?, :log_level]
-  defstruct [:source_only?, :project_indexing_enabled?, :log_level]
+  @enforce_keys [
+    :source_only?,
+    :project_indexing_enabled?,
+    :project_compilation_enabled?,
+    :log_level
+  ]
+  defstruct [:source_only?, :project_indexing_enabled?, :project_compilation_enabled?, :log_level]
 
   @type t :: %__MODULE__{
           source_only?: boolean(),
           project_indexing_enabled?: boolean(),
+          project_compilation_enabled?: boolean(),
           log_level: Logger.level()
         }
 
@@ -17,6 +23,7 @@ defmodule PhoenixLS.LSP.ServerConfig do
     %__MODULE__{
       source_only?: true,
       project_indexing_enabled?: true,
+      project_compilation_enabled?: false,
       log_level: :info
     }
   end
@@ -26,6 +33,7 @@ defmodule PhoenixLS.LSP.ServerConfig do
     %__MODULE__{
       source_only?: env_bool(env, "PHOENIX_LS_SOURCE_ONLY", true),
       project_indexing_enabled?: env_bool(env, "PHOENIX_LS_INDEXING", true),
+      project_compilation_enabled?: env_bool(env, "PHOENIX_LS_COMPILATION", false),
       log_level: env_log_level(env, "PHOENIX_LS_LOG_LEVEL", :info)
     }
   end
@@ -71,10 +79,19 @@ defmodule PhoenixLS.LSP.ServerConfig do
 
   @spec project_manager_opts(t(), pid()) :: keyword()
   def project_manager_opts(
-        %__MODULE__{source_only?: source_only?, project_indexing_enabled?: enabled},
+        %__MODULE__{
+          source_only?: source_only?,
+          project_indexing_enabled?: indexing_enabled?,
+          project_compilation_enabled?: compilation_enabled?
+        },
         status_target
       )
       when is_pid(status_target) do
-    [status_target: status_target, source_only?: source_only?, project_indexing_enabled: enabled]
+    [
+      status_target: status_target,
+      source_only?: source_only?,
+      project_indexing_enabled: indexing_enabled?,
+      project_compilation_enabled: compilation_enabled?
+    ]
   end
 end
