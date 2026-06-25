@@ -6,13 +6,22 @@ defmodule PhoenixLS.Introspection.Schema do
   alias GenLSP.Structures.{Position, Range}
   alias PhoenixLS.Index.Fact
 
+  defmodule PrimaryKey do
+    @moduledoc """
+    Typed Ecto primary key configuration carried by schema facts.
+    """
+
+    @enforce_keys [:name, :type, :options]
+    defstruct [:name, :type, :options]
+  end
+
   defmodule Schema do
     @moduledoc """
     Typed Ecto schema fact payload.
     """
 
-    @enforce_keys [:module, :source]
-    defstruct [:module, :source]
+    @enforce_keys [:module, :source, :primary_key, :foreign_key_type]
+    defstruct [:module, :source, :primary_key, :foreign_key_type]
   end
 
   defmodule Field do
@@ -41,7 +50,18 @@ defmodule PhoenixLS.Introspection.Schema do
     expressions = top_level_expressions(body_ast)
     aliases = aliases(expressions)
 
-    Enum.flat_map(expressions, &collect_expression(&1, module, uri, provenance, aliases))
+    expressions
+    |> Enum.reduce(%{facts: [], config: default_schema_config()}, fn expression, state ->
+      case schema_config(expression, state.config) do
+        {:ok, config} ->
+          %{state | config: config}
+
+        :none ->
+          facts = collect_expression(expression, module, uri, provenance, aliases, state.config)
+          %{state | facts: state.facts ++ facts}
+      end
+    end)
+    |> Map.fetch!(:facts)
   end
 
   defp collect_expression(
@@ -49,7 +69,8 @@ defmodule PhoenixLS.Introspection.Schema do
          module,
          uri,
          provenance,
-         aliases
+         aliases,
+         config
        )
        when is_binary(source) do
     schema_id = schema_id(module, source)
@@ -63,7 +84,9 @@ defmodule PhoenixLS.Introspection.Schema do
         provenance: provenance,
         data: %Schema{
           module: module,
-          source: source
+          source: source,
+          primary_key: config.primary_key,
+          foreign_key_type: config.foreign_key_type
         }
       )
 
@@ -75,7 +98,8 @@ defmodule PhoenixLS.Introspection.Schema do
          module,
          uri,
          provenance,
-         aliases
+         aliases,
+         config
        ) do
     schema_id = schema_id(module, nil)
 
@@ -88,14 +112,52 @@ defmodule PhoenixLS.Introspection.Schema do
         provenance: provenance,
         data: %Schema{
           module: module,
-          source: nil
+          source: nil,
+          primary_key: config.primary_key,
+          foreign_key_type: config.foreign_key_type
         }
       )
 
     [schema_fact | schema_detail_facts(schema_id, module, block, uri, provenance, aliases)]
   end
 
-  defp collect_expression(_expression, _module, _uri, _provenance, _aliases), do: []
+  defp collect_expression(_expression, _module, _uri, _provenance, _aliases, _config), do: []
+
+  defp default_schema_config do
+    %{
+      primary_key: %PrimaryKey{name: "id", type: :id, options: [autogenerate: true]},
+      foreign_key_type: :id
+    }
+  end
+
+  defp schema_config({:@, _meta, [{:primary_key, _attr_meta, [false]}]}, config) do
+    {:ok, %{config | primary_key: false}}
+  end
+
+  defp schema_config({:@, _meta, [{:primary_key, _attr_meta, [primary_key_ast]}]}, config) do
+    case primary_key(primary_key_ast) do
+      {:ok, primary_key} -> {:ok, %{config | primary_key: primary_key}}
+      :error -> :none
+    end
+  end
+
+  defp schema_config({:@, _meta, [{:foreign_key_type, _attr_meta, [type]}]}, config)
+       when is_atom(type) do
+    {:ok, %{config | foreign_key_type: type}}
+  end
+
+  defp schema_config(_expression, _config), do: :none
+
+  defp primary_key({:{}, _meta, [name, type, options]})
+       when is_atom(name) and is_atom(type) and is_list(options) do
+    {:ok, %PrimaryKey{name: Atom.to_string(name), type: type, options: options}}
+  end
+
+  defp primary_key({:{}, _meta, [name, type]}) when is_atom(name) and is_atom(type) do
+    {:ok, %PrimaryKey{name: Atom.to_string(name), type: type, options: []}}
+  end
+
+  defp primary_key(_ast), do: :error
 
   defp schema_detail_facts(schema_id, module, block, uri, provenance, aliases) do
     block

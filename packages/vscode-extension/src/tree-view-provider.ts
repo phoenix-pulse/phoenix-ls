@@ -16,6 +16,10 @@ interface SchemaInfo {
     name: string;
     type: string;
     elixirType?: string;
+    primaryKey?: boolean;
+    foreignKey?: boolean;
+    generated?: boolean;
+    references?: string;
     filePath?: string;
     location?: { line: number; character: number };
   }>;

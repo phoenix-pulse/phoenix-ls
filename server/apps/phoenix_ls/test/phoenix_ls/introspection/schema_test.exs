@@ -38,7 +38,13 @@ defmodule PhoenixLS.Introspection.SchemaTest do
 
     assert schema_fact.data == %Schema.Schema{
              module: "App.Catalog.Product",
-             source: "products"
+             source: "products",
+             primary_key: %Schema.PrimaryKey{
+               name: "id",
+               type: :id,
+               options: [autogenerate: true]
+             },
+             foreign_key_type: :id
            }
 
     assert [name_field, active_field, account_assoc] = detail_facts
@@ -118,7 +124,17 @@ defmodule PhoenixLS.Introspection.SchemaTest do
     assert skus_assoc.related == "App.Inventory.Sku"
 
     assert embedded_schema = Enum.find(facts, &(&1.id == "App.Catalog.Product:embedded_schema"))
-    assert embedded_schema.data == %Schema.Schema{module: "App.Catalog.Product", source: nil}
+
+    assert embedded_schema.data == %Schema.Schema{
+             module: "App.Catalog.Product",
+             source: nil,
+             primary_key: %Schema.PrimaryKey{
+               name: "id",
+               type: :id,
+               options: [autogenerate: true]
+             },
+             foreign_key_type: :id
+           }
 
     assert draft_field =
              Enum.find(facts, &(&1.id == "App.Catalog.Product:embedded_schema:field:draft_name"))
@@ -151,5 +167,45 @@ defmodule PhoenixLS.Introspection.SchemaTest do
              {"inserted_at", :utc_datetime, 5},
              {"updated_at", :utc_datetime, 5}
            ]
+  end
+
+  test "extracts primary key and foreign key configuration for schemas" do
+    source = """
+    defmodule App.Catalog.Product do
+      use Ecto.Schema
+
+      @primary_key {:uuid, :binary_id, autogenerate: true}
+      @foreign_key_type :binary_id
+
+      schema "products" do
+        belongs_to :account, App.Accounts.Account
+      end
+
+      @primary_key false
+
+      embedded_schema do
+        field :draft_name, :string
+      end
+    end
+    """
+
+    {:ok, quoted} = Code.string_to_quoted(source, columns: true, token_metadata: true)
+    {:defmodule, _meta, [_module_ast, [do: body]]} = quoted
+
+    facts = Schema.facts_for_module_body("App.Catalog.Product", body, @uri, @provenance)
+
+    assert product_schema = Enum.find(facts, &(&1.id == "App.Catalog.Product:schema:products"))
+
+    assert %{
+             name: "uuid",
+             type: :binary_id,
+             options: [autogenerate: true]
+           } = product_schema.data.primary_key
+
+    assert product_schema.data.foreign_key_type == :binary_id
+
+    assert embedded_schema = Enum.find(facts, &(&1.id == "App.Catalog.Product:embedded_schema"))
+    assert embedded_schema.data.primary_key == false
+    assert embedded_schema.data.foreign_key_type == :binary_id
   end
 end

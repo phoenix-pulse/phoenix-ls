@@ -2,7 +2,13 @@ interface SchemaInfo {
   name: string;
   table?: string | null;
   tableName?: string;
-  fields: Array<{ name: string; type: string; elixirType?: string }>;
+  fields: Array<{
+    name: string;
+    type: string;
+    elixirType?: string;
+    primaryKey?: boolean;
+    foreignKey?: boolean;
+  }>;
   associations: Array<{
     name?: string;
     fieldName: string;
@@ -84,8 +90,8 @@ export function generateMermaidDiagram(schemas: SchemaInfo[]): string {
     const fieldsToShow = schema.fields.slice(0, 8);
     for (const field of fieldsToShow) {
       const fieldType = mapElixirTypeToMermaid(field.type);
-      const isPK = field.name === 'id';
-      const isFK = field.name.endsWith('_id');
+      const isPK = field.primaryKey ?? field.name === 'id';
+      const isFK = field.foreignKey ?? field.name.endsWith('_id');
 
       let constraint = '';
       if (isPK) constraint = ' PK';

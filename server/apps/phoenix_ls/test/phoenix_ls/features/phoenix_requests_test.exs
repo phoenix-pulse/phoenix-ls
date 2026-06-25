@@ -19,21 +19,46 @@ defmodule PhoenixLS.Features.PhoenixRequestsTest do
                "tableName" => "products",
                "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                "location" => %{"line" => line, "character" => 2},
-               "fieldsCount" => 1,
+               "fieldsCount" => 3,
                "associationsCount" => 1,
                "fields" => [
+                 %{
+                   "name" => "id",
+                   "type" => "id",
+                   "elixirType" => ":id",
+                   "primaryKey" => true,
+                   "foreignKey" => false,
+                   "generated" => true,
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _schema_line, "character" => 2}
+                 },
                  %{
                    "name" => "name",
                    "type" => "string",
                    "elixirType" => ":string",
+                   "primaryKey" => false,
+                   "foreignKey" => false,
+                   "generated" => false,
                    "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
                    "location" => %{"line" => _field_line, "character" => 4}
+                 },
+                 %{
+                   "name" => "category_id",
+                   "type" => "id",
+                   "elixirType" => ":id",
+                   "primaryKey" => false,
+                   "foreignKey" => true,
+                   "generated" => true,
+                   "references" => "App.Catalog.Category",
+                   "filePath" => "/tmp/app/lib/app_web/live/page_live.ex",
+                   "location" => %{"line" => _association_fk_line, "character" => 4}
                  }
                ],
                "associations" => [
                  %{
                    "name" => "category",
                    "fieldName" => "category",
+                   "foreignKey" => "category_id",
                    "schema" => "App.Catalog.Category",
                    "targetModule" => "App.Catalog.Category",
                    "type" => "belongs_to",
