@@ -53,6 +53,14 @@ defmodule PhoenixLS.Features.DefinitionTest do
     )
   end
 
+  test "goes to schema field definitions through assign property access" do
+    assert_definition(
+      "<p>{@product.na|me}</p>",
+      :schema_field,
+      "App.Catalog.Product:schema:products:field:name"
+    )
+  end
+
   test "goes to LiveView event definitions from phx attributes" do
     assert_definition(
       "<button phx-click=\"select-|product\">",

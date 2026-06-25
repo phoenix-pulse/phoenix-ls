@@ -54,6 +54,13 @@ defmodule PhoenixLS.Features.HoverTest do
     ])
   end
 
+  test "hovers schema fields through assign property access" do
+    assert_hover("<p>{@product.na|me}</p>", [
+      "field :name, :string",
+      "schema App.Catalog.Product"
+    ])
+  end
+
   test "hovers LiveView assigns" do
     assert_hover("<p>{@selected|_id}</p>", [
       "assign @selected_id",

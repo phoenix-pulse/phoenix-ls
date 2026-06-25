@@ -3,7 +3,8 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   Resolves cursor contexts to indexed Phoenix facts.
   """
 
-  alias PhoenixLS.Features.ComponentLookup
+  alias PhoenixLS.Features.{AssignAccess, ComponentLookup}
+  alias PhoenixLS.Features.Completion.SchemaFacts
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
 
@@ -26,6 +27,9 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
 
       String.starts_with?(prefix, "@form[:") ->
         find_schema_field(facts, form_field_prefix(prefix))
+
+      assign_field = find_assign_schema_field(facts, prefix) ->
+        assign_field
 
       String.starts_with?(prefix, "@") ->
         find_assign(facts, String.trim_leading(prefix, "@"))
@@ -57,6 +61,24 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
 
   defp find_assign(facts, assign_prefix) do
     Enum.find(facts, &(&1.kind == :assign and String.starts_with?(&1.data.name, assign_prefix)))
+  end
+
+  defp find_assign_schema_field(facts, prefix) do
+    with {:ok, assign, path, field_prefix} <- AssignAccess.field_access(prefix),
+         {:ok, base_schema_id} <- SchemaFacts.schema_id_for_assign(assign, facts),
+         {:ok, schema_id} <- schema_id_for_path(base_schema_id, path, facts) do
+      schema_id
+      |> SchemaFacts.schema_fields(facts)
+      |> Enum.find(&String.starts_with?(&1.data.name, field_prefix))
+    else
+      _not_assign_field -> nil
+    end
+  end
+
+  defp schema_id_for_path(schema_id, [], _facts), do: {:ok, schema_id}
+
+  defp schema_id_for_path(schema_id, path, facts) do
+    SchemaFacts.schema_id_for_association_path(schema_id, path, facts)
   end
 
   defp find_live_event(facts, event_prefix) do
