@@ -103,6 +103,8 @@ defmodule PhoenixLS.Features.PhoenixRequests do
         "action" => action || "",
         "filePath" => file_path(fact.uri),
         "location" => location(fact),
+        "helperBase" => fact.data.helper_base,
+        "pathParams" => fact.data.path_params,
         "scopePath" => fact.data.scope_path || "/",
         "liveModule" => live_module(fact),
         "liveAction" => live_action(fact)

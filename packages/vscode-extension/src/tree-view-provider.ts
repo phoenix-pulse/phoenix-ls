@@ -85,6 +85,8 @@ interface RouteInfo {
   location: { line: number; character: number };
   pipeline?: string;
   scopePath?: string;
+  helperBase?: string;
+  pathParams?: string[];
   liveModule?: string;
   liveAction?: string;
 }
@@ -665,7 +667,9 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         this.matchesSearch(route.verb) ||
         this.matchesSearch(route.controller || '') ||
         this.matchesSearch(route.liveModule || '') ||
-        this.matchesSearch(route.action || '')
+        this.matchesSearch(route.action || '') ||
+        this.matchesSearch(route.helperBase || '') ||
+        (route.pathParams || []).some(param => this.matchesSearch(param))
       );
 
       // Group filtered routes by scope path
@@ -761,7 +765,7 @@ export class PhoenixPulseTreeProvider implements vscode.TreeDataProvider<Phoenix
         : `${route.controller}.${route.action}`;
 
       item.description = `→ ${target}`;
-      item.tooltip = `${route.verb} ${route.path}\n→ ${target}\n${route.filePath}`;
+      item.tooltip = routeTooltip(route, target);
       item.command = {
         command: 'phoenixPulse.goToItem',
         title: 'Go to Route',
@@ -1364,6 +1368,24 @@ function associationTooltip(assoc: SchemaInfo['associations'][number]): string {
     lines.push(`On replace: ${assoc.onReplace}`);
   }
 
+  return lines.join('\n');
+}
+
+function routeTooltip(route: RouteInfo, target: string): string {
+  const lines = [
+    `${route.verb} ${route.path}`,
+    `→ ${target}`
+  ];
+
+  if (route.helperBase) {
+    lines.push(`Helper: ${route.helperBase}`);
+  }
+
+  if (route.pathParams && route.pathParams.length > 0) {
+    lines.push(`Params: ${route.pathParams.join(', ')}`);
+  }
+
+  lines.push(route.filePath);
   return lines.join('\n');
 }
 

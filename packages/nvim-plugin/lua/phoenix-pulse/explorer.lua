@@ -684,6 +684,15 @@ local function copy_menu()
       end
     })
 
+    if item.helperBase then
+      table.insert(options, {
+        label = "Copy Helper Base",
+        action = function()
+          copy_to_clipboard(item.helperBase, "route helper base")
+        end
+      })
+    end
+
     if item.file or item.filePath then
       table.insert(options, {
         label = "Copy File Path",
@@ -1169,7 +1178,22 @@ function M.render()
   add_category("routes", "Routes", M.state.data.routes, "route", function(route)
     local method = route.verb or route.method or "GET"
     local path = route.path or "/"
-    return string.format("%s %s %s", get_icon("route"), method, path)
+    local details = {}
+
+    if route.helperBase then
+      table.insert(details, "helper: " .. route.helperBase)
+    end
+
+    if route.pathParams and #route.pathParams > 0 then
+      table.insert(details, "params: " .. table.concat(route.pathParams, ", "))
+    end
+
+    local suffix = ""
+    if #details > 0 then
+      suffix = " (" .. table.concat(details, ", ") .. ")"
+    end
+
+    return string.format("%s %s %s%s", get_icon("route"), method, path, suffix)
   end)
 
   add_category("events", "Events", M.state.data.events, "event", function(event)
