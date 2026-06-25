@@ -85,8 +85,7 @@ defmodule PhoenixLS.Features.Diagnostics do
       facts
       |> facts_by_kind(:route_helper_reference)
       |> Enum.filter(&(&1.uri == uri))
-      |> Enum.reject(&known_route_helper_reference?(&1, facts))
-      |> Enum.map(&unknown_route_helper_diagnostic/1)
+      |> Enum.flat_map(&route_helper_reference_diagnostics(&1, facts))
 
     template_diagnostics ++ route_helper_diagnostics
   end
@@ -616,10 +615,41 @@ defmodule PhoenixLS.Features.Diagnostics do
     )
   end
 
-  defp known_route_helper_reference?(%Fact{data: %{helper_base: helper_base}}, facts) do
+  defp route_helper_reference_diagnostics(%Fact{} = reference, facts) do
+    routes = route_helper_routes(reference, facts)
+
+    cond do
+      routes == [] ->
+        [unknown_route_helper_diagnostic(reference)]
+
+      invalid_route_helper_action?(reference, routes) ->
+        [unknown_route_helper_action_diagnostic(reference, routes)]
+
+      true ->
+        []
+    end
+  end
+
+  defp route_helper_routes(%Fact{data: %{helper_base: helper_base}}, facts) do
     facts
     |> facts_by_kind(:route)
-    |> Enum.any?(&(&1.data.helper_base == helper_base))
+    |> Enum.filter(&(&1.data.helper_base == helper_base))
+  end
+
+  defp invalid_route_helper_action?(%Fact{data: %{action: action}}, routes)
+       when is_atom(action) do
+    not Enum.any?(routes, &(&1.data.action == action))
+  end
+
+  defp invalid_route_helper_action?(_reference, _routes), do: false
+
+  defp route_helper_actions(routes) do
+    routes
+    |> Enum.map(& &1.data.action)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&Atom.to_string/1)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp unknown_route_helper_diagnostic(%Fact{range: range, data: data}) do
@@ -627,6 +657,22 @@ defmodule PhoenixLS.Features.Diagnostics do
       range,
       "phoenix.unknown_route_helper",
       ~s(Unknown route helper "#{data.helper}")
+    )
+  end
+
+  defp unknown_route_helper_action_diagnostic(%Fact{range: range, data: data}, routes) do
+    action = Atom.to_string(data.action)
+
+    diagnostic(
+      range,
+      "phoenix.unknown_route_helper_action",
+      ~s(Unknown action :#{action} for route helper "#{data.helper}"),
+      %{
+        "kind" => "unknown_route_helper_action",
+        "helper" => data.helper,
+        "action" => action,
+        "validActions" => route_helper_actions(routes)
+      }
     )
   end
 

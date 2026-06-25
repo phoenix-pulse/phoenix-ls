@@ -11,8 +11,8 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
     Typed route helper reference payload.
     """
 
-    @enforce_keys [:helper, :helper_base, :variant]
-    defstruct [:helper, :helper_base, :variant]
+    @enforce_keys [:helper, :helper_base, :variant, :arity]
+    defstruct [:helper, :helper_base, :variant, :action, :arity]
   end
 
   @spec facts(term(), String.t(), keyword()) :: [Fact.t()]
@@ -27,11 +27,11 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
   end
 
   defp helper_fact(
-         {{:., _dot_meta, [{:__aliases__, _alias_meta, [:Routes]}, helper]}, call_meta, _args},
+         {{:., _dot_meta, [{:__aliases__, _alias_meta, [:Routes]}, helper]}, call_meta, args},
          uri,
          opts
        )
-       when is_atom(helper) do
+       when is_atom(helper) and is_list(args) do
     helper = Atom.to_string(helper)
 
     with {:ok, helper_base, variant} <- helper_parts(helper),
@@ -46,7 +46,9 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
           data: %Reference{
             helper: helper,
             helper_base: helper_base,
-            variant: variant
+            variant: variant,
+            action: helper_action(args),
+            arity: length(args)
           }
         )
       ]
@@ -56,6 +58,9 @@ defmodule PhoenixLS.Introspection.Router.HelperReferences do
   end
 
   defp helper_fact(_node, _uri, _opts), do: []
+
+  defp helper_action([_conn_or_socket, action | _rest]) when is_atom(action), do: action
+  defp helper_action(_args), do: nil
 
   defp helper_parts(helper) do
     cond do

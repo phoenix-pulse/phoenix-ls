@@ -240,6 +240,26 @@ defmodule PhoenixLS.Index.ElixirSourceTest do
     assert Enum.all?(facts, &(&1.provenance.document_version == 34))
   end
 
+  test "extracts route helper reference action metadata" do
+    source = """
+    defmodule AppWeb.PageController do
+      def show(conn, _params) do
+        Routes.product_path(conn, :show, 1)
+      end
+    end
+    """
+
+    assert {:ok, facts} = ElixirSource.facts(@uri, source)
+
+    assert [reference] = Enum.filter(facts, &(&1.kind == :route_helper_reference))
+
+    assert reference.data.helper == "product_path"
+    assert reference.data.helper_base == "product"
+    assert reference.data.variant == :path
+    assert reference.data.action == :show
+    assert reference.data.arity == 3
+  end
+
   test "extracts component docs imports and aliases without losing attr metadata" do
     source = """
     defmodule AppWeb.PageLive do

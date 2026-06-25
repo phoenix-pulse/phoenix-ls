@@ -117,7 +117,9 @@ defmodule PhoenixLS.Introspection.RouterTest do
     assert fact.data == %HelperReferences.Reference{
              helper: "product_path",
              helper_base: "product",
-             variant: :path
+             variant: :path,
+             action: :index,
+             arity: 2
            }
 
     assert fact.range.start.line == 2

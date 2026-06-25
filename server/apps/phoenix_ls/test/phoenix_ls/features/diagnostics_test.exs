@@ -274,6 +274,29 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
     assert diagnostic.message == ~s(Unknown route helper "missing_path")
   end
 
+  test "reports unknown route helper actions" do
+    facts =
+      route_helper_facts("""
+      defmodule AppWeb.PageController do
+        def show(conn, _params) do
+          Routes.product_path(conn, :edit)
+        end
+      end
+      """)
+
+    [diagnostic] = Diagnostics.diagnostics(@controller_uri, facts)
+
+    assert diagnostic.code == "phoenix.unknown_route_helper_action"
+    assert diagnostic.message == ~s(Unknown action :edit for route helper "product_path")
+
+    assert diagnostic.data == %{
+             "kind" => "unknown_route_helper_action",
+             "helper" => "product_path",
+             "action" => "edit",
+             "validActions" => ["index"]
+           }
+  end
+
   test "returns no diagnostics for known Phoenix usage" do
     assert diagnostics(~s(<.button label="Save" kind="primary" />)) == []
     assert diagnostics(~s(<:inner_block />)) == []
