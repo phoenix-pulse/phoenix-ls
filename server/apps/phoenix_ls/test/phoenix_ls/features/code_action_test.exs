@@ -335,6 +335,66 @@ defmodule PhoenixLS.Features.CodeActionTest do
     assert quick_fix == CodeActionKind.quick_fix()
   end
 
+  test "adds missing required slots inside component blocks" do
+    source = "<.list></.list>"
+    facts = required_slot_facts()
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Add required slot ":item"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 7},
+                         end: %Position{line: 0, character: 7}
+                       },
+                       new_text: "\n  <:item></:item>\n"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
+  test "expands self-closing components when adding required slots" do
+    source = "<.list />"
+    facts = required_slot_facts()
+    {:ok, document} = Parser.parse(source)
+    [diagnostic] = Diagnostics.diagnostics(document, facts)
+
+    assert [
+             %CodeAction{
+               title: ~s(Add required slot ":item"),
+               kind: quick_fix,
+               diagnostics: [^diagnostic],
+               edit: %WorkspaceEdit{
+                 changes: %{
+                   @uri => [
+                     %TextEdit{
+                       range: %Range{
+                         start: %Position{line: 0, character: 0},
+                         end: %Position{line: 0, character: 9}
+                       },
+                       new_text: "<.list>\n  <:item></:item>\n</.list>"
+                     }
+                   ]
+                 }
+               }
+             }
+           ] = CodeActionFeature.actions(source, @uri, [diagnostic], facts)
+
+    assert quick_fix == CodeActionKind.quick_fix()
+  end
+
   test "adds :key for HTML :for loops without DOM tracking" do
     source = ~s(<div :for={item <- @items}>{item.name}</div>)
     {:ok, document} = Parser.parse(source)
@@ -717,6 +777,23 @@ defmodule PhoenixLS.Features.CodeActionTest do
         slot :item do
           attr :label, :string, required: true
         end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <div><%= render_slot(@item) %></div>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp required_slot_facts do
+    {:ok, facts} =
+      ElixirSource.facts("file:///tmp/app/lib/app_web/components/core_components.ex", """
+      defmodule AppWeb.CoreComponents do
+        slot :item, required: true
 
         def list(assigns) do
           ~H\"\"\"

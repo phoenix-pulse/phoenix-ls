@@ -99,7 +99,7 @@ defmodule PhoenixLS.Features.Diagnostics do
        when kind in [:component, :remote_component] do
     component_diagnostics =
       case ComponentLookup.component_for_tag(tag.name, indexes.facts) do
-        %Fact{} = component -> known_component_diagnostics(tag, component, indexes)
+        %Fact{} = component -> known_component_diagnostics(tag, component, indexes, tags)
         nil -> []
       end
 
@@ -140,12 +140,13 @@ defmodule PhoenixLS.Features.Diagnostics do
       stream_diagnostics(tag, tags)
   end
 
-  defp known_component_diagnostics(%Tag{} = tag, %Fact{} = component, indexes) do
+  defp known_component_diagnostics(%Tag{} = tag, %Fact{} = component, indexes, tags) do
     attrs = Map.get(indexes.attrs_by_component, component.id, [])
     declared_attr_names = MapSet.new(attrs, & &1.data.name)
     present_attr_names = MapSet.new(tag.attrs, & &1.name)
 
     missing_required_attr_diagnostics(tag, attrs, present_attr_names) ++
+      missing_required_slot_diagnostics(tag, component, indexes, tags) ++
       unknown_attr_diagnostics(tag, declared_attr_names) ++
       invalid_value_diagnostics(tag, attrs)
   end
@@ -176,6 +177,64 @@ defmodule PhoenixLS.Features.Diagnostics do
         }
       )
     end)
+  end
+
+  defp missing_required_slot_diagnostics(%Tag{} = tag, %Fact{} = component, indexes, tags) do
+    present_slot_names = present_slot_names(tag, tags)
+
+    indexes.slots_by_component
+    |> Map.get(component.id, [])
+    |> Enum.filter(&required_attr?/1)
+    |> Enum.reject(&MapSet.member?(present_slot_names, &1.data.name))
+    |> Enum.map(fn slot ->
+      diagnostic(
+        tag.name_range,
+        "phoenix.missing_required_slot",
+        ~s(Missing required slot ":#{slot.data.name}" for #{tag.name}),
+        %{
+          "kind" => "missing_required_slot",
+          "tag" => tag.name,
+          "slot" => slot.data.name
+        }
+      )
+    end)
+  end
+
+  defp present_slot_names(%Tag{} = component_tag, tags) do
+    tags
+    |> Enum.filter(&(&1.kind == :slot))
+    |> Enum.filter(&tag_inside?(&1, component_tag))
+    |> MapSet.new(&trim_leading(&1.name, ":"))
+  end
+
+  defp tag_inside?(
+         %Tag{range: %{start: slot_start}},
+         %Tag{range: %{start: component_start}, closing_range: %{start: component_end}}
+       ) do
+    position_after?(slot_start, component_start) and position_before?(slot_start, component_end)
+  end
+
+  defp tag_inside?(_slot_tag, _component_tag), do: false
+
+  defp position_after?(first, second) do
+    compare_positions(first, second) == :gt
+  end
+
+  defp position_before?(first, second) do
+    compare_positions(first, second) == :lt
+  end
+
+  defp compare_positions(%{line: line, character: character}, %{
+         line: other_line,
+         character: other_character
+       }) do
+    cond do
+      line > other_line -> :gt
+      line < other_line -> :lt
+      character > other_character -> :gt
+      character < other_character -> :lt
+      true -> :eq
+    end
   end
 
   defp unknown_attr_diagnostics(%Tag{} = tag, declared_attr_names) do
@@ -869,6 +928,10 @@ defmodule PhoenixLS.Features.Diagnostics do
         facts
         |> facts_by_kind(:component_slot_attr)
         |> Enum.group_by(& &1.data.slot),
+      slots_by_component:
+        facts
+        |> facts_by_kind(:component_slot)
+        |> Enum.group_by(& &1.data.component),
       slots:
         facts
         |> facts_by_kind(:component_slot)

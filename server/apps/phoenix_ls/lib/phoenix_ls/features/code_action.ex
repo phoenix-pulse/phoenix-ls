@@ -21,6 +21,7 @@ defmodule PhoenixLS.Features.CodeAction do
   alias PhoenixLS.HEEx.Document.{Attribute, Tag}
   alias PhoenixLS.HEEx.Parser
   alias PhoenixLS.Index.Fact
+  alias PhoenixLS.Support.Positions
 
   @source "PhoenixLS"
 
@@ -86,6 +87,25 @@ defmodule PhoenixLS.Features.CodeAction do
           live_component_default_value(attr_name)
         )
       ]
+    else
+      _missing_context -> []
+    end
+  end
+
+  defp action_for_diagnostic(
+         %Diagnostic{
+           source: @source,
+           code: "phoenix.missing_required_slot",
+           data: %{"kind" => "missing_required_slot", "tag" => tag_name, "slot" => slot_name}
+         } = diagnostic,
+         source,
+         uri,
+         tags,
+         _facts
+       ) do
+    with %Tag{} = tag <- find_tag(tags, tag_name, diagnostic.range),
+         %CodeAction{} = action <- insert_slot_action(diagnostic, source, uri, tag, slot_name) do
+      [action]
     else
       _missing_context -> []
     end
@@ -341,6 +361,38 @@ defmodule PhoenixLS.Features.CodeAction do
     }
   end
 
+  defp insert_slot_action(diagnostic, source, uri, %Tag{self_closing?: true} = tag, slot_name) do
+    with opening_text when is_binary(opening_text) <- self_closing_opening_text(source, tag) do
+      text_edit_action(
+        ~s(Add required slot ":#{slot_name}"),
+        diagnostic,
+        uri,
+        tag.range,
+        expanded_component_text(opening_text, tag.name, slot_name, tag_indent(tag))
+      )
+    else
+      _missing_source -> nil
+    end
+  end
+
+  defp insert_slot_action(
+         diagnostic,
+         _source,
+         uri,
+         %Tag{closing_range: %Range{} = closing_range} = tag,
+         slot_name
+       ) do
+    text_edit_action(
+      ~s(Add required slot ":#{slot_name}"),
+      diagnostic,
+      uri,
+      Ranges.zero_width(closing_range.start),
+      slot_block_text(slot_name, tag_indent(tag))
+    )
+  end
+
+  defp insert_slot_action(_diagnostic, _source, _uri, _tag, _slot_name), do: nil
+
   defp text_edit_action(title, diagnostic, uri, range, new_text) do
     %CodeAction{
       title: title,
@@ -392,6 +444,45 @@ defmodule PhoenixLS.Features.CodeAction do
       _missing_context -> []
     end
   end
+
+  defp self_closing_opening_text(source, %Tag{range: %Range{} = range}) do
+    with {:ok, start_offset} <- Positions.lsp_position_to_offset(source, range.start),
+         {:ok, end_offset} <- Positions.lsp_position_to_offset(source, range.end),
+         true <- start_offset <= end_offset,
+         true <- end_offset <= byte_size(source) do
+      source
+      |> binary_part(start_offset, end_offset - start_offset)
+      |> String.trim_trailing()
+      |> String.trim_trailing(">")
+      |> String.trim_trailing()
+      |> String.trim_trailing("/")
+      |> String.trim_trailing()
+      |> Kernel.<>(">")
+    else
+      _invalid_range -> nil
+    end
+  end
+
+  defp expanded_component_text(opening_text, tag_name, slot_name, indent) do
+    [
+      opening_text,
+      slot_line(slot_name, indent <> "  "),
+      "#{indent}</#{tag_name}>"
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp slot_block_text(slot_name, indent) do
+    "\n#{slot_line(slot_name, indent <> "  ")}\n#{indent}"
+  end
+
+  defp slot_line(slot_name, indent), do: "#{indent}<:#{slot_name}></:#{slot_name}>"
+
+  defp tag_indent(%Tag{range: %{start: %{character: character}}}) when is_integer(character) do
+    String.duplicate(" ", character)
+  end
+
+  defp tag_indent(_tag), do: ""
 
   defp find_tag(tags, tag_name, range) do
     Enum.find(tags, &(&1.name == tag_name and &1.name_range == range))

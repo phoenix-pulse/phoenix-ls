@@ -75,6 +75,20 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
            }
   end
 
+  test "reports missing required component slots" do
+    [diagnostic] = diagnostics("<.list />", required_slot_facts())
+
+    assert diagnostic.code == "phoenix.missing_required_slot"
+    assert diagnostic.severity == DiagnosticSeverity.error()
+    assert diagnostic.message == ~s(Missing required slot ":item" for .list)
+
+    assert diagnostic.data == %{
+             "kind" => "missing_required_slot",
+             "tag" => ".list",
+             "slot" => "item"
+           }
+  end
+
   test "reports invalid attr values" do
     [diagnostic] = diagnostics(~s(<.button label="Save" kind="danger" />))
 
@@ -496,6 +510,23 @@ defmodule PhoenixLS.Features.DiagnosticsTest do
         slot :item do
           attr :label, :string, required: true
         end
+
+        def list(assigns) do
+          ~H\"\"\"
+          <div><%= render_slot(@item) %></div>
+          \"\"\"
+        end
+      end
+      """)
+
+    facts
+  end
+
+  defp required_slot_facts do
+    {:ok, facts} =
+      ElixirSource.facts(@uri, """
+      defmodule AppWeb.CoreComponents do
+        slot :item, required: true
 
         def list(assigns) do
           ~H\"\"\"
