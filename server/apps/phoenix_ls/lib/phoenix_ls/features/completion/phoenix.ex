@@ -11,7 +11,8 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
     LiveViewJS,
     Routes,
     Schemas,
-    Snippets
+    Snippets,
+    Templates
   }
 
   alias PhoenixLS.HEEx.CursorContext
@@ -38,8 +39,17 @@ defmodule PhoenixLS.Features.Completion.Phoenix do
           GenLSP.Structures.CompletionItem.t()
         ]
   def complete(source, position, facts) when is_binary(source) and is_list(facts) do
+    complete(nil, source, position, facts)
+  end
+
+  @spec complete(String.t() | nil, String.t(), Positions.lsp_position(), [Fact.t()]) :: [
+          GenLSP.Structures.CompletionItem.t()
+        ]
+  def complete(uri, source, position, facts)
+      when (is_binary(uri) or is_nil(uri)) and is_binary(source) and is_list(facts) do
     source
     |> Routes.complete(position, facts)
+    |> Kernel.++(Templates.complete(uri, source, position, facts))
     |> uniq_by_label()
   end
 

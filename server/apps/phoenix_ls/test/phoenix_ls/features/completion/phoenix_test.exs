@@ -5,9 +5,14 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
   alias PhoenixLS.Features.Completion.Phoenix
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.ElixirSource
+  alias PhoenixLS.Introspection.Template
   alias PhoenixLS.Support.Positions
 
   @uri "file:///tmp/app/lib/app_web/live/page_live.ex"
+  @controller_uri "file:///tmp/app/lib/app_web/controllers/page_controller.ex"
+  @template_uri "file:///tmp/app/lib/app_web/controllers/page_html/index.html.heex"
+  @show_template_uri "file:///tmp/app/lib/app_web/controllers/page_html/show.html.heex"
+  @other_template_uri "file:///tmp/app/lib/app_web/controllers/admin_html/index.html.heex"
 
   test "completes verified route paths inside ~p sigils" do
     items = complete("<.link navigate={~p\"/prod|\"} />")
@@ -71,6 +76,34 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
     {source, position} = source_and_position("<.link navigate={~p\"/prod|\"} />")
 
     assert Phoenix.complete(source, position, facts()) == []
+  end
+
+  test "completes controller render templates" do
+    {source, position} =
+      source_and_position("""
+      defmodule AppWeb.PageController do
+        def index(conn, _params) do
+          render(conn, :i|)
+        end
+      end
+      """)
+
+    items = Phoenix.complete(@controller_uri, source, position, template_facts())
+
+    assert Enum.map(items, & &1.label) == [":index"]
+
+    index = hd(items)
+
+    assert index.kind == CompletionItemKind.value()
+    assert index.detail == "Template file: index.html.heex"
+    assert index.insert_text == "index"
+
+    assert index.data == %{
+             "kind" => "template",
+             "template" => "index",
+             "format" => "html",
+             "uri" => @template_uri
+           }
   end
 
   test "completes schema fields in form field expressions" do
@@ -289,6 +322,12 @@ defmodule PhoenixLS.Features.Completion.PhoenixTest do
           }
         )
       ]
+  end
+
+  defp template_facts do
+    Template.facts(@template_uri, "<h1>Index</h1>") ++
+      Template.facts(@show_template_uri, "<h1>Show</h1>") ++
+      Template.facts(@other_template_uri, "<h1>Other</h1>")
   end
 
   defp source_and_position(marked_source, marker \\ "|") do

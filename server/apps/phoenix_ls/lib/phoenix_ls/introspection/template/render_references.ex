@@ -6,7 +6,7 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
   alias PhoenixLS.Index.Fact
   alias PhoenixLS.Parsing.SourceMap
   alias PhoenixLS.Support.Positions
-  alias PhoenixLS.Support.URI, as: SupportURI
+  alias PhoenixLS.Introspection.Template.RenderCall
 
   defmodule Reference do
     @moduledoc """
@@ -19,7 +19,7 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
 
   @spec facts(String.t(), String.t(), keyword()) :: [Fact.t()]
   def facts(uri, source, opts \\ []) when is_binary(uri) and is_binary(source) do
-    case tokenize(source) do
+    case RenderCall.tokenize(source) do
       {:ok, tokens} ->
         tokens
         |> Enum.with_index()
@@ -32,7 +32,7 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
 
   defp fact_for_token({token, index}, tokens, uri, source, opts) do
     with {:ok, template, format} <- template_literal(token),
-         true <- render_template_argument?(tokens, index),
+         true <- RenderCall.template_argument?(tokens, index),
          {:ok, range} <- token_range(source, token) do
       [
         Fact.new!(
@@ -44,19 +44,12 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
           data: %Reference{
             template: template,
             format: format,
-            candidate_uris: candidate_uris(uri, template, format)
+            candidate_uris: RenderCall.candidate_uris(uri, template, format)
           }
         )
       ]
     else
       _not_render_template -> []
-    end
-  end
-
-  defp tokenize(source) do
-    case :elixir_tokenizer.tokenize(String.to_charlist(source), 1, []) do
-      {:ok, _line, _column, _warnings, tokens, _comments} -> {:ok, Enum.reverse(tokens)}
-      {:error, _reason, _line, _column, _warnings, _tokens} -> :error
     end
   end
 
@@ -69,72 +62,6 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
   end
 
   defp template_literal(_token), do: :error
-
-  defp render_template_argument?(tokens, index) do
-    with {:ok, open_index} <- enclosing_open_paren(tokens, index),
-         true <- render_call_open?(tokens, open_index),
-         1 <- top_level_comma_count(tokens, open_index + 1, index - 1) do
-      true
-    else
-      _not_render_template -> false
-    end
-  end
-
-  defp enclosing_open_paren(tokens, index) do
-    find_open_paren(tokens, index - 1, 0)
-  end
-
-  defp find_open_paren(_tokens, index, _depth) when index < 0, do: :error
-
-  defp find_open_paren(tokens, index, depth) do
-    case Enum.at(tokens, index) |> token_type() do
-      :")" ->
-        find_open_paren(tokens, index - 1, depth + 1)
-
-      :"(" when depth == 0 ->
-        {:ok, index}
-
-      :"(" ->
-        find_open_paren(tokens, index - 1, depth - 1)
-
-      _type ->
-        find_open_paren(tokens, index - 1, depth)
-    end
-  end
-
-  defp render_call_open?(tokens, open_index) do
-    case Enum.at(tokens, open_index - 1) do
-      {:paren_identifier, _meta, :render} -> true
-      _token -> false
-    end
-  end
-
-  defp top_level_comma_count(_tokens, start_index, end_index) when start_index > end_index,
-    do: 0
-
-  defp top_level_comma_count(tokens, start_index, end_index) do
-    start_index..end_index
-    |> Enum.reduce({0, 0}, fn index, {count, depth} ->
-      case Enum.at(tokens, index) |> token_type() do
-        type when type in [:"(", :"[", :"{"] ->
-          {count, depth + 1}
-
-        type when type in [:")", :"]", :"}"] and depth > 0 ->
-          {count, depth - 1}
-
-        :"," when depth == 0 ->
-          {count + 1, depth}
-
-        _type ->
-          {count, depth}
-      end
-    end)
-    |> elem(0)
-  end
-
-  defp token_type({type, _meta}), do: type
-  defp token_type({type, _meta, _value}), do: type
-  defp token_type(_token), do: nil
 
   defp token_range(source, token) do
     with {:ok, start_offset} <- token_start_offset(source, token),
@@ -190,33 +117,6 @@ defmodule PhoenixLS.Introspection.Template.RenderReferences do
 
   defp render_reference_id(uri, range) do
     "render:#{uri}:#{range.start.line}:#{range.start.character}"
-  end
-
-  defp candidate_uris(uri, template, format) do
-    with {:ok, source_path} <- SupportURI.file_uri_to_path(uri) do
-      source_path
-      |> candidate_paths(template, format)
-      |> Enum.map(&SupportURI.path_to_file_uri!/1)
-    else
-      _invalid_uri -> []
-    end
-  end
-
-  defp candidate_paths(source_path, template, format) do
-    controller_dir = Path.dirname(source_path)
-    resource = controller_resource(source_path)
-    file_name = "#{template}.#{format}.heex"
-
-    [
-      Path.join([controller_dir, "#{resource}_html", file_name]),
-      Path.join([Path.dirname(controller_dir), "templates", resource, file_name])
-    ]
-  end
-
-  defp controller_resource(source_path) do
-    source_path
-    |> Path.basename(".ex")
-    |> String.replace_suffix("_controller", "")
   end
 
   defp template_name(value) do

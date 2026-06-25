@@ -25,7 +25,7 @@ defmodule PhoenixLS.LSP.Completion do
 
         Components.complete(context, facts) ++
           Phoenix.complete(context, facts) ++
-          Phoenix.complete(document.text, position, facts)
+          Phoenix.complete(uri, document.text, position, facts)
       else
         _missing_or_invalid -> []
       end
