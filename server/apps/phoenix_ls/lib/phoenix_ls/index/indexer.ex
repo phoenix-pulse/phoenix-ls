@@ -8,6 +8,7 @@ defmodule PhoenixLS.Index.Indexer do
   alias PhoenixLS.Index.{DependencyGraph, DocumentIndexer, Invalidation, ProjectScan, Store}
   alias PhoenixLS.Introspection.Asset
   alias PhoenixLS.LSP.Status
+  alias PhoenixLS.Project.CompileRunner
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Support.Telemetry
   alias PhoenixLS.Workspace.Document
@@ -47,7 +48,8 @@ defmodule PhoenixLS.Index.Indexer do
       index_store: index_store,
       root_uri: Keyword.get(opts, :root_uri),
       status_target: Keyword.get(opts, :status_target),
-      project_indexing_enabled: Keyword.get(opts, :project_indexing_enabled, true)
+      project_indexing_enabled: Keyword.get(opts, :project_indexing_enabled, true),
+      compile_runner: Keyword.get(opts, :compile_runner)
     }
 
     case Keyword.fetch(opts, :root_uri) do
@@ -58,6 +60,7 @@ defmodule PhoenixLS.Index.Indexer do
 
   @impl true
   def handle_continue({:index_project, root_uri}, state) do
+    maybe_compile_project(state, root_uri)
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
     {result, count} = emit_project_indexed(state, root_uri)
 
@@ -148,6 +151,7 @@ defmodule PhoenixLS.Index.Indexer do
   end
 
   def handle_cast({:index_project, root_uri}, state) do
+    maybe_compile_project(state, root_uri)
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
     {result, count} = emit_project_indexed(state, root_uri)
 
@@ -189,6 +193,52 @@ defmodule PhoenixLS.Index.Indexer do
     )
 
     {:noreply, state}
+  end
+
+  defp maybe_compile_project(%{compile_runner: nil}, _root_uri), do: :ok
+
+  defp maybe_compile_project(%{compile_runner: compile_runner} = state, root_uri) do
+    notify_status(state, [], Status.compilation_started(root_uri: root_uri))
+
+    result =
+      compile_runner
+      |> CompileRunner.run(["compile", "--warnings-as-errors"])
+      |> compile_result()
+
+    notify_status(
+      state,
+      [],
+      Status.compilation_completed(
+        root_uri: root_uri,
+        result: result,
+        source_only?: compile_source_only?(result)
+      )
+    )
+
+    maybe_notify_compile_degraded(state, root_uri, result)
+
+    result
+  end
+
+  defp compile_result({:ok, %CompileRunner.Result{status: 0}}), do: :ok
+
+  defp compile_result({:ok, %CompileRunner.Result{status: status}}),
+    do: {:error, {:exit_status, status}}
+
+  defp compile_result({:error, reason}), do: {:error, reason}
+
+  defp compile_source_only?({:error, :source_only}), do: true
+  defp compile_source_only?(_result), do: false
+
+  defp maybe_notify_compile_degraded(_state, _root_uri, {:error, :source_only}), do: :ok
+  defp maybe_notify_compile_degraded(_state, _root_uri, :ok), do: :ok
+
+  defp maybe_notify_compile_degraded(state, root_uri, {:error, reason}) do
+    notify_status(
+      state,
+      [],
+      Status.project_degraded(root_uri, {:compile, reason}, source_only?: false)
+    )
   end
 
   defp index_uri(_index_store, _uri, _root_uri, false), do: :disabled

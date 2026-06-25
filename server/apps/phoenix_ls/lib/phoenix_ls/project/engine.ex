@@ -82,9 +82,11 @@ defmodule PhoenixLS.Project.Engine do
     indexer = Keyword.get(opts, :indexer, Names.indexer(root_uri))
     status_target = Keyword.get(opts, :status_target)
     project_indexing_enabled = Keyword.get(opts, :project_indexing_enabled, true)
+    project_compilation_enabled = Keyword.get(opts, :project_compilation_enabled, false)
     source_only? = Keyword.get(opts, :source_only?, true)
     compile_timeout_ms = Keyword.get(opts, :compile_timeout_ms, 5_000)
     compile_cache_root = Keyword.get(opts, :compile_cache_root)
+    compile_command_runner = Keyword.get(opts, :compile_command_runner)
 
     children = [
       {DocumentStore, name: document_store},
@@ -97,14 +99,18 @@ defmodule PhoenixLS.Project.Engine do
          compile_timeout_ms,
          compile_cache_root
        )},
-      {CompileRunner, name: compile_runner, compile_env: compile_env},
+      {CompileRunner, compile_runner_opts(compile_runner, compile_env, compile_command_runner)},
       {IndexStore, name: index_store},
       {Indexer,
-       name: indexer,
-       index_store: index_store,
-       root_uri: root_uri,
-       status_target: status_target,
-       project_indexing_enabled: project_indexing_enabled}
+       indexer_opts(
+         indexer,
+         index_store,
+         root_uri,
+         status_target,
+         project_indexing_enabled,
+         project_compilation_enabled,
+         compile_runner
+       )}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -125,4 +131,44 @@ defmodule PhoenixLS.Project.Engine do
   end
 
   defp maybe_put_compile_cache_root(opts, _cache_root), do: opts
+
+  defp compile_runner_opts(name, compile_env, command_runner) do
+    [
+      name: name,
+      compile_env: compile_env
+    ]
+    |> maybe_put_compile_command_runner(command_runner)
+  end
+
+  defp maybe_put_compile_command_runner(opts, command_runner)
+       when is_function(command_runner, 3) do
+    Keyword.put(opts, :command_runner, command_runner)
+  end
+
+  defp maybe_put_compile_command_runner(opts, _command_runner), do: opts
+
+  defp indexer_opts(
+         name,
+         index_store,
+         root_uri,
+         status_target,
+         project_indexing_enabled,
+         project_compilation_enabled,
+         compile_runner
+       ) do
+    [
+      name: name,
+      index_store: index_store,
+      root_uri: root_uri,
+      status_target: status_target,
+      project_indexing_enabled: project_indexing_enabled
+    ]
+    |> maybe_put_indexer_compile_runner(project_compilation_enabled, compile_runner)
+  end
+
+  defp maybe_put_indexer_compile_runner(opts, true, compile_runner) do
+    Keyword.put(opts, :compile_runner, compile_runner)
+  end
+
+  defp maybe_put_indexer_compile_runner(opts, _enabled, _compile_runner), do: opts
 end

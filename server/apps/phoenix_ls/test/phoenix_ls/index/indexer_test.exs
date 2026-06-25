@@ -2,7 +2,7 @@ defmodule PhoenixLS.Index.IndexerTest do
   use ExUnit.Case, async: false
 
   alias PhoenixLS.Index.{Indexer, Store}
-  alias PhoenixLS.Project.{Engine, Names}
+  alias PhoenixLS.Project.{CompileEnv, CompileRunner, Engine, Names}
   alias PhoenixLS.Support.URI, as: SupportURI
   alias PhoenixLS.Workspace.Document
 
@@ -54,6 +54,127 @@ defmodule PhoenixLS.Index.IndexerTest do
                       "rootUri" => ^root_uri,
                       "result" => "ok",
                       "count" => 0
+                    }},
+                   500
+  end
+
+  test "publishes compilation status before startup project indexing", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    compile_env = compile_env(root_uri, source_only?: false)
+    parent = self()
+
+    compile_runner =
+      compile_runner(compile_env, fn command, args, opts ->
+        send(parent, {:compile_command, command, args, opts})
+        {"compiled", 0}
+      end)
+
+    project_store =
+      Module.concat(__MODULE__, :"CompileStatusStore#{System.unique_integer([:positive])}")
+
+    project_indexer =
+      Module.concat(__MODULE__, :"CompileStatusIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: project_store}, id: {Store, project_store})
+
+    start_supervised!(
+      {Indexer,
+       name: project_indexer,
+       index_store: project_store,
+       root_uri: root_uri,
+       status_target: self(),
+       compile_runner: compile_runner},
+      id: {Indexer, project_indexer}
+    )
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "compilation",
+                      "phase" => "started",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+
+    assert_receive {:compile_command, "mix", ["compile", "--warnings-as-errors"], _opts}, 500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "compilation",
+                      "phase" => "completed",
+                      "rootUri" => ^root_uri,
+                      "result" => "ok",
+                      "sourceOnly" => false
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "started",
+                      "job" => "project",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+  end
+
+  test "publishes degraded status when compilation times out and continues project indexing",
+       context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    compile_env = compile_env(root_uri, source_only?: false, timeout_ms: 10)
+
+    compile_runner =
+      compile_runner(compile_env, fn _command, _args, _opts ->
+        Process.sleep(1_000)
+        {"late", 0}
+      end)
+
+    project_store =
+      Module.concat(__MODULE__, :"CompileTimeoutStore#{System.unique_integer([:positive])}")
+
+    project_indexer =
+      Module.concat(__MODULE__, :"CompileTimeoutIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: project_store}, id: {Store, project_store})
+
+    start_supervised!(
+      {Indexer,
+       name: project_indexer,
+       index_store: project_store,
+       root_uri: root_uri,
+       status_target: self(),
+       compile_runner: compile_runner},
+      id: {Indexer, project_indexer}
+    )
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "compilation",
+                      "phase" => "completed",
+                      "rootUri" => ^root_uri,
+                      "result" => "error: :timeout",
+                      "sourceOnly" => false
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "project",
+                      "state" => "degraded",
+                      "rootUri" => ^root_uri,
+                      "sourceOnly" => false,
+                      "reason" => "{:compile, :timeout}"
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "project",
+                      "rootUri" => ^root_uri,
+                      "result" => "ok"
                     }},
                    500
   end
@@ -451,5 +572,23 @@ defmodule PhoenixLS.Index.IndexerTest do
     on_exit(fn -> File.rm_rf!(path) end)
 
     path
+  end
+
+  defp compile_env(root_uri, opts) do
+    name = Module.concat(__MODULE__, :"CompileEnv#{System.unique_integer([:positive])}")
+
+    start_supervised!(
+      {CompileEnv, Keyword.merge([name: name, root_uri: root_uri], opts)},
+      id: {CompileEnv, name}
+    )
+  end
+
+  defp compile_runner(compile_env, command_runner) do
+    name = Module.concat(__MODULE__, :"CompileRunner#{System.unique_integer([:positive])}")
+
+    start_supervised!(
+      {CompileRunner, name: name, compile_env: compile_env, command_runner: command_runner},
+      id: {CompileRunner, name}
+    )
   end
 end

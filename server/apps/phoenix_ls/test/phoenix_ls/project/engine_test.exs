@@ -80,6 +80,63 @@ defmodule PhoenixLS.Project.EngineTest do
     end)
   end
 
+  test "runs engine-owned compilation before warm indexing when enabled", context do
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+    parent = self()
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :app, version: "0.1.0", deps: []]
+      end
+    end
+    """)
+
+    assert {:ok, _pid} =
+             Engine.start_link(
+               root_uri: root_uri,
+               source_only?: false,
+               project_compilation_enabled: true,
+               status_target: self(),
+               compile_command_runner: fn command, args, opts ->
+                 send(parent, {:compile_command, command, args, opts})
+                 {"compiled", 0}
+               end
+             )
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "compilation",
+                      "phase" => "started",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+
+    assert_receive {:compile_command, "mix", ["compile", "--warnings-as-errors"], _opts}, 500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "compilation",
+                      "phase" => "completed",
+                      "rootUri" => ^root_uri,
+                      "result" => "ok",
+                      "sourceOnly" => false
+                    }},
+                   500
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "started",
+                      "job" => "project",
+                      "rootUri" => ^root_uri
+                    }},
+                   500
+  end
+
   test "starts engine-owned project metadata", context do
     root = tmp_dir(context)
     root_uri = SupportURI.path_to_file_uri!(root)

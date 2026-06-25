@@ -31,6 +31,24 @@ defmodule PhoenixLS.LSP.Status do
     |> put_optional("count", Keyword.get(opts, :count))
   end
 
+  @spec compilation_started(keyword()) :: map()
+  def compilation_started(opts) when is_list(opts) do
+    %{
+      "kind" => "compilation",
+      "phase" => "started"
+    }
+    |> put_optional("rootUri", Keyword.get(opts, :root_uri))
+  end
+
+  @spec compilation_completed(keyword()) :: map()
+  def compilation_completed(opts) when is_list(opts) do
+    opts
+    |> compilation_started()
+    |> Map.put("phase", "completed")
+    |> put_optional("result", result_string(Keyword.get(opts, :result)))
+    |> put_optional("sourceOnly", Keyword.get(opts, :source_only?))
+  end
+
   @spec project_degraded(String.t(), term(), keyword()) :: map()
   def project_degraded(root_uri, reason, opts \\ []) when is_binary(root_uri) do
     %{

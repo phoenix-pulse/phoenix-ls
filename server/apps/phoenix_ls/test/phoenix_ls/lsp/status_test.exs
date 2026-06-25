@@ -30,6 +30,28 @@ defmodule PhoenixLS.LSP.StatusTest do
            }
   end
 
+  test "builds compilation started payloads" do
+    assert Status.compilation_started(root_uri: "file:///tmp/app") == %{
+             "kind" => "compilation",
+             "phase" => "started",
+             "rootUri" => "file:///tmp/app"
+           }
+  end
+
+  test "builds compilation completed payloads" do
+    assert Status.compilation_completed(
+             root_uri: "file:///tmp/app",
+             result: {:error, :timeout},
+             source_only?: false
+           ) == %{
+             "kind" => "compilation",
+             "phase" => "completed",
+             "rootUri" => "file:///tmp/app",
+             "result" => "error: :timeout",
+             "sourceOnly" => false
+           }
+  end
+
   test "builds project degraded payloads" do
     assert Status.project_degraded("file:///tmp/app", {:exit, :missing}) == %{
              "kind" => "project",

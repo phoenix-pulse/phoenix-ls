@@ -277,8 +277,10 @@ defmodule PhoenixLS.Project.Manager do
     |> maybe_put_status_target(opts)
     |> maybe_put_source_only(opts)
     |> maybe_put_project_indexing_enabled(opts)
+    |> maybe_put_project_compilation_enabled(opts)
     |> maybe_put_compile_timeout(opts)
     |> maybe_put_compile_cache_root(opts)
+    |> maybe_put_compile_command_runner(opts)
   end
 
   defp maybe_put_status_target(engine_opts, opts) do
@@ -292,6 +294,16 @@ defmodule PhoenixLS.Project.Manager do
     case Keyword.fetch(opts, :project_indexing_enabled) do
       {:ok, enabled} when is_boolean(enabled) ->
         Keyword.put(engine_opts, :project_indexing_enabled, enabled)
+
+      _missing_or_invalid ->
+        engine_opts
+    end
+  end
+
+  defp maybe_put_project_compilation_enabled(engine_opts, opts) do
+    case Keyword.fetch(opts, :project_compilation_enabled) do
+      {:ok, enabled} when is_boolean(enabled) ->
+        Keyword.put(engine_opts, :project_compilation_enabled, enabled)
 
       _missing_or_invalid ->
         engine_opts
@@ -322,6 +334,16 @@ defmodule PhoenixLS.Project.Manager do
     case Keyword.fetch(opts, :compile_cache_root) do
       {:ok, cache_root} when is_binary(cache_root) ->
         Keyword.put(engine_opts, :compile_cache_root, cache_root)
+
+      _missing_or_invalid ->
+        engine_opts
+    end
+  end
+
+  defp maybe_put_compile_command_runner(engine_opts, opts) do
+    case Keyword.fetch(opts, :compile_command_runner) do
+      {:ok, command_runner} when is_function(command_runner, 3) ->
+        Keyword.put(engine_opts, :compile_command_runner, command_runner)
 
       _missing_or_invalid ->
         engine_opts

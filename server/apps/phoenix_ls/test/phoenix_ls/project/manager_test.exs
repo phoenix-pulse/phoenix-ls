@@ -70,6 +70,38 @@ defmodule PhoenixLS.Project.ManagerTest do
            } = CompileEnv.fetch(engine.compile_env)
   end
 
+  test "forwards project compilation options to started engines", context do
+    %{manager: manager} =
+      start_manager(__MODULE__.CompilationSupervisor, __MODULE__.CompilationManager)
+
+    parent = self()
+    root = tmp_dir(context)
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    File.write!(Path.join(root, "mix.exs"), """
+    defmodule CompilationFixture.MixProject do
+      use Mix.Project
+
+      def project do
+        [app: :compilation_fixture, version: "0.1.0", deps: []]
+      end
+    end
+    """)
+
+    assert {:ok, %Engine{}} =
+             Manager.ensure_engine(manager, root_uri,
+               source_only?: false,
+               project_compilation_enabled: true,
+               status_target: self(),
+               compile_command_runner: fn command, args, opts ->
+                 send(parent, {:compile_command, command, args, opts})
+                 {"compiled", 0}
+               end
+             )
+
+    assert_receive {:compile_command, "mix", ["compile", "--warnings-as-errors"], _opts}, 500
+  end
+
   test "fetch_engine and document_store report missing roots without starting engines" do
     %{manager: manager} = start_manager(__MODULE__.MissingSupervisor, __MODULE__.MissingManager)
 
