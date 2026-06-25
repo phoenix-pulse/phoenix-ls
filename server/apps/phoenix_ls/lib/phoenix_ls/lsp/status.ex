@@ -29,6 +29,9 @@ defmodule PhoenixLS.LSP.Status do
     |> Map.put("phase", "completed")
     |> put_optional("result", result_string(Keyword.get(opts, :result)))
     |> put_optional("count", Keyword.get(opts, :count))
+    |> put_optional("durationMs", Keyword.get(opts, :duration_ms))
+    |> put_optional("budgetMs", Keyword.get(opts, :budget_ms))
+    |> put_optional("overBudget", Keyword.get(opts, :over_budget?))
   end
 
   @spec compilation_started(keyword()) :: map()

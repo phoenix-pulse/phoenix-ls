@@ -231,6 +231,48 @@ defmodule PhoenixLS.Index.IndexerTest do
                    500
   end
 
+  test "publishes indexing status with duration and performance budget metadata" do
+    store = Module.concat(__MODULE__, :"StatusBudgetStore#{System.unique_integer([:positive])}")
+
+    indexer =
+      Module.concat(__MODULE__, :"StatusBudgetIndexer#{System.unique_integer([:positive])}")
+
+    start_supervised!({Store, name: store}, id: {Store, store})
+
+    start_supervised!(
+      {Indexer, name: indexer, index_store: store, performance_budgets_ms: %{document: 75}},
+      id: {Indexer, indexer}
+    )
+
+    document =
+      Document.new(
+        "file:///tmp/app/lib/app_web/live/status_budget_live.ex",
+        "elixir",
+        1,
+        "defmodule AppWeb.StatusBudgetLive do\nend\n"
+      )
+
+    assert Indexer.schedule_document(indexer, document, status_target: self()) == :ok
+
+    assert_receive {:phoenix_ls_status,
+                    %{
+                      "kind" => "indexing",
+                      "phase" => "completed",
+                      "job" => "document",
+                      "uri" => "file:///tmp/app/lib/app_web/live/status_budget_live.ex",
+                      "result" => "ok",
+                      "count" => 1,
+                      "durationMs" => duration_ms,
+                      "budgetMs" => 75,
+                      "overBudget" => over_budget?
+                    }},
+                   500
+
+    assert is_integer(duration_ms)
+    assert duration_ms >= 0
+    assert is_boolean(over_budget?)
+  end
+
   test "asynchronously indexes an Elixir file from disk by URI", context do
     root = tmp_dir(context)
     path = Path.join([root, "lib", "disk_live.ex"])

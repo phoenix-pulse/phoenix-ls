@@ -70,12 +70,17 @@ defmodule PhoenixLS.Index.Indexer do
   def handle_continue({:index_project, root_uri}, state) do
     maybe_compile_project(state, root_uri)
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
-    {result, count} = emit_project_indexed(state, root_uri)
+    {result, count, duration_ms} = emit_project_indexed(state, root_uri)
 
     notify_status(
       state,
       [],
-      Status.indexing_completed(root_uri: root_uri, job: :project, result: result, count: count)
+      indexing_completed_status(state, :project, duration_ms,
+        root_uri: root_uri,
+        job: :project,
+        result: result,
+        count: count
+      )
     )
 
     {:noreply, state}
@@ -109,7 +114,10 @@ defmodule PhoenixLS.Index.Indexer do
     notify_status(
       state,
       opts,
-      Status.indexing_completed(
+      indexing_completed_status(
+        state,
+        :document,
+        duration_ms,
         root_uri: state.root_uri,
         uri: document.uri,
         job: :document,
@@ -149,7 +157,10 @@ defmodule PhoenixLS.Index.Indexer do
     notify_status(
       state,
       opts,
-      Status.indexing_completed(
+      indexing_completed_status(
+        state,
+        :uri,
+        duration_ms,
         root_uri: state.root_uri,
         uri: uri,
         job: :uri,
@@ -164,12 +175,17 @@ defmodule PhoenixLS.Index.Indexer do
   def handle_cast({:index_project, root_uri}, state) do
     maybe_compile_project(state, root_uri)
     notify_status(state, [], Status.indexing_started(root_uri: root_uri, job: :project))
-    {result, count} = emit_project_indexed(state, root_uri)
+    {result, count, duration_ms} = emit_project_indexed(state, root_uri)
 
     notify_status(
       state,
       [],
-      Status.indexing_completed(root_uri: root_uri, job: :project, result: result, count: count)
+      indexing_completed_status(state, :project, duration_ms,
+        root_uri: root_uri,
+        job: :project,
+        result: result,
+        count: count
+      )
     )
 
     {:noreply, state}
@@ -198,7 +214,10 @@ defmodule PhoenixLS.Index.Indexer do
     notify_status(
       state,
       opts,
-      Status.indexing_completed(
+      indexing_completed_status(
+        state,
+        :delete,
+        duration_ms,
         root_uri: state.root_uri,
         uri: uri,
         job: :delete,
@@ -274,7 +293,7 @@ defmodule PhoenixLS.Index.Indexer do
       telemetry_metadata(state, :project, %{root_uri: root_uri, result: :disabled}, 0)
     )
 
-    {:disabled, 0}
+    {:disabled, 0, 0}
   end
 
   defp emit_project_indexed(%{index_store: index_store} = state, root_uri) do
@@ -286,7 +305,7 @@ defmodule PhoenixLS.Index.Indexer do
       telemetry_metadata(state, :project, %{root_uri: root_uri, result: result}, duration_ms)
     )
 
-    {result, count}
+    {result, count, duration_ms}
   end
 
   defp index_project(index_store, root_uri) do
@@ -331,12 +350,24 @@ defmodule PhoenixLS.Index.Indexer do
   end
 
   defp telemetry_metadata(state, job, metadata, duration_ms) do
-    budget_ms = Map.get(state.performance_budgets_ms, job)
+    budget_ms = performance_budget(state, job)
 
     metadata
     |> Map.put(:budget_ms, budget_ms)
     |> Map.put(:over_budget?, over_budget?(duration_ms, budget_ms))
   end
+
+  defp indexing_completed_status(state, job, duration_ms, opts) do
+    budget_ms = performance_budget(state, job)
+
+    opts
+    |> Keyword.put(:duration_ms, duration_ms)
+    |> Keyword.put(:budget_ms, budget_ms)
+    |> Keyword.put(:over_budget?, over_budget?(duration_ms, budget_ms))
+    |> Status.indexing_completed()
+  end
+
+  defp performance_budget(state, job), do: Map.get(state.performance_budgets_ms, job)
 
   defp over_budget?(duration_ms, budget_ms)
        when is_integer(duration_ms) and is_integer(budget_ms) do

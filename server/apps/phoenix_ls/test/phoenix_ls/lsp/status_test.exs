@@ -18,7 +18,10 @@ defmodule PhoenixLS.LSP.StatusTest do
              uri: "file:///tmp/app/lib/page.ex",
              job: :document,
              result: :ok,
-             count: 2
+             count: 2,
+             duration_ms: 12,
+             budget_ms: 100,
+             over_budget?: false
            ) == %{
              "kind" => "indexing",
              "phase" => "completed",
@@ -26,7 +29,10 @@ defmodule PhoenixLS.LSP.StatusTest do
              "rootUri" => "file:///tmp/app",
              "uri" => "file:///tmp/app/lib/page.ex",
              "result" => "ok",
-             "count" => 2
+             "count" => 2,
+             "durationMs" => 12,
+             "budgetMs" => 100,
+             "overBudget" => false
            }
   end
 
