@@ -23,6 +23,15 @@ defmodule PhoenixLS.Features.Definition do
     |> location()
   end
 
+  @spec definition_source(String.t(), String.t(), CursorContext.lsp_position(), [Fact.t()]) ::
+          Location.t() | nil
+  def definition_source(uri, source, position, facts)
+      when is_binary(uri) and is_binary(source) and is_list(facts) do
+    uri
+    |> PhoenixFactLookup.cursor_fact(source, position, facts)
+    |> location()
+  end
+
   @spec definition(String.t(), %{line: non_neg_integer(), character: non_neg_integer()}, [
           Fact.t()
         ]) :: Location.t() | nil

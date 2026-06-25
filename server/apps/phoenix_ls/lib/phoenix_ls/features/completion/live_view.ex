@@ -36,19 +36,39 @@ defmodule PhoenixLS.Features.Completion.LiveView do
   def complete(uri, source, position, facts)
       when (is_binary(uri) or is_nil(uri)) and is_binary(source) and is_list(facts) do
     with uri when is_binary(uri) <- uri,
-         {:ok,
-          %CursorContext{kind: :attribute_value, attribute: "phx-" <> _event, prefix: prefix}} <-
-           CursorContext.at(source, position),
+         {:ok, context} <- CursorContext.at(source, position),
          {:ok, module} <- TemplateFacts.module_for_uri(facts, uri) do
-      facts
-      |> facts_by_kind(:live_event)
-      |> Enum.filter(&(&1.data.module == module))
-      |> Enum.map(&event_item/1)
-      |> prefixed_items(prefix)
+      complete_source_context(context, facts, module)
     else
-      _not_live_event_context -> []
+      _not_scoped_context -> []
     end
   end
+
+  defp complete_source_context(
+         %CursorContext{kind: :expression, prefix: "@" <> prefix},
+         facts,
+         module
+       ) do
+    facts
+    |> facts_by_kind(:assign)
+    |> Enum.filter(&(&1.data.module == module))
+    |> Enum.map(&assign_item/1)
+    |> prefixed_items("@" <> prefix)
+  end
+
+  defp complete_source_context(
+         %CursorContext{kind: :attribute_value, attribute: "phx-" <> _event, prefix: prefix},
+         facts,
+         module
+       ) do
+    facts
+    |> facts_by_kind(:live_event)
+    |> Enum.filter(&(&1.data.module == module))
+    |> Enum.map(&event_item/1)
+    |> prefixed_items(prefix)
+  end
+
+  defp complete_source_context(_context, _facts, _module), do: []
 
   defp assign_item(fact) do
     label = "@" <> fact.data.name

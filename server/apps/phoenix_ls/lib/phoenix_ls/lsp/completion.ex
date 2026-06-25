@@ -45,6 +45,17 @@ defmodule PhoenixLS.LSP.Completion do
        ),
        do: []
 
+  defp context_completion_items(
+         %CursorContext{kind: :expression, prefix: "@" <> prefix} = context,
+         facts
+       ) do
+    if String.contains?(prefix, ".") do
+      Phoenix.complete(context, facts)
+    else
+      []
+    end
+  end
+
   defp context_completion_items(%CursorContext{} = context, facts),
     do: Phoenix.complete(context, facts)
 end

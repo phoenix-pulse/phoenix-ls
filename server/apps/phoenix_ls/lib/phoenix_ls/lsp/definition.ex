@@ -24,7 +24,7 @@ defmodule PhoenixLS.LSP.Definition do
 
         case DefinitionFeature.reference_definition(uri, position, facts) do
           {:ok, definition} -> definition
-          :not_found -> DefinitionFeature.definition_source(document.text, position, facts)
+          :not_found -> DefinitionFeature.definition_source(uri, document.text, position, facts)
         end
       else
         _missing_or_invalid -> nil

@@ -262,6 +262,84 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
     refute String.contains?(value, "AppWeb.Admin.ProductLive")
   end
 
+  test "GenLSP transport hovers HEEx assigns with same-module assign content",
+       context do
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_ls, :indexer, :document],
+      &__MODULE__.handle_indexer_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    root = fixture_project(context, "assign_hover_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    admin_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/admin/product_live.ex"))
+
+    product_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.ex"))
+
+    heex_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.html.heex"))
+
+    {heex_source, position} = source_and_position("<p>{@selected|_id}</p>")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      admin_uri,
+      "elixir",
+      live_view_assign_source("AppWeb.Admin.ProductLive")
+    )
+
+    open_document(
+      test_client,
+      product_uri,
+      "elixir",
+      live_view_assign_source("AppWeb.ProductLive")
+    )
+
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(admin_uri, 5)
+    assert_indexed(product_uri, 5)
+    assert_indexed(heex_uri, 1)
+
+    GenLSP.Test.request(test_client, %{
+      id: 4,
+      jsonrpc: "2.0",
+      method: "textDocument/hover",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_receive %{
+                     "jsonrpc" => "2.0",
+                     "id" => 4,
+                     "result" => %{
+                       "contents" => %{
+                         "kind" => "markdown",
+                         "value" => value
+                       }
+                     }
+                   },
+                   500
+
+    assert String.contains?(value, "assign @selected_id")
+    assert String.contains?(value, "AppWeb.ProductLive")
+    refute String.contains?(value, "AppWeb.Admin.ProductLive")
+  end
+
   def handle_indexer_event(event, measurements, metadata, parent) do
     send(parent, {:indexer_event, event, measurements, metadata})
   end
@@ -363,6 +441,18 @@ defmodule PhoenixLS.LSP.HoverTransportTest do
 
       def handle_event("save", _params, socket) do
         {:noreply, socket}
+      end
+    end
+    """
+  end
+
+  defp live_view_assign_source(module) do
+    """
+    defmodule #{module} do
+      use Phoenix.LiveView
+
+      def mount(_params, _session, socket) do
+        {:ok, assign(socket, :selected_id, "1")}
       end
     end
     """

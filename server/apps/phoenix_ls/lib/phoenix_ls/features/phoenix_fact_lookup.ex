@@ -3,7 +3,7 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   Resolves cursor contexts to indexed Phoenix facts.
   """
 
-  alias PhoenixLS.Features.{AssignAccess, ComponentLookup}
+  alias PhoenixLS.Features.{AssignAccess, ComponentLookup, TemplateFacts}
   alias PhoenixLS.Features.Completion.SchemaFacts
   alias PhoenixLS.HEEx.CursorContext
   alias PhoenixLS.Index.Fact
@@ -12,6 +12,17 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
   def cursor_fact(source, position, facts) when is_binary(source) and is_list(facts) do
     with {:ok, context} <- CursorContext.at(source, position) do
       source_cursor_fact(context, source, position, facts)
+    else
+      _invalid_context -> nil
+    end
+  end
+
+  @spec cursor_fact(String.t(), String.t(), CursorContext.lsp_position(), [Fact.t()]) ::
+          Fact.t() | nil
+  def cursor_fact(uri, source, position, facts)
+      when is_binary(uri) and is_binary(source) and is_list(facts) do
+    with {:ok, context} <- CursorContext.at(source, position) do
+      source_cursor_fact(uri, context, source, position, facts)
     else
       _invalid_context -> nil
     end
@@ -84,6 +95,28 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
     cursor_fact(context, facts)
   end
 
+  defp source_cursor_fact(
+         uri,
+         %CursorContext{kind: :expression, prefix: "@" <> assign_prefix} = context,
+         source,
+         position,
+         facts
+       ) do
+    case TemplateFacts.module_for_uri(facts, uri) do
+      {:ok, module} ->
+        find_assign_or_schema(facts, assign_prefix, module) ||
+          source_cursor_fact(context, source, position, facts)
+
+      :error ->
+        source_cursor_fact(context, source, position, facts)
+    end
+  end
+
+  defp source_cursor_fact(uri, %CursorContext{} = context, source, position, facts)
+       when is_binary(uri) do
+    source_cursor_fact(context, source, position, facts)
+  end
+
   defp find_route(facts, path_prefix) do
     Enum.find(facts, &(&1.kind == :route and String.starts_with?(&1.data.path, path_prefix)))
   end
@@ -111,9 +144,22 @@ defmodule PhoenixLS.Features.PhoenixFactLookup do
     Enum.find(facts, &(&1.kind == :assign and String.starts_with?(&1.data.name, assign_prefix)))
   end
 
+  defp find_assign(facts, assign_prefix, module) do
+    Enum.find(
+      facts,
+      &(&1.kind == :assign and &1.data.module == module and
+          String.starts_with?(&1.data.name, assign_prefix))
+    )
+  end
+
   defp find_assign_or_schema(facts, assign_prefix) do
     SchemaFacts.schema_for_assign_prefix(assign_prefix, facts) ||
       find_assign(facts, assign_prefix)
+  end
+
+  defp find_assign_or_schema(facts, assign_prefix, module) do
+    SchemaFacts.schema_for_assign_prefix(assign_prefix, facts) ||
+      find_assign(facts, assign_prefix, module)
   end
 
   defp find_assign_schema_property(facts, prefix) do

@@ -135,6 +135,8 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
   end
 
   test "GenLSP transport returns route completions from indexed router facts", context do
+    attach_indexer()
+
     root = fixture_project(context, "route_completion_project")
     root_uri = SupportURI.path_to_file_uri!(root)
 
@@ -149,6 +151,7 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
     initialize(test_client, root_uri)
     open_document(test_client, router_uri, "elixir", router_source())
     open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(router_uri)
 
     GenLSP.Test.request(test_client, %{
       id: 2,
@@ -293,6 +296,76 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
           "insertTextFormat" => 1,
           "kind" => 23,
           "label" => "save-product"
+        }
+      ],
+      500
+    )
+  end
+
+  test "GenLSP transport scopes LiveView assign completions to the template module", context do
+    attach_indexer()
+
+    root = fixture_project(context, "assign_completion_project")
+    root_uri = SupportURI.path_to_file_uri!(root)
+
+    admin_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/admin/product_live.ex"))
+
+    product_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.ex"))
+
+    heex_uri =
+      SupportURI.path_to_file_uri!(Path.join(root, "lib/app_web/live/product_live.html.heex"))
+
+    {heex_source, position} = source_and_position("<p>{@sele|}</p>")
+
+    test_server = GenLSP.Test.server(Server)
+    test_client = GenLSP.Test.client(test_server)
+
+    initialize(test_client, root_uri)
+
+    open_document(
+      test_client,
+      admin_uri,
+      "elixir",
+      live_view_assign_source("AppWeb.Admin.ProductLive")
+    )
+
+    open_document(
+      test_client,
+      product_uri,
+      "elixir",
+      live_view_assign_source("AppWeb.ProductLive")
+    )
+
+    open_document(test_client, heex_uri, "phoenix-heex", heex_source)
+    assert_indexed(admin_uri)
+    assert_indexed(product_uri)
+    assert_indexed(heex_uri)
+
+    GenLSP.Test.request(test_client, %{
+      id: 4,
+      jsonrpc: "2.0",
+      method: "textDocument/completion",
+      params: %{
+        textDocument: %{uri: heex_uri},
+        position: position
+      }
+    })
+
+    assert_result(
+      4,
+      [
+        %{
+          "data" => %{
+            "id" => "AppWeb.ProductLive:assign:selected_id",
+            "kind" => "assign"
+          },
+          "detail" => "assign @selected_id",
+          "insertText" => "@selected_id",
+          "insertTextFormat" => 1,
+          "kind" => 6,
+          "label" => "@selected_id"
         }
       ],
       500
@@ -472,6 +545,18 @@ defmodule PhoenixLS.LSP.CompletionTransportTest do
 
       def handle_event("#{event}", _params, socket) do
         {:noreply, socket}
+      end
+    end
+    """
+  end
+
+  defp live_view_assign_source(module) do
+    """
+    defmodule #{module} do
+      use Phoenix.LiveView
+
+      def mount(_params, _session, socket) do
+        {:ok, assign(socket, :selected_id, "1")}
       end
     end
     """

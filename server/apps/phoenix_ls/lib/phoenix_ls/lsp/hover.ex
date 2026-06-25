@@ -24,7 +24,7 @@ defmodule PhoenixLS.LSP.Hover do
 
         case HoverFeature.reference_hover(uri, position, facts) do
           {:ok, hover} -> hover
-          :not_found -> HoverFeature.hover_source(document.text, position, facts)
+          :not_found -> HoverFeature.hover_source(uri, document.text, position, facts)
         end
       else
         _missing_or_invalid -> nil
